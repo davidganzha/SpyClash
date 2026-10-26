@@ -3,6 +3,7 @@ import { reduceGame, projectGame } from './engine.ts';
 import { readLeaderboard } from './leaderboard-service.ts';
 import { validateSharedWordPackContent } from './word-pack-content-safety.ts';
 import { accountGate } from '../app-services/account-gate.ts';
+import { nativeGameCenterAccount,nativeGameCenterHasMembership } from '../app-services/native-game-center.ts';
 
 export class GameServiceError extends Error {
   constructor(code, message, status = 400, retryable = false) {
@@ -187,6 +188,8 @@ async function readGame(db, actor, body) {
   }
   if (body.action === 'get_history') {
     const limit = Math.max(1, Math.min(200, Number.isInteger(body.limit) ? body.limit : 200));
+    const native = await nativeGameCenterAccount(db,actor.id);
+    const freeNative = native && !await nativeGameCenterHasMembership(db,actor.id);
     let cursor = null;
     if (body.cursor) {
       try {
@@ -195,8 +198,13 @@ async function readGame(db, actor, body) {
         if (typeof cursor.at !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(cursor.at) || !Number.isFinite(Date.parse(cursor.at))) throw new Error('Invalid date');
       } catch { throw new GameServiceError('invalid_cursor', 'Invalid history cursor.'); }
     }
+    // Limit the relation before applying a caller-controlled cursor. Merely
+    // shrinking page size would still expose every old match through paging.
+    const source = freeNative
+      ? db`(select * from full_game_private.history where player_id=${actor.id} order by created_at desc,match_id desc limit 5) as visible_history`
+      : db`full_game_private.history`;
     const rows = await db`select match_id,result,created_at,to_char(created_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at
-      from full_game_private.history where player_id=${actor.id}
+      from ${source} where player_id=${actor.id}
       ${cursor ? db`and (created_at,match_id)<(${cursor.at}::text::timestamptz,${cursor.id}::uuid)` : db``}
       order by created_at desc,match_id desc limit ${limit + 1}`;
     const page = rows.slice(0, limit), last = page.at(-1);

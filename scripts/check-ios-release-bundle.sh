@@ -206,6 +206,7 @@ require(isinstance(public, dict) and isinstance(candidate, dict), "Public Supaba
 require(public.get("backendURL") == "https://bbkfsgnordtdiblgdzkg.supabase.co", "Public Supabase configuration selects an unexpected backend.")
 key = public.get("publishableKey")
 require(isinstance(key, str) and key.startswith("sb_publishable_") and not any(c.isspace() for c in key), "Public Supabase configuration must use a publishable key.")
+require(public.get("gameCenterSignInEnabled") is True, "Public Supabase configuration must enable the reviewed Game Center flow.")
 require(public.get("mainAccountDeletionEnabled") is True, "Public Supabase configuration must enable full account deletion.")
 require(all(public.get(name) is True for name in ["appleSignInEnabled", "googleSignInEnabled", "permitsLegacyBilling"]), "Public Supabase configuration must retain Apple, Google and native billing.")
 require(public.get("permitsLegacyPush") is False, "Public Supabase configuration unexpectedly enables legacy push.")
@@ -328,6 +329,13 @@ if [ "$require_signed_entitlements" = true ]; then
       "$effective_app_entitlements" 2>/dev/null \
       | grep -Eq '^[[:space:]]*Default[[:space:]]*$'; then
     fail "SpyClash app effective entitlements are missing Sign in with Apple Default."
+  fi
+
+  if [ "$backend_mode" = supabase-public ]; then
+    signed_game_center=$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.game-center' "$effective_app_entitlements" 2>/dev/null || true)
+    if [ "$signed_game_center" != true ]; then
+      fail "SpyClash app effective entitlements are missing Game Center."
+    fi
   fi
 
   extract_effective_entitlements \

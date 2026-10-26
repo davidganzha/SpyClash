@@ -4,86 +4,57 @@ import XCTest
 
 final class OnboardingTests: XCTestCase {
     func testRoutingUsesExplicitRemoteFalseBeforeLocalCompletion() {
-        XCTAssertTrue(
-            OnboardingRoutingPolicy.shouldPresentOnboarding(
+        for localVersion in [nil, 1, 2, 100] as [Int?] {
+            XCTAssertTrue(OnboardingRoutingPolicy.shouldPresentOnboarding(
                 remoteCompleted: false,
-                remoteVersion: 1,
-                localCompletedVersion: 1
-            )
-        )
-        XCTAssertTrue(
-            OnboardingRoutingPolicy.shouldPresentOnboarding(
-                remoteCompleted: false,
-                remoteVersion: 1,
+                remoteVersion: 0,
+                localCompletedVersion: localVersion,
+                localPendingVersion: 100
+            ))
+        }
+    }
+
+    func testCompletedAccountsDoNotRepeatSetupAfterAnUpgrade() {
+        for version in [nil, 0, 1, 2] as [Int?] {
+            XCTAssertFalse(OnboardingRoutingPolicy.shouldPresentOnboarding(
+                remoteCompleted: true,
+                remoteVersion: version,
                 localCompletedVersion: nil,
-                localPendingVersion: 1
-            )
-        )
-        XCTAssertTrue(
-            OnboardingRoutingPolicy.shouldPresentOnboarding(
-                remoteCompleted: nil,
-                remoteVersion: nil,
-                localCompletedVersion: 1
-            )
-        )
-        XCTAssertTrue(
-            OnboardingRoutingPolicy.shouldPresentOnboarding(
+                requiredVersion: 100
+            ), "Confirmed completion must survive missing or old version metadata")
+            XCTAssertFalse(OnboardingRoutingPolicy.requiresLocalNetworkUpgrade(
                 remoteCompleted: true,
-                remoteVersion: nil,
-                localCompletedVersion: nil
-            )
-        )
-        XCTAssertTrue(
-            OnboardingRoutingPolicy.shouldPresentOnboarding(
-                remoteCompleted: true,
-                remoteVersion: 1,
-                localCompletedVersion: 2,
-                requiredVersion: 2
-            )
-        )
+                remoteVersion: version,
+                requiredVersion: 100
+            ), "Local Network recovery must not reopen account setup")
+        }
         XCTAssertEqual(OnboardingSubmission.currentVersion, 2)
     }
 
-    func testOnlyPreviouslyCompletedAccountsUseLocalNetworkUpgradeRoute() {
-        XCTAssertTrue(
-            OnboardingRoutingPolicy.requiresLocalNetworkUpgrade(
-                remoteCompleted: true,
-                remoteVersion: 1
-            )
-        )
-        XCTAssertTrue(
-            OnboardingRoutingPolicy.requiresLocalNetworkUpgrade(
-                remoteCompleted: true,
-                remoteVersion: nil
-            )
-        )
-        XCTAssertTrue(
-            OnboardingRoutingPolicy.requiresLocalNetworkUpgrade(
-                remoteCompleted: nil,
-                remoteVersion: nil,
-                localCompletedVersion: 1
-            )
-        )
-        XCTAssertFalse(
-            OnboardingRoutingPolicy.requiresLocalNetworkUpgrade(
-                remoteCompleted: false,
-                remoteVersion: 1,
-                localCompletedVersion: 1
-            )
-        )
-        XCTAssertFalse(
-            OnboardingRoutingPolicy.requiresLocalNetworkUpgrade(
-                remoteCompleted: true,
-                remoteVersion: 2
-            )
-        )
-        XCTAssertFalse(
-            OnboardingRoutingPolicy.requiresLocalNetworkUpgrade(
-                remoteCompleted: nil,
-                remoteVersion: nil,
-                localCompletedVersion: nil
-            )
-        )
+    func testLegacyPayloadUsesOnlyPositiveAccountScopedCompletionEvidence() {
+        for version in [1, 2] {
+            XCTAssertFalse(OnboardingRoutingPolicy.shouldPresentOnboarding(
+                remoteCompleted: nil, remoteVersion: nil,
+                localCompletedVersion: version, requiredVersion: 100
+            ))
+            XCTAssertFalse(OnboardingRoutingPolicy.shouldPresentOnboarding(
+                remoteCompleted: nil, remoteVersion: nil,
+                localCompletedVersion: nil, localPendingVersion: version,
+                requiredVersion: 100
+            ))
+        }
+        for version in [nil, 0, -1] as [Int?] {
+            XCTAssertTrue(OnboardingRoutingPolicy.shouldPresentOnboarding(
+                remoteCompleted: nil, remoteVersion: 100,
+                localCompletedVersion: version, localPendingVersion: version
+            ), "A payload version alone does not prove that setup was completed")
+        }
+        XCTAssertFalse(OnboardingRoutingPolicy.requiresLocalNetworkUpgrade(
+            remoteCompleted: nil, remoteVersion: nil, localCompletedVersion: 1
+        ))
+        XCTAssertFalse(OnboardingRoutingPolicy.requiresLocalNetworkUpgrade(
+            remoteCompleted: false, remoteVersion: 0
+        ))
     }
 
     func testProgressIsAccountScopedAndRemoteStateIsVersionAware() throws {
@@ -104,6 +75,13 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(store.pendingSubmission(for: "user-a"), submission)
         XCTAssertNil(store.pendingSubmission(for: "user-b"))
         XCTAssertEqual(store.completedVersion(for: "user-a"), 1)
+        let legacyA = try JSONDecoder().decode(SpyUser.self, from: Data("{\"id\":\"user-a\",\"email\":\"a@example.com\",\"language\":\"uk\"}".utf8))
+        let legacyB = try JSONDecoder().decode(SpyUser.self, from: Data("{\"id\":\"user-b\",\"email\":\"b@example.com\"}".utf8))
+        XCTAssertFalse(store.shouldPresentOnboarding(for: legacyA, requiredVersion: 100))
+        XCTAssertTrue(store.shouldPresentOnboarding(for: legacyB))
+        XCTAssertEqual(store.pendingSubmission(for: "user-a")?.language, .uk)
+        XCTAssertEqual(store.pendingSubmission(for: "user-a")?.acquisitionSource, .chatGPT)
+        XCTAssertEqual(legacyA.language, "uk")
 
         store.markSynced(submission, for: "user-a")
         XCTAssertEqual(store.completedVersion(for: "user-a"), 1)

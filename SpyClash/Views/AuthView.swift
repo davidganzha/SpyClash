@@ -182,6 +182,9 @@ struct AuthView: View {
             Group {
                 switch appState.authPhase {
             case .email:
+#if SPYCLASH_SUPABASE
+                if SupabaseAppRuntime.permitsGameCenterSignIn { gameCenterButton }
+#endif
                 appleButton
                 googleButton
                 divider
@@ -227,6 +230,9 @@ struct AuthView: View {
                 .buttonStyle(SpyWebPressStyle())
 
             case .registerEmail:
+#if SPYCLASH_SUPABASE
+                if SupabaseAppRuntime.permitsGameCenterSignIn { gameCenterButton }
+#endif
                 appleButton
                 googleButton
                 divider
@@ -433,6 +439,37 @@ struct AuthView: View {
             autocapitalization: .never
         )
     }
+
+#if SPYCLASH_SUPABASE
+    private var gameCenterButton: some View {
+        Button {
+            guard let requestID = appState.prepareGameCenterManualEntry() else { return }
+            HapticManager.shared.fire(.buttonPress)
+            dismiss()
+            Task { @MainActor in
+                // Finish dismissing the auth sheet before GameKit presents a
+                // system controller. AppState rechecks account ownership after
+                // this delay, so another sign-in can safely supersede it.
+                do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
+                await appState.loginWithGameCenter(requestID: requestID)
+            }
+        } label: {
+            Label(gameCenterAction, systemImage: "gamecontroller.fill")
+        }
+        .buttonStyle(SpyButtonStyle(variant: .ghost))
+        .disabled(appState.isBusy)
+        .accessibilityIdentifier("auth.gamecenter")
+    }
+
+    private var gameCenterAction: String {
+        switch appState.language {
+        case .ru: "Продолжить с Game Center"
+        case .uk: "Продовжити з Game Center"
+        case .es: "Continuar con Game Center"
+        case .en: "Continue with Game Center"
+        }
+    }
+#endif
 
     private var googleButton: some View {
         Button {

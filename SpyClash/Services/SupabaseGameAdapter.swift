@@ -11,13 +11,19 @@ final class SupabaseGameAdapter {
     private(set) var user: SpyUser?
 #if SPYCLASH_SUPABASE
     private var connectedGeneration: UUID?
-    func connectSession(profile: SpyUser) async throws {
+    func connectSession(profile: SpyUser, restoreActiveRoom: Bool = true) async throws {
         let session = SupabaseAppSession.shared
         guard session.userID == profile.id else { throw SupabaseFullGameStore.notSignedIn }
-        if connectedGeneration != session.generation {
-            try await store.connect(transport: SupabaseAppGameTransport(auth: session), name: profile.callSign)
-            connectedGeneration = session.generation
+        let generation = session.generation
+        if connectedGeneration != generation {
+            let shouldRestoreRoom = restoreActiveRoom &&
+                (!session.isNativeGameCenterSession || !OnboardingProgressStore.shouldPresentOnboarding(for: profile))
+            try await store.connect(transport: SupabaseAppGameTransport(auth: session), name: profile.callSign,
+                                    restoreActiveRoom: shouldRestoreRoom)
+            guard session.generation == generation, session.userID == profile.id else { throw CancellationError() }
+            connectedGeneration = generation
         }
+        guard session.generation == generation, session.userID == profile.id else { throw CancellationError() }
         user = profile
     }
 #endif
@@ -101,14 +107,26 @@ final class SupabaseGameAdapter {
 
     func generateWordPack(theme: String, count: Int, requestID: UUID, excluding: [String], preferFresh: Bool) async throws -> GeneratedWordPack {
 #if SPYCLASH_SUPABASE
-        let capability: JSONValue = try await SupabaseAppSession.shared.service("legacy", action: "status")
+        let session = SupabaseAppSession.shared
+        let generation = session.generation
+        let actorID = session.userID
+        func requireCurrentAccount() throws {
+            try Task.checkCancellation()
+            guard session.generation == generation, session.userID == actorID else { throw CancellationError() }
+        }
+        let capability: JSONValue = try await session.service("legacy", action: "status")
+        try requireCurrentAccount()
         guard capability["configured"].bool else {
-            throw Base44Error(message: "The Base44 generator is not configured for this staging app yet. Use a saved or manual word pack.", statusCode: 503, code: "legacy_bridge_unconfigured")
+            throw Base44Error(message: "The word generator is temporarily unavailable. Use a saved or manual word pack.", statusCode: 503, code: "legacy_bridge_unconfigured")
         }
-        if !capability["linked"].bool {
-            let _: JSONValue = try await SupabaseAppSession.shared.service("legacy", action: "link", write: true, includeLegacyCredential: true)
+        // Missing capability data keeps the existing Base44 credential route.
+        // Only an explicit server capability enables native generation.
+        let requiresLegacySession = capability["requires_legacy_session"] != .bool(false)
+        if requiresLegacySession && !capability["linked"].bool {
+            let _: JSONValue = try await session.service("legacy", action: "link", write: true, includeLegacyCredential: true)
+            try requireCurrentAccount()
         }
-        return try await SupabaseAppSession.shared.service("legacy", action: "generate", fields: Self.generationFields(theme: theme, count: count, requestID: requestID, excluding: excluding, preferFresh: preferFresh), write: true, includeLegacyCredential: true)
+        return try await session.service("legacy", action: "generate", fields: Self.generationFields(theme: theme, count: count, requestID: requestID, excluding: excluding, preferFresh: preferFresh), write: true, includeLegacyCredential: requiresLegacySession)
 #else
         // The generator remains on Base44. Synthetic Supabase test identities
         // have no Base44 session, and must never trigger a production request.

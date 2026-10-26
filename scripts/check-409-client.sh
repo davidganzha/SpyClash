@@ -32,6 +32,7 @@ xcodebuild test -project SpyClash.xcodeproj -scheme SpyClash \
   -only-testing:SpyClashTests/AppleSessionCompletionWebKitTests \
   -only-testing:SpyClashTests/AppleAuthenticationOwnershipTests \
   -only-testing:SpyClashTests/AuthenticationFlowTests \
+  -only-testing:SpyClashTests/OnboardingTests \
   -only-testing:SpyClashTests/WebAuthenticationCoordinatorTests \
   CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-
 xcodebuild test -project SpyClash.xcodeproj -scheme SpyClash-Supabase-Staging \
@@ -41,6 +42,10 @@ xcodebuild test -project SpyClash.xcodeproj -scheme SpyClash-Supabase-Staging \
   -parallel-testing-enabled NO \
   -only-testing:SpyClashSupabaseStagingTests/SupabaseSessionTests \
   -only-testing:SpyClashSupabaseStagingTests/LegacySessionUpgradeTests \
+  -only-testing:SpyClashSupabaseStagingTests/NativeGameCenterSessionTests \
+  -only-testing:SpyClashSupabaseStagingTests/OnboardingSessionRecoveryTests \
+  -only-testing:SpyClashSupabaseStagingTests/GameCenterAuthenticationTests \
+  -only-testing:SpyClashSupabaseStagingTests/GameCenterAutomaticEntryTests \
   CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-
 xcodebuild test -project SpyClash.xcodeproj -scheme SpyClash-Supabase-Test \
   -destination "$destination" \

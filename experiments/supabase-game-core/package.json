@@ -21,12 +21,17 @@
     "app:test": "node scripts/app-services-local.mjs",
     "app:apply": "node scripts/app-services-local.mjs apply",
     "app:check": "deno check --config supabase/functions/app-services/deno.json supabase/functions/app-services/index.ts supabase/functions/legacy-session/index.ts supabase/functions/app-services/legacy-social.ts scripts/legacy-social-export.ts",
-    "app:cloud-test": "node scripts/app-services-cloud-test.mjs"
+    "app:cloud-test": "node scripts/app-services-cloud-test.mjs",
+    "game-center:test": "node --test tests/game-center/*.test.mjs",
+    "game-center:integration": "node scripts/game-center-local.mjs",
+    "game-center:check": "deno check --config supabase/functions/game-center-session/deno.json supabase/functions/game-center-session/index.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.117.3",
     "pg": "8.23.1",
-    "postgres": "3.4.9"
+    "postgres": "3.4.9",
+    "@peculiar/x509": "2.2.0",
+    "reflect-metadata": "0.2.2"
   },
   "devDependencies": {
     "deno": "2.9.6",

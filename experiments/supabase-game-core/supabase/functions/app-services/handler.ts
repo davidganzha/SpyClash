@@ -1,7 +1,7 @@
 import { AppServiceError, requireUUID } from './contracts.ts';
 import { accountGate, sessionGate, verifiedSessionID } from './account-gate.ts';
 import { executeApp, validateCommand, replayAppReceipt } from './dispatcher.ts';
-import { prepareMembershipExternal } from './membership.ts';
+import { prepareMembershipExternal, refreshNativeMembership } from './membership.ts';
 import { prepareLegacyExternal } from './legacy.ts';
 import { processAccountDeletionJobs } from './lifecycle.ts';
 import { prepareMainAccountDeletion } from './main-account-deletion.ts';
@@ -34,11 +34,13 @@ export function createAppHandler({ db, authenticate, config = {}, fetch: fetcher
         const replay = await replayAppReceipt(db, actor, body);
         if (replay) return Response.json(replay.body, { status: replay.status, headers: { 'Cache-Control': 'no-store' } });
       }
+      const accountConfig = body.service === 'profile' && body.action === 'delete' ? config
+        : await refreshNativeMembership({actor,body,config},{db});
       let evidence;
-      if (body.service === 'membership') evidence = await prepareMembershipExternal({ actor, body, config }, { db, fetch: fetcher });
-      if (body.service === 'legacy') evidence = await prepareLegacyExternal({ actor, body, config }, { db, fetch: fetcher });
+      if (body.service === 'membership') evidence = await prepareMembershipExternal({ actor, body, config:accountConfig }, { db, fetch: fetcher });
+      if (body.service === 'legacy') evidence = await prepareLegacyExternal({ actor, body, config:accountConfig }, { db, fetch: fetcher });
       if (body.service === 'profile' && body.action === 'delete') evidence = await prepareMainAccountDeletion({ actor, body, config }, { db, fetch: fetcher });
-      const result = await executeApp(db, actor, body, config, evidence);
+      const result = await executeApp(db, actor, body, accountConfig, evidence);
       if (body.service === 'profile' && body.action === 'delete' && result.status === 200) {
         // The tombstone already committed. Auth cleanup is safe to retry after
         // a lost response; the durable job remains if Auth is unavailable.

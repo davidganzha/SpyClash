@@ -12,8 +12,8 @@ enum OnboardingAcquisitionSource: String, CaseIterable, Codable, Hashable, Ident
 }
 
 struct OnboardingSubmission: Codable, Equatable, Sendable {
-    /// Version 2 adds the mandatory Local Network verification required by
-    /// always-on Radar. Existing version-1 accounts receive only this new step.
+    /// Version 2 records the permission flow shown during first-time setup.
+    /// A newer submission version does not reopen completed account setup.
     static let currentVersion = 2
 
     let language: AppLanguage
@@ -42,31 +42,21 @@ struct OnboardingSubmission: Codable, Equatable, Sendable {
 }
 
 enum OnboardingRoutingPolicy {
+    /// Permission recovery belongs to Radar and Settings. A completed account
+    /// never re-enters onboarding solely because its permission flow is older.
     static func requiresLocalNetworkUpgrade(
         remoteCompleted: Bool?,
         remoteVersion: Int?,
         localCompletedVersion: Int? = nil,
         requiredVersion: Int = OnboardingSubmission.currentVersion
     ) -> Bool {
-        let requiredVersion = max(1, requiredVersion)
-
-        if remoteCompleted == false {
-            return false
-        }
-
-        if remoteCompleted == true {
-            return (remoteVersion ?? 1) < requiredVersion
-        }
-
-        guard let localCompletedVersion else { return false }
-        return localCompletedVersion > 0 && localCompletedVersion < requiredVersion
+        false
     }
 
-    /// Resolves account routing without mutating local progress. An explicit
-    /// server `false` is authoritative over all local state. A pending
-    /// submission may bridge a missing or older positive server payload until
-    /// Base44 confirms it. A missing server field may use this device's
-    /// account-scoped completion so older User payloads remain compatible.
+    /// Completion is account state, not an app-version requirement. Explicit
+    /// server false still overrides local state. Missing server fields may use
+    /// this account's confirmed completion or durable pending submission.
+    /// Versions remain useful for acknowledging pending answers, not routing.
     static func shouldPresentOnboarding(
         remoteCompleted: Bool?,
         remoteVersion: Int?,
@@ -74,24 +64,12 @@ enum OnboardingRoutingPolicy {
         localPendingVersion: Int? = nil,
         requiredVersion: Int = OnboardingSubmission.currentVersion
     ) -> Bool {
-        let requiredVersion = max(1, requiredVersion)
-
-        if remoteCompleted == false {
-            return true
+        if let remoteCompleted {
+            return !remoteCompleted
         }
-
-        if (localPendingVersion ?? 0) >= requiredVersion {
-            return false
-        }
-
-        if remoteCompleted == true {
-            // Explicit completion written before versioning was introduced is
-            // the first onboarding contract, never an implicit latest version.
-            return (remoteVersion ?? 1) < requiredVersion
-        }
-
-        return (localCompletedVersion ?? 0) < requiredVersion
+        return (localCompletedVersion ?? 0) <= 0 && (localPendingVersion ?? 0) <= 0
     }
+
 }
 
 enum OnboardingProgressStoreError: Error, Equatable {

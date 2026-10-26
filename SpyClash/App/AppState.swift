@@ -1451,6 +1451,17 @@ final class AppState: NSObject {
     var supabaseTestConfigurationError: String?
     var isRestoring = true
     var isBusy = false
+#if SPYCLASH_SUPABASE
+    private(set) var isGameCenterSigningIn = false
+    @ObservationIgnored private let hadSavedCredentialAtLaunch: Bool
+    @ObservationIgnored private let gameCenterAuthentication = GameCenterAuthentication()
+    @ObservationIgnored private let gameCenterAutomaticEntry = GameCenterAutomaticEntryPolicy()
+    @ObservationIgnored private var gameCenterManualEntryID: UUID?
+    @ObservationIgnored private var gameCenterOnboardingAttemptID: UUID?
+#if DEBUG
+    @ObservationIgnored var gameCenterOnboardingCompletionOverride: (@MainActor (OnboardingSubmission) async throws -> SpyUser)?
+#endif
+#endif
     private(set) var isApplicationActive = false
     private(set) var isAppleAuthorizationPending = false
     private var appleAuthorizationRequestID: UUID?
@@ -1676,6 +1687,11 @@ final class AppState: NSObject {
         self.sessionTokenRead = readStoredToken
         self.sessionTokenSave = saveStoredToken
         self.sessionTokenClear = clearStoredToken
+#if SPYCLASH_SUPABASE
+        // A rejected or temporarily unavailable old session must not silently
+        // become a different Game Center account after the restore attempt.
+        self.hadSavedCredentialAtLaunch = client.hasSessionToken || readStoredToken()?.nilIfBlank != nil
+#endif
         self.webAuthenticationOverride = webAuthentication
         self.appleSessionCompletionOverride = appleSessionCompletion
         self.membership = MembershipStore(client: client)
@@ -3503,6 +3519,128 @@ final class AppState: NSObject {
 #endif
     }
 
+#if SPYCLASH_SUPABASE
+    /// Cold start first restores a saved account. Game Center is only asked
+    /// when there is no account to restore and no explicit recovery intent.
+    func runAutomaticGameCenterSignInIfNeeded() async {
+        guard SupabaseAppRuntime.permitsGameCenterSignIn,
+              ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil,
+              !hadSavedCredentialAtLaunch, !isRestoring, !Task.isCancelled, !shouldUsePreviewData,
+              gameCenterAutomaticEntry.begin(
+                hasUser: user != nil,
+                hasSavedSession: client.hasSessionToken || sessionTokenRead()?.nilIfBlank != nil,
+                isBusy: isBusy,
+                recoveryPresented: authPhase.isRecoveryPresentation
+              ) else { return }
+        await performGameCenterSignIn()
+    }
+
+    private func performGameCenterSignIn() async {
+        guard SupabaseAppRuntime.permitsGameCenterSignIn,
+              user == nil, !client.hasSessionToken,
+              !authPhase.isRecoveryPresentation,
+              let attemptID = beginAuthenticationAttempt() else { return }
+        isGameCenterSigningIn = true
+        defer {
+            if authenticationAttemptID == attemptID {
+                isGameCenterSigningIn = false
+                finishAuthenticationAttempt(attemptID)
+            }
+        }
+        do {
+            let proof = try await gameCenterAuthentication.authenticate()
+            try requireCurrentAuthentication(attemptID)
+            let response = try await SupabaseAppSession.shared.exchangeGameCenter(proof: proof) {
+                try self.requireCurrentAuthentication(attemptID)
+            }
+            try requireCurrentAuthentication(attemptID)
+            // This synchronous acceptance boundary cannot be interrupted by
+            // the loading screen's cancel action. Room transport attaches only
+            // after the verified account is visible and owns the session.
+            try client.commitGameCenterToken(response.accessToken, user: response.user)
+            try requireCurrentAuthentication(attemptID, checkSession: false)
+            sessionTokenSave(response.accessToken)
+            reconcileLanguagePreference(with: response.user.language)
+            user = response.user
+            selectedTab = .home
+            shellRoute = .main
+            isGameCenterSigningIn = false
+            // RootView uses the account's actual onboarding state. A returning
+            // player keeps their progress; a new player opens OnboardingView.
+            startGameCenterPostAuthConnection(user: response.user, generation: client.sessionGeneration)
+        } catch {
+            guard authenticationAttemptID == attemptID,
+                  authenticationSessionGeneration == client.sessionGeneration,
+                  !Task.isCancelled else { return }
+            isGameCenterSigningIn = false
+            presentClassicRegistrationAfterGameCenter()
+        }
+    }
+
+    private func startGameCenterPostAuthConnection(user authenticatedUser: SpyUser, generation: UUID) {
+        postAuthActiveRoomRestoreTask?.cancel()
+        postAuthActiveRoomRestoreUserID = authenticatedUser.id
+        postAuthActiveRoomRestoreTask = Task { @MainActor [weak self] in
+            guard let self, self.user?.id == authenticatedUser.id,
+                  self.client.sessionGeneration == generation, !Task.isCancelled else { return }
+            do { try await self.client.attachGameCenterSession(user: authenticatedUser, generation: generation) }
+            catch { return }
+            guard self.user?.id == authenticatedUser.id,
+                  self.client.sessionGeneration == generation, !Task.isCancelled,
+                  !self.requiresOnboarding else { return }
+            _ = await self.restoreActiveRoomIfPossible()
+        }
+    }
+
+    func cancelGameCenterSignIn() {
+        guard isGameCenterSigningIn else { return }
+        stopGameCenterEntry()
+        presentClassicRegistrationAfterGameCenter()
+    }
+
+    func prepareGameCenterManualEntry() -> UUID? {
+        guard SupabaseAppRuntime.permitsGameCenterSignIn,
+              user == nil, !client.hasSessionToken, !isBusy,
+              !authPhase.isRecoveryPresentation else { return nil }
+        let requestID = UUID()
+        gameCenterManualEntryID = requestID
+        return requestID
+    }
+
+    func loginWithGameCenter(requestID: UUID) async {
+        guard SupabaseAppRuntime.permitsGameCenterSignIn,
+              gameCenterManualEntryID == requestID,
+              user == nil, !client.hasSessionToken, !isBusy,
+              !authPhase.isRecoveryPresentation else { return }
+        gameCenterManualEntryID = nil
+        gameCenterAutomaticEntry.allowExplicitEntry()
+        // Consume this launch's automatic opportunity as well: a cold-start
+        // restore finishing after the manual attempt must not launch it again.
+        guard gameCenterAutomaticEntry.begin(hasUser: false, hasSavedSession: false,
+                                             isBusy: false, recoveryPresented: false) else { return }
+        await performGameCenterSignIn()
+    }
+
+    private func stopGameCenterEntry() {
+        gameCenterManualEntryID = nil
+        gameCenterAutomaticEntry.disableAutomaticEntry()
+        guard isGameCenterSigningIn else { return }
+        isGameCenterSigningIn = false
+        gameCenterAuthentication.cancel()
+        authenticationAttemptID = nil
+        authenticationSessionGeneration = nil
+        isBusy = false
+    }
+
+    private func presentClassicRegistrationAfterGameCenter() {
+        // Declining the system prompt is a normal choice, not an error toast.
+        authError = nil
+        authNotice = nil
+        authPhase = .registerEmail
+        authPresentationRequestID &+= 1
+    }
+#endif
+
     func login(email: String, password: String) async {
         guard !SupabaseTestEnvironment.isEnabled else { authError = SupabaseTestEnvironment.unavailableMessage; return }
         await performAuth { attemptID in
@@ -3526,7 +3664,9 @@ final class AppState: NSObject {
     func register(email: String, password: String) async {
         guard !SupabaseTestEnvironment.isEnabled else { authError = SupabaseTestEnvironment.unavailableMessage; return }
         await performAuth { attemptID in
-            let immediateSession = try await self.client.registerReturningSession(email: email, password: password)
+            let immediateSession = try await self.client.registerReturningSession(email: email, password: password) {
+                try self.requireCurrentAuthentication(attemptID)
+            }
             try self.requireCurrentAuthentication(attemptID)
             if let response = immediateSession {
                 try await self.client.commitAuthenticatedToken(response.accessToken, user: response.user)
@@ -3992,6 +4132,10 @@ final class AppState: NSObject {
 #endif
 
     func logout() {
+#if SPYCLASH_SUPABASE
+        stopGameCenterEntry()
+        gameCenterOnboardingAttemptID = nil
+#endif
         invalidateSessionRestore()
         authenticationAttemptID = nil
         authenticationSessionGeneration = nil
@@ -4153,7 +4297,19 @@ final class AppState: NSObject {
         onboardingSyncTask = nil
         onboardingSyncUserID = nil
         isFinishingOnboarding = true
+#if SPYCLASH_SUPABASE
+        let attemptID = UUID()
+        let sessionGeneration = client.sessionGeneration
+        gameCenterOnboardingAttemptID = attemptID
+        defer {
+            if gameCenterOnboardingAttemptID == attemptID {
+                gameCenterOnboardingAttemptID = nil
+                isFinishingOnboarding = false
+            }
+        }
+#else
         defer { isFinishingOnboarding = false }
+#endif
 
         let submission = OnboardingSubmission(
             language: language,
@@ -4167,10 +4323,14 @@ final class AppState: NSObject {
 #if DEBUG
         if !isUIPreviewMode {
             do {
-                updatedUser = try await client.completeOnboarding(submission)
+                updatedUser = try await submitOnboarding(submission)
             } catch is CancellationError {
                 return
             } catch {
+#if SPYCLASH_SUPABASE
+                guard continueOnboardingCompletion(attemptID, userID: authenticatedUser.id, generation: sessionGeneration) else { return }
+                if recoverGameCenterOnboardingSession(after: error) { return }
+#endif
                 guard authenticatedUser.onboardingCompleted != false,
                       Self.canDeferOnboardingSync(after: error) else {
                     showToast(onboardingSaveFailureMessage, kind: .error)
@@ -4181,10 +4341,14 @@ final class AppState: NSObject {
         }
 #else
         do {
-            updatedUser = try await client.completeOnboarding(submission)
+            updatedUser = try await submitOnboarding(submission)
         } catch is CancellationError {
             return
         } catch {
+#if SPYCLASH_SUPABASE
+            guard continueOnboardingCompletion(attemptID, userID: authenticatedUser.id, generation: sessionGeneration) else { return }
+            if recoverGameCenterOnboardingSession(after: error) { return }
+#endif
             guard authenticatedUser.onboardingCompleted != false,
                   Self.canDeferOnboardingSync(after: error) else {
                 showToast(onboardingSaveFailureMessage, kind: .error)
@@ -4194,6 +4358,9 @@ final class AppState: NSObject {
         }
 #endif
 
+#if SPYCLASH_SUPABASE
+        guard continueOnboardingCompletion(attemptID, userID: authenticatedUser.id, generation: sessionGeneration) else { return }
+#endif
         guard user?.id == authenticatedUser.id else { return }
 
         onboardingLaunchMessage = nil
@@ -4205,6 +4372,15 @@ final class AppState: NSObject {
         // account gate. This keeps Onboarding and Home from ever sharing a
         // visible frame.
         try? await Task.sleep(for: .milliseconds(120))
+#if SPYCLASH_SUPABASE
+        guard continueOnboardingCompletion(attemptID, userID: authenticatedUser.id, generation: sessionGeneration) else {
+            if gameCenterOnboardingAttemptID == attemptID {
+                onboardingLaunchMessage = nil
+                authHomeRevealPhase = .idle
+            }
+            return
+        }
+#endif
         guard user?.id == authenticatedUser.id else {
             onboardingLaunchMessage = nil
             authHomeRevealPhase = .idle
@@ -4225,7 +4401,13 @@ final class AppState: NSObject {
         presentedSheet = nil
         user = updatedUser ?? authenticatedUser
         await waitForPostAuthActiveRoomRestoreIfNeeded()
+#if SPYCLASH_SUPABASE
+        guard continueOnboardingCompletion(attemptID, userID: authenticatedUser.id, generation: sessionGeneration) else { return }
+#endif
         await prepareLatestPendingShellRouteForReveal()
+#if SPYCLASH_SUPABASE
+        guard continueOnboardingCompletion(attemptID, userID: authenticatedUser.id, generation: sessionGeneration) else { return }
+#endif
 
 #if DEBUG
         if isUIPreviewMode {
@@ -4238,17 +4420,86 @@ final class AppState: NSObject {
         // hold, and 1.65 s exit form one uninterrupted four-second arc.
         onboardingLaunchMessage = onboardingLaunchTitle
         try? await Task.sleep(for: .milliseconds(4_080))
+#if SPYCLASH_SUPABASE
+        guard continueOnboardingCompletion(attemptID, userID: authenticatedUser.id, generation: sessionGeneration) else { return }
+#endif
         onboardingLaunchMessage = nil
         try? await Task.sleep(for: .milliseconds(80))
+#if SPYCLASH_SUPABASE
+        guard continueOnboardingCompletion(attemptID, userID: authenticatedUser.id, generation: sessionGeneration) else { return }
+#endif
         await prepareLatestPendingShellRouteForReveal()
+#if SPYCLASH_SUPABASE
+        guard continueOnboardingCompletion(attemptID, userID: authenticatedUser.id, generation: sessionGeneration) else { return }
+#endif
         _ = await animateAuthHomeRevealToIdle()
+#if SPYCLASH_SUPABASE
+        guard continueOnboardingCompletion(attemptID, userID: authenticatedUser.id, generation: sessionGeneration) else { return }
+#endif
 
         if shouldRetrySync {
             queuePendingOnboardingSyncIfNeeded()
             showToast(onboardingPendingSyncMessage, kind: .warning)
         }
         await consumePendingRoutesIfPossible()
+#if SPYCLASH_SUPABASE
+        guard continueOnboardingCompletion(attemptID, userID: authenticatedUser.id, generation: sessionGeneration) else { return }
+#endif
     }
+
+    private func submitOnboarding(_ submission: OnboardingSubmission) async throws -> SpyUser {
+#if DEBUG && SPYCLASH_SUPABASE
+        if let gameCenterOnboardingCompletionOverride {
+            return try await gameCenterOnboardingCompletionOverride(submission)
+        }
+#endif
+        return try await client.completeOnboarding(submission)
+    }
+
+#if SPYCLASH_SUPABASE
+    private func ownsGameCenterOnboarding(_ attemptID: UUID, userID: String, generation: UUID) -> Bool {
+        !Task.isCancelled && gameCenterOnboardingAttemptID == attemptID &&
+            user?.id == userID && client.sessionGeneration == generation
+    }
+
+    private func continueOnboardingCompletion(_ attemptID: UUID, userID: String, generation: UUID) -> Bool {
+        guard ownsGameCenterOnboarding(attemptID, userID: userID, generation: generation) else {
+            if gameCenterOnboardingAttemptID == attemptID { invalidateOnboardingCompletion() }
+            return false
+        }
+        return true
+    }
+
+    private func invalidateOnboardingCompletion() {
+        guard gameCenterOnboardingAttemptID != nil else { return }
+        gameCenterOnboardingAttemptID = nil
+        isFinishingOnboarding = false
+        onboardingLaunchMessage = nil
+        authHomeRevealAnimationID = nil
+        authHomeRevealPhase = .idle
+    }
+
+    /// A rejected session cannot save onboarding on retry. Clear only the
+    /// current attempt's account and reopen sign-in, leaving language and any
+    /// previously saved account-scoped progress intact. Outages remain retryable.
+    private func recoverGameCenterOnboardingSession(after error: Error) -> Bool {
+        guard let error = error as? Base44Error, error.statusCode == 401 else { return false }
+        let message = onboardingSessionExpiredMessage
+        logout()
+        authError = message
+        authPresentationRequestID &+= 1
+        return true
+    }
+
+    private var onboardingSessionExpiredMessage: String {
+        switch language {
+        case .en: "Your session has expired. Sign in again to finish setup."
+        case .es: "Tu sesión ha caducado. Vuelve a iniciar sesión para terminar la configuración."
+        case .ru: "Сессия истекла. Войдите снова, чтобы завершить настройку."
+        case .uk: "Сесія завершилася. Увійдіть знову, щоб завершити налаштування."
+        }
+    }
+#endif
 
     private static func canDeferOnboardingSync(after error: Error) -> Bool {
         guard let error = error as? Base44Error else { return true }
@@ -5353,6 +5604,10 @@ final class AppState: NSObject {
     }
 
     private func presentPasswordRecovery(token: String) {
+#if SPYCLASH_SUPABASE
+        stopGameCenterEntry()
+        invalidateOnboardingCompletion()
+#endif
         // A recovery link is a new authentication intent. Late browser,
         // email and foreground responses must not replace its form or notice.
         invalidateSessionRestore()
@@ -5400,7 +5655,14 @@ final class AppState: NSObject {
     }
 
     func beginAuthenticationAttempt() -> UUID? {
+#if SPYCLASH_SUPABASE
+        gameCenterManualEntryID = nil
+        if isGameCenterSigningIn { stopGameCenterEntry() }
+#endif
         guard !isBusy else { return nil }
+#if SPYCLASH_SUPABASE
+        invalidateOnboardingCompletion()
+#endif
         invalidateSessionRestore()
         let id = UUID()
         authenticationAttemptID = id

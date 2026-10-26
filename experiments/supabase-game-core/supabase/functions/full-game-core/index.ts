@@ -30,4 +30,4 @@ const authenticate = async (token: string) => {
   if (!response.ok) throw new Error('Auth unavailable');
   return await response.json();
 };
-Deno.serve(createHandler({ db, authenticate }));
+Deno.serve(createHandler({ db, authenticate, config:Deno.env.toObject() }));

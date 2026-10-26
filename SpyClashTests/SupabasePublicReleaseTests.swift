@@ -19,6 +19,8 @@ final class SupabasePublicReleaseTests: XCTestCase {
         XCTAssertTrue(configuration.mainAccountDeletionEnabled)
         XCTAssertTrue(configuration.appleSignInEnabled)
         XCTAssertTrue(configuration.googleSignInEnabled)
+        XCTAssertTrue(configuration.gameCenterSignInEnabled)
+        XCTAssertTrue(SupabaseAppRuntime.permitsGameCenterSignIn)
         XCTAssertTrue(configuration.permitsLegacyBilling)
         XCTAssertFalse(configuration.permitsLegacyPush)
     }

@@ -39,6 +39,7 @@ make_entitlements() {
   if [ "$include_sign_in" = true ]; then
     plist_add "$output" 'Add :com.apple.developer.applesignin array'
     plist_add "$output" 'Add :com.apple.developer.applesignin:0 string Default'
+    plist_add "$output" 'Add :com.apple.developer.game-center bool true'
   fi
   plist_add "$output" 'Add :get-task-allow bool false'
 }
@@ -197,11 +198,13 @@ change_public_config "$string_public_deletion" mainAccountDeletionEnabled '"true
 expect_fail_with "public Supabase requires a boolean deletion capability" \
   'must enable full account deletion' "$gate" --signed "$string_public_deletion"
 
-for capability in appleSignInEnabled googleSignInEnabled permitsLegacyBilling; do
+for capability in appleSignInEnabled googleSignInEnabled gameCenterSignInEnabled permitsLegacyBilling; do
   disabled_public_capability=$(make_public_fixture "$test_root/public-disabled-$capability" iphoneos true)
   change_public_config "$disabled_public_capability" "$capability" false
+  capability_error="must retain Apple, Google and native billing"
+  if [ "$capability" = gameCenterSignInEnabled ]; then capability_error="must enable the reviewed Game Center flow"; fi
   expect_fail_with "public Supabase retains $capability" \
-    'must retain Apple, Google and native billing' "$gate" --signed "$disabled_public_capability"
+    "$capability_error" "$gate" --signed "$disabled_public_capability"
 done
 
 unexpected_public_push=$(make_public_fixture "$test_root/public-unexpected-push" iphoneos true)
@@ -322,6 +325,13 @@ missing_sign_in_app=$(make_fixture "$test_root/missing-sign-in" iphoneos true)
 expect_fail_with "signed iphoneos rejects missing Sign in with Apple" \
   'effective entitlements are missing Sign in with Apple Default.' \
   "$gate" "$missing_sign_in_app"
+
+missing_game_center_app=$(make_public_fixture "$test_root/missing-game-center" iphoneos true)
+/usr/libexec/PlistBuddy -c 'Delete :com.apple.developer.game-center' \
+  "$missing_game_center_app/.mock-entitlements.plist" >/dev/null
+expect_fail_with "public signed iphoneos rejects missing Game Center" \
+  'effective entitlements are missing Game Center.' \
+  "$gate" "$missing_game_center_app"
 
 invalid_widget_app=$(make_fixture "$test_root/invalid-widget" iphoneos true)
 touch "$invalid_widget_app/PlugIns/SpyClashWidgets.appex/.mock-invalid-signature"

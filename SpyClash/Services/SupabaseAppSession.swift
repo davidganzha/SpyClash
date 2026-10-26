@@ -2,12 +2,17 @@
 import Foundation
 import Security
 
+enum SupabaseNativeCredentialKind: String, Codable, Sendable {
+    case gameCenter = "game_center"
+}
+
 /// Credentials belong to a project and app bundle, separate from Base44 and the game lab.
 struct SupabaseStoredSession: Codable, Equatable, Sendable {
     let accessToken: String
     let refreshToken: String
     let userID: String
     let expiresAt: Date
+    var nativeCredentialKind: SupabaseNativeCredentialKind? = nil
 }
 
 enum SupabaseSessionKeychain {
@@ -61,6 +66,7 @@ final class SupabaseAppSession {
     private let appStoreDeliveryQueue = RoomMutationQueue()
     var accessToken: String? { session?.accessToken }
     var userID: String { session?.userID ?? "" }
+    var isNativeGameCenterSession: Bool { session?.nativeCredentialKind == .gameCenter }
 
     init(configuration: SupabaseAppConfiguration? = nil, session: URLSession? = nil, storedSession: SupabaseStoredSession? = SupabaseSessionKeychain.read(), saveSession: @escaping (SupabaseStoredSession) throws -> Void = SupabaseSessionKeychain.save, clearSession: @escaping () -> Void = SupabaseSessionKeychain.clear, mutationJournal: SupabaseAppMutationJournal = SupabaseAppMutationJournal(), storedLegacy: SupabaseLegacyCredential? = SupabaseLegacyKeychain.read(), saveLegacy: @escaping (SupabaseLegacyCredential) throws -> Void = SupabaseLegacyKeychain.save, clearLegacy: @escaping () -> Void = SupabaseLegacyKeychain.clear, appStoreRetrySleep: @escaping @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
         persistSession = saveSession; removeSession = clearSession
@@ -93,6 +99,14 @@ final class SupabaseAppSession {
             guard session?.accessToken == accessToken else { throw Self.invalidSession }
             return
         }
+        if candidate.nativeCredentialKind != nil {
+            try persistSession(candidate)
+            removeLegacy(); legacyCredential = nil
+            refreshTask?.cancel(); refreshTask = nil
+            session = candidate; candidates.removeAll(); legacyCandidates.removeAll(); candidateExchangeID = nil
+            generation = UUID()
+            return
+        }
         guard let legacy = legacyCandidates[accessToken], legacy.actorID == candidate.userID else { throw Self.invalidSession }
         let previousLegacy = legacyCredential
         try persistLegacy(legacy)
@@ -105,6 +119,14 @@ final class SupabaseAppSession {
         refreshTask?.cancel(); refreshTask = nil
         session = candidate; candidates.removeAll(); legacyCandidates.removeAll(); candidateExchangeID = nil
         generation = UUID()
+    }
+
+    /// Game Center acceptance is synchronous. UI cancellation cannot interleave
+    /// between durable credentials and publishing the verified account.
+    func commitGameCenter(accessToken: String, userID: String) throws {
+        guard let candidate = candidates[accessToken], candidate.nativeCredentialKind == .gameCenter,
+              candidate.userID == userID else { throw Self.invalidSession }
+        try commit(accessToken: accessToken)
     }
 
     func clear(revokeRemote: Bool = true) {
@@ -210,6 +232,9 @@ final class SupabaseAppSession {
     }
     func ensureAccessToken(forceLegacyValidation: Bool = false) async throws -> String {
         guard let current = session else { throw Self.invalidSession }
+        if current.nativeCredentialKind != nil {
+            return try await ensureNativeAccessToken(forceRefresh: forceLegacyValidation)
+        }
         if !forceLegacyValidation, current.expiresAt.timeIntervalSinceNow > 60 { return current.accessToken }
         if let refreshTask { return try await refreshTask.value.accessToken }
         let epoch = generation
@@ -236,6 +261,7 @@ final class SupabaseAppSession {
         let epoch = generation
         let isAppStoreDelivery = write && service == "membership" && action == "sync_transaction"
         let isAccountDeletion = write && service == "profile" && action == "delete" && fields["deletion_scope"]?.string == "account"
+        let isNativeAccountDeletion = isAccountDeletion && isNativeGameCenterSession
         let deliveryLease = isAppStoreDelivery ? try await appStoreDeliveryQueue.acquire(timeout: 120) : nil
         defer { if let deliveryLease { appStoreDeliveryQueue.release(deliveryLease) } }
         try Task.checkCancellation()
@@ -270,10 +296,11 @@ final class SupabaseAppSession {
             guard epoch == generation else { throw CancellationError() }
             if isAccountDeletion {
                 guard userID == actorID else { throw CancellationError() }
-                // A generic successful profile purge does not prove that the
-                // original account was deleted. Keep its intent until both
-                // backends have confirmed the requested deletion scope.
-                guard value["success"].bool, value["original_account_deleted"].bool else {
+                // A generic profile purge is not full account deletion. Each
+                // credential type must receive its own server-confirmed marker;
+                // native Game Center never claims to delete a Base44 identity.
+                let confirmation = isNativeAccountDeletion ? "native_account_deleted" : "original_account_deleted"
+                guard value["success"].bool, value[confirmation].bool else {
                     throw Base44Error(message: "Account deletion was not confirmed. Please retry.", statusCode: 502,
                                       code: "account_deletion_response_invalid", retryable: true)
                 }
@@ -406,7 +433,7 @@ final class SupabaseAppSession {
     }
     private func request(path: String, method: String, body: JSONValue, token: String? = nil) async throws -> JSONValue {
         let configuration = try configuration()
-        guard path.hasPrefix("/auth/v1/") || ["/functions/v1/app-services", "/functions/v1/full-game-core", "/functions/v1/legacy-session"].contains(path),
+        guard path.hasPrefix("/auth/v1/") || ["/functions/v1/app-services", "/functions/v1/full-game-core", "/functions/v1/legacy-session", "/functions/v1/game-center-session"].contains(path),
               let origin = URL(string: configuration.backendURL),
               let url = URL(string: configuration.backendURL + path), url.scheme == origin.scheme, url.host == origin.host, url.port == origin.port else { throw Self.invalidSession }
         var request = URLRequest(url: url)
@@ -449,6 +476,72 @@ final class SupabaseAppSession {
     private static var invalidSessionResponse: Base44Error {
         Base44Error(message: "The sign-in service returned an invalid response. Please try again.", statusCode: 502,
                     code: "supabase_session_response_invalid", retryable: true)
+    }
+
+    func exchangeGameCenter(proof: GameCenterIdentityProof, requireCurrentAttempt: @MainActor () throws -> Void = {}) async throws -> LoginResponse {
+        guard try configuration().gameCenterSignInEnabled else {
+            throw Base44Error(message: "Game Center sign-in is unavailable.", code: "game_center_disabled")
+        }
+        let body = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(proof))
+        return try await nativeCandidate(kind: .gameCenter, requireCurrentAttempt: requireCurrentAttempt) {
+            let value = try await self.request(path: "/functions/v1/game-center-session", method: "POST", body: body)
+            guard value["provider"].string == "game_center" else { throw Self.invalidSessionResponse }
+            return value
+        }
+    }
+
+    private func nativeCandidate(kind: SupabaseNativeCredentialKind, requireCurrentAttempt: @MainActor () throws -> Void = {}, exchange: () async throws -> JSONValue) async throws -> LoginResponse {
+        try Task.checkCancellation(); try requireCurrentAttempt()
+        let epoch = generation
+        let exchangeID = UUID()
+        candidateExchangeID = exchangeID
+        candidates.removeAll(); legacyCandidates.removeAll()
+        func requireOwnership() throws {
+            try Task.checkCancellation()
+            guard generation == epoch, candidateExchangeID == exchangeID else { throw CancellationError() }
+            try requireCurrentAttempt()
+        }
+        do {
+            let response = try await exchange()
+            try requireOwnership()
+            var candidate = try Self.decodeSession(response)
+            candidate.nativeCredentialKind = kind
+            candidates[candidate.accessToken] = candidate
+            let user = try await profile(accessToken: candidate.accessToken)
+            try requireOwnership()
+            return LoginResponse(accessToken: candidate.accessToken, user: user)
+        } catch {
+            if candidateExchangeID == exchangeID {
+                candidateExchangeID = nil; candidates.removeAll(); legacyCandidates.removeAll()
+            }
+            throw error
+        }
+    }
+
+    private func ensureNativeAccessToken(forceRefresh: Bool) async throws -> String {
+        guard let current = session, let kind = current.nativeCredentialKind else { throw Self.invalidSession }
+        if !forceRefresh, current.expiresAt.timeIntervalSinceNow > 60 { return current.accessToken }
+        if let refreshTask { return try await refreshTask.value.accessToken }
+        let epoch = generation
+        let task = Task { @MainActor in
+            let json: JSONValue
+            do {
+                json = try await self.request(path: "/auth/v1/token?grant_type=refresh_token", method: "POST", body: .object(["refresh_token": .string(current.refreshToken)]))
+            } catch let error as Base44Error where [400, 401, 403].contains(error.statusCode ?? 0)
+                && ["refresh_token_not_found", "refresh_token_already_used", "invalid_grant", "session_not_found", "user_not_found", "user_banned"].contains(error.code ?? "") {
+                throw Self.invalidSession
+            }
+            var next = try Self.decodeSession(json)
+            guard self.generation == epoch, !Task.isCancelled else { throw CancellationError() }
+            guard next.userID == current.userID else { throw Self.invalidSession }
+            next.nativeCredentialKind = kind
+            try self.persistSession(next)
+            self.session = next
+            return next
+        }
+        refreshTask = task
+        defer { if generation == epoch { refreshTask = nil } }
+        return try await task.value.accessToken
     }
 }
 

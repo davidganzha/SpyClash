@@ -1,8 +1,9 @@
 import { executeGame, GameServiceError } from './service.ts';
 import { sessionGate, verifiedSessionID } from '../app-services/account-gate.ts';
 import { AppServiceError } from '../app-services/contracts.ts';
+import { refreshNativeMembership } from '../app-services/membership.ts';
 
-export function createHandler({ db, authenticate }: { db: any; authenticate: (token: string) => Promise<any> }) {
+export function createHandler({ db, authenticate, config = {} }: { db: any; authenticate: (token: string) => Promise<any>;config?:Record<string,string|undefined> }) {
   return async (request: Request): Promise<Response> => {
     if (request.method !== 'POST') return Response.json({ code: 'method_not_allowed', message: 'POST required', retryable: false }, { status: 405 });
     try {
@@ -18,6 +19,8 @@ export function createHandler({ db, authenticate }: { db: any; authenticate: (to
       try { body = JSON.parse(raw); } catch { throw new GameServiceError('invalid_json', 'Invalid request.'); }
       if (!body || typeof body !== 'object' || Array.isArray(body)) throw new GameServiceError('invalid_json', 'Invalid request.');
       const actor = { id: user.id.toLowerCase(), email: user.id.toLowerCase() + '@example.test', full_name: String(user.user_metadata?.full_name || user.user_metadata?.name || 'Operative').slice(0, 80) };
+      if(body.action==='get_history')await refreshNativeMembership({actor:{...actor,contactEmail:String(user.email||''),metadata:{}},
+        body:{service:'game',action:'get_history'},config},{db});
       const result = await executeGame(db, actor, body);
       return Response.json(result.body, { status: result.status, headers: { 'Cache-Control': 'no-store' } });
     } catch (error: any) {

@@ -65,6 +65,13 @@ enum SupabaseAppRuntime {
         !SupabaseTestEnvironment.isEnabled
 #endif
     }
+    @MainActor static var permitsGameCenterSignIn: Bool {
+#if SPYCLASH_SUPABASE
+        isMainHybrid && (try? SupabaseAppSession.shared.configuration().gameCenterSignInEnabled) == true
+#else
+        false
+#endif
+    }
     @MainActor static var emailOTPLength: Int {
 #if SPYCLASH_SUPABASE
         6
@@ -90,6 +97,7 @@ struct SupabaseAppConfiguration: Codable, Equatable, Sendable {
     let publishableKey: String
     var appleSignInEnabled: Bool = false
     var googleSignInEnabled: Bool = false
+    var gameCenterSignInEnabled: Bool = false
     var permitsLegacyBilling: Bool = false
     var permitsLegacyPush: Bool = false
     var mainAccountDeletionEnabled: Bool = false
@@ -137,6 +145,7 @@ extension SupabaseAppConfiguration {
         publishableKey = try fields.decode(String.self, forKey: .publishableKey)
         appleSignInEnabled = try fields.decodeIfPresent(Bool.self, forKey: .appleSignInEnabled) ?? false
         googleSignInEnabled = try fields.decodeIfPresent(Bool.self, forKey: .googleSignInEnabled) ?? false
+        gameCenterSignInEnabled = try fields.decodeIfPresent(Bool.self, forKey: .gameCenterSignInEnabled) ?? false
         permitsLegacyBilling = try fields.decodeIfPresent(Bool.self, forKey: .permitsLegacyBilling) ?? false
         permitsLegacyPush = try fields.decodeIfPresent(Bool.self, forKey: .permitsLegacyPush) ?? false
         mainAccountDeletionEnabled = try fields.decodeIfPresent(Bool.self, forKey: .mainAccountDeletionEnabled) ?? false

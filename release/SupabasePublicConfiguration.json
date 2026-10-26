@@ -3,6 +3,7 @@
   "publishableKey": "sb_publishable_ngQBF-1M3POztbg8CYnBow_tBKGssBX",
   "appleSignInEnabled": true,
   "googleSignInEnabled": true,
+  "gameCenterSignInEnabled": true,
   "emailOTPLength": 6,
   "permitsLegacyBilling": true,
   "permitsLegacyPush": false,

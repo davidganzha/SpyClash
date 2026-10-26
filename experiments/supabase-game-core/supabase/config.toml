@@ -185,3 +185,8 @@ enabled = true
 # before linking an identity or issuing any Supabase session.
 [functions.legacy-session]
 verify_jwt = false
+
+# Game Center supplies an Apple-signed proof before a Supabase session exists.
+# The endpoint independently verifies the certificate, signature and replay key.
+[functions.game-center-session]
+verify_jwt = false

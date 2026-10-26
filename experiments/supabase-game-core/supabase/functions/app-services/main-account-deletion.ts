@@ -1,6 +1,7 @@
 import { AppServiceError, requireUUID, type AppActor, type AppContext } from './contracts.ts';
 import { verifyLegacyCredential, boundedLegacyJSON, canonicalBase44Configuration, type LegacyConfig } from './legacy-provider.ts';
 import {digest} from './integration-crypto.ts';
+import {nativeGameCenterAccount} from './native-game-center.ts';
 
 type Input = {actor: AppActor; body: Record<string, any>; config: LegacyConfig};
 const evidenceSet = new WeakSet<object>();
@@ -9,6 +10,7 @@ const mismatch = () => new AppServiceError('legacy_owner_mismatch', 'The origina
 function evidenceFor(actor: string, requestID: string) {
   const evidence={actor,requestID};evidenceSet.add(evidence);return evidence;
 }
+const nativeEvidenceSet = new WeakSet<object>();
 async function recoveryToken(config: LegacyConfig, actor: string, requestID: string) {
   const secret=config.APP_DELETION_RECEIPT_SECRET;
   if(!secret||!/^[a-f0-9]{64}$/i.test(secret))throw new AppServiceError('deletion_recovery_unconfigured','Deletion recovery is not configured.',503);
@@ -38,6 +40,15 @@ async function reconcileReceipt(db: any, config: LegacyConfig, prior: any, fetch
 export async function prepareMainAccountDeletion(input: Input, dependencies: {db: any; fetch?: typeof fetch}) {
   if (input.body.deletion_scope === undefined) return undefined;
   if (input.body.deletion_scope !== 'account') throw new AppServiceError('invalid_deletion_scope', 'Unknown deletion scope.');
+  const native = await dependencies.db.begin(async (tx:any) => {
+    await tx`select pg_advisory_xact_lock_shared(hashtextextended(${'spyclash-account:'+input.actor.id},0))`;
+    return await nativeGameCenterAccount(tx,input.actor.id);
+  });
+  if (native) {
+    const evidence = {actor:input.actor.id,requestID:requireUUID(input.body.request_id,'request_id'),identityKey:native.identity_key};
+    nativeEvidenceSet.add(evidence);
+    return evidence;
+  }
   if (input.config.APP_MAIN_ACCOUNT_DELETION_ENABLED !== 'true') throw new AppServiceError('account_deletion_unconfigured', 'Full account deletion is not enabled for this build yet.', 503);
   const requestID = requireUUID(input.body.request_id, 'request_id');
   const recovery = await recoveryToken(input.config,input.actor.id,requestID);
@@ -136,6 +147,15 @@ export async function processMainAccountDeletionJobs(db: any, config: LegacyConf
 
 /** Called within the exclusive account transaction; callers cannot forge proof. */
 export async function assertMainDeletionEvidence(ctx: AppContext, body: Record<string, any>) {
+  const native = await nativeGameCenterAccount(ctx.tx,ctx.actor.id);
+  if (native) {
+    const evidence = ctx.evidence;
+    if (body.deletion_scope !== 'account' || !evidence || !nativeEvidenceSet.has(evidence) ||
+        evidence.actor !== ctx.actor.id || evidence.requestID !== body.request_id || evidence.identityKey !== native.identity_key) {
+      throw new AppServiceError('native_account_deletion_proof_required','Confirm deletion of this Game Center account.',409);
+    }
+    return {native_account:true,identity_key:native.identity_key};
+  }
   const [intent] = await ctx.tx`select * from app_private.main_account_deletions where user_id=${ctx.actor.id}`;
   if (body.deletion_scope === undefined && !intent) return undefined;
   if (body.deletion_scope !== 'account') throw new AppServiceError('account_deletion_pending', 'Continue full account deletion before clearing its local copy.', 503, true);
