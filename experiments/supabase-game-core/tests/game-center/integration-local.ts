@@ -154,7 +154,8 @@ try{
     const rows=await runtime.db`select c.relname,c.relrowsecurity,
       has_table_privilege('anon',c.oid,'SELECT') as anon_read,has_table_privilege('authenticated',c.oid,'SELECT') as user_read
       from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='game_center_private' and c.relkind='r'`;
-    assert.equal(rows.length,3);for(const row of rows){assert.equal(row.relrowsecurity,true);assert.equal(row.anon_read,false);assert.equal(row.user_read,false);}
+    assert.deepEqual(rows.map((row:any)=>row.relname).sort(),['accounts','generation_provider_calls','generation_requests','used_assertions']);
+    for(const row of rows){assert.equal(row.relrowsecurity,true);assert.equal(row.anon_read,false);assert.equal(row.user_read,false);}
   });
   await runNativeGenerationChecks({runtime,exchange,fixture,check});
   await runNativeHistoryChecks({runtime,exchange,fixture,check});

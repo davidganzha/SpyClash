@@ -30,7 +30,10 @@ import {
   revokeAppleSignInCredentials,
 } from "./apple-sign-in-credential.ts";
 import { canonicalBase44Request } from "./base44-context.ts";
-import { prepareDeletionReceipt, markDeletionReceiptReady, completeDeletionReceipt, deletionReceiptStatus, DeletionReceiptError } from "./deletion-receipt.ts";
+import {deleteHistoricalOwnedContent,historicalRoomSubject} from "./historical-content-cleanup.ts";
+import {verifyArchiveErasureRequest,archiveErasureCapabilities} from "./deletion-archive-proof.ts";
+import {appleCredentialIdentityKey} from "./apple-sign-in-credential.ts";
+import { prepareDeletionReceipt, markDeletionReceiptReady, completeDeletionReceipt, deletionReceiptStatus, deletionSubjectHash, recordDeletionArchiveProof, DeletionReceiptError } from "./deletion-receipt.ts";
 
 type Entity = Record<string, any>;
 type BillingRedactionSnapshot = {
@@ -216,11 +219,14 @@ function roomReferencesEmail(room: Entity, email: string): boolean {
     ].includes(email);
 }
 
-async function deleteReferencedRooms(store: any, email: string): Promise<void> {
+async function deleteReferencedRooms(store: any, email: string, subject?:{userID:string;aliases:string[]}): Promise<void> {
+  const matches = (room:Entity) => {
+    if(!subject)return roomReferencesEmail(room,email);
+    const historical=historicalRoomSubject(room,subject.userID,subject.aliases);
+    return historical.ownedByID||historical.aliases.some(alias=>roomReferencesEmail(room,alias));
+  };
   for (let pass = 0; pass < MAX_CLEANUP_PASSES; pass += 1) {
-    const matching = (await allRecords(store)).filter((room) =>
-      roomReferencesEmail(room, email)
-    );
+    const matching = (await allRecords(store)).filter(matches);
     if (!matching.length) return;
     // GameRoom records are ephemeral shared sessions. Deleting a matching room
     // avoids overwriting another player's concurrent join/vote with a stale
@@ -228,7 +234,7 @@ async function deleteReferencedRooms(store: any, email: string): Promise<void> {
     for (const room of matching) await store.delete(room.id);
   }
   if (
-    (await allRecords(store)).some((room) => roomReferencesEmail(room, email))
+    (await allRecords(store)).some(matches)
   ) {
     throw new Error("Room references continued changing during deletion");
   }
@@ -516,16 +522,30 @@ Deno.serve(async (req) => {
       });
     }
     const rawBody = await req.text();
-    if (rawBody.length > 4096) return Response.json({error:"request_too_large"},{status:413});
+    if (rawBody.length > 65536) return Response.json({error:"request_too_large"},{status:413});
     let body: Record<string, any>;
     try { body = rawBody ? JSON.parse(rawBody) : {}; }
     catch { return Response.json({error:"invalid_json"},{status:400}); }
     if (!body || typeof body !== "object" || Array.isArray(body)) return Response.json({error:"invalid_json"},{status:400});
     const base44 = createClientFromRequest(canonicalBase44Request(req));
     const receiptStore = base44.asServiceRole.entities.AccountDeletionReceipt;
-    if (body.action === "deletion_capabilities") return Response.json({protocol:"spyclash-deletion-receipt-v1"},{headers:{"Cache-Control":"no-store"}});
+    if (body.action === "deletion_capabilities") return Response.json(await archiveErasureCapabilities(),{headers:{"Cache-Control":"no-store"}});
+    if (body.action === "deletion_archive_probe") {
+      // Read-only deployment verification. The independent server HMAC binds
+      // the exact immutable subject/aliases; no receipt or deletion is created.
+      const proof = await verifyArchiveErasureRequest(body,body.archive_erasure_request?.subject_hash,
+        {users:base44.asServiceRole.entities.User});
+      if(!proof) return Response.json({error:"deletion_archive_request_invalid"},{status:403});
+      return Response.json({protocol:"spyclash-deletion-receipt-v2",erasure_proof:proof},
+        {headers:{"Cache-Control":"no-store"}});
+    }
     if (body.action === "deletion_status") {
-      const status = await deletionReceiptStatus(receiptStore,base44.asServiceRole.entities.User,body);
+      let status = await deletionReceiptStatus(receiptStore,base44.asServiceRole.entities.User,body);
+      const archiveProof = await verifyArchiveErasureRequest(body,status.subject_hash,{users:base44.asServiceRole.entities.User,completedProof:status.complete?status.erasure_proof:undefined});
+      if(archiveProof) {
+        await recordDeletionArchiveProof(receiptStore,body,archiveProof);
+        status = await deletionReceiptStatus(receiptStore,base44.asServiceRole.entities.User,body);
+      }
       return Response.json(status,{headers:{"Cache-Control":"no-store"}});
     }
     if (body.action !== undefined) return Response.json({error:"invalid_action"},{status:400});
@@ -549,7 +569,9 @@ Deno.serve(async (req) => {
       return protectedDeletion;
     }
 
+    const archiveProof = await verifyArchiveErasureRequest(body,await deletionSubjectHash(user.id),{users:base44.asServiceRole.entities.User});
     const deletionReceipt = await prepareDeletionReceipt(receiptStore,user.id,body);
+    if(archiveProof) await recordDeletionArchiveProof(receiptStore,body,archiveProof);
 
     // The admin-only lifecycle row is keyed by a one-way subject hash. Acquire
     // its deleting marker before any content cleanup so every mediated writer
@@ -682,6 +704,18 @@ Deno.serve(async (req) => {
         billingLifecycleStore,
         appleCredentialResult.identityDeletionMarker,
       );
+      if(archiveProof) {
+        // Persist selectors BEFORE deleting records so lost acknowledgements
+        // and later user deletion cannot discard archive ownership evidence.
+        const keys = [await appleCredentialIdentityKey(userEmail)];
+        for(const id of appleCredentialRecordIDs) {
+          const records = await appleCredentialStore.filter({id},"created_date",2,0);
+          const record = records.find((value: Record<string,any>)=>value.id===id);
+          if(record?.identity_key) keys.push(record.identity_key);
+        }
+        await recordDeletionArchiveProof(receiptStore,body,{...archiveProof,
+          apple_identity_keys:[...archiveProof.apple_identity_keys,...keys],apple_record_ids:appleCredentialRecordIDs});
+      }
       await deleteAppleSignInCredentialRecords(
         appleCredentialStore,
         appleCredentialRecordIDs,
@@ -690,9 +724,9 @@ Deno.serve(async (req) => {
       // Each helper repeatedly queries from the start so concurrent inserts
       // cannot hide behind a shifting skip offset.
       irreversibleCleanupStarted = true;
-      await deleteAllMatching(base44.asServiceRole.entities.GameHistory, {
-        player_email: userEmail,
-      });
+      if(archiveProof) await deleteHistoricalOwnedContent(base44.asServiceRole.entities.GameHistory,user.id,
+        'player_user_id','player_email',[userEmail,...body.archive_erasure_request.aliases]);
+      else await deleteAllMatching(base44.asServiceRole.entities.GameHistory, {player_email:userEmail});
       await renewDeletionCoordination({
         lifecycleStore: billingLifecycleStore,
         billingDeletionMarker,
@@ -702,9 +736,9 @@ Deno.serve(async (req) => {
         tombstoneUserID: retentionPatch.user_id,
       });
 
-      await deleteAllMatching(base44.asServiceRole.entities.WordPack, {
-        owner_email: userEmail,
-      });
+      if(archiveProof) await deleteHistoricalOwnedContent(base44.asServiceRole.entities.WordPack,user.id,
+        'owner_user_id','owner_email',[userEmail,...body.archive_erasure_request.aliases]);
+      else await deleteAllMatching(base44.asServiceRole.entities.WordPack, {owner_email:userEmail});
       await deleteAllMatching(base44.asServiceRole.entities.Friendship, {
         requester_id: user.id,
       });
@@ -751,6 +785,7 @@ Deno.serve(async (req) => {
       await deleteReferencedRooms(
         base44.asServiceRole.entities.GameRoom,
         userEmail,
+        archiveProof?{userID:user.id,aliases:[userEmail,...body.archive_erasure_request.aliases]}:undefined,
       );
       await renewDeletionCoordination({
         lifecycleStore: billingLifecycleStore,
@@ -946,7 +981,7 @@ Deno.serve(async (req) => {
     return Response.json({
       success: true,
       manual_apple_revocation_required: manualAppleRevocationRequired,
-      ...(deletionReceipt ? {deletion_receipt:{request_id:deletionReceipt.request_id,subject_hash:deletionReceipt.subject_hash,complete:true}} : {}),
+      ...(deletionReceipt ? {deletion_receipt:await deletionReceiptStatus(receiptStore,userStore,body)} : {}),
     });
   } catch (error) {
     if (error instanceof DeletionReceiptError) return Response.json({error:error.code,code:error.code,retryable:error.status>=500},{status:error.status,headers:{"Cache-Control":"no-store"}});

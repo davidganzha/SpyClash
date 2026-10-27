@@ -1,0 +1,327 @@
+{
+  "schema_version": 1,
+  "status": "review_only_not_applied",
+  "verified_at": "2026-10-27",
+  "targets": {
+    "supabase_project_ref": "bbkfsgnordtdiblgdzkg",
+    "supabase_url": "https://bbkfsgnordtdiblgdzkg.supabase.co",
+    "base44_app_id": "69a0e57fa939f578082f8091",
+    "base44_origin": "https://spyclash.com",
+    "bundle_id": "com.spyclash.ios",
+    "app_apple_id": "6793534085",
+    "client_version": "1.0.3",
+    "client_build": "200",
+    "backend_checkpoint": "201"
+  },
+  "do_not_target": [
+    "ovowoixuyabccgkxcexp",
+    "com.spyclash.ios.gamecenter000",
+    "6adfe56fadd4564bb402fcbd"
+  ],
+  "deployments": {
+    "supabase_functions": [
+      {
+        "slug": "app-services",
+        "verify_jwt": true
+      },
+      {
+        "slug": "full-game-core",
+        "verify_jwt": true
+      },
+      {
+        "slug": "game-center-session",
+        "verify_jwt": false
+      }
+    ],
+    "base44_functions": [
+      {
+        "name": "deleteAccount",
+        "source": "experiments/supabase-game-core/base44-prepared/deleteAccount"
+      },
+      {
+        "name": "nativeGameCenterWordPack",
+        "source": "base44/functions/nativeGameCenterWordPack"
+      }
+    ],
+    "base44_entities": [
+      "base44/entities/account-deletion-receipt.jsonc"
+    ],
+    "migration_order": [
+      "20261013010810_main_account_deletion_intent.sql",
+      "20261026172415_main_game_center_identity.sql",
+      "20261026232916_public_deletion_archive_erasure.sql",
+      "20261026234309_native_game_center_ai_relay.sql"
+    ],
+    "preserve_functions": [
+      "legacy-session",
+      "bulk-legacy-migration",
+      "appleAuthBroker",
+      "generateWordPack",
+      "checkSubscription",
+      "app-store-entitlement",
+      "stripe-entitlement-webhook"
+    ],
+    "preserve_other_behavior": [
+      "live full-game-core engine",
+      "live push",
+      "live worker",
+      "live activity policy",
+      "existing Base44 billing webhook routes"
+    ]
+  },
+  "supabase": {
+    "builtin_preserve": [
+      "SUPABASE_URL",
+      "SUPABASE_DB_URL",
+      "SUPABASE_ANON_KEY",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "SUPABASE_JWKS",
+      "SUPABASE_PUBLISHABLE_KEYS",
+      "SUPABASE_SECRET_KEYS"
+    ],
+    "existing_names_observed_preserve_values": [
+      "APP_BILLING_PROVIDER",
+      "APP_LEGACY_BILLING_ENABLED",
+      "APP_LEGACY_PURCHASES_ENABLED",
+      "SPYCLASH_LIMITLESS_ENABLED"
+    ],
+    "legacy_config_requirement": {
+      "APP_BILLING_PROVIDER": "base44",
+      "APP_LEGACY_BILLING_ENABLED": "true",
+      "APP_LEGACY_PURCHASES_ENABLED": "true",
+      "note": "Validate existing behavior; preserve existing values rather than silently overwrite. Never set APP_BILLING_PROVIDER=native-game-center globally."
+    },
+    "prepare_nonsecret": {
+      "GAME_CENTER_ENABLED": "false",
+      "GAME_CENTER_ENVIRONMENT": "main",
+      "GAME_CENTER_PROJECT_REF": "bbkfsgnordtdiblgdzkg",
+      "APP_IAP_ENABLED": "false",
+      "APP_NATIVE_GAME_CENTER_IAP_ENABLED": "false",
+      "APP_IAP_BUNDLE_ID": "com.spyclash.ios",
+      "APP_IAP_APPLE_ID": "6793534085",
+      "APP_IAP_ENVIRONMENT": "SandboxAndProduction",
+      "APP_IAP_KEY_ID": "C9Z2RND4TQ",
+      "APP_IAP_ISSUER_ID": "d48e471d-8458-4c67-b18b-cadcfe0bd7de",
+      "SPYCLASH_LIMITLESS_APPLE_PURCHASE_ENABLED": "false",
+      "APP_NATIVE_GAME_CENTER_AI_ENABLED": "false",
+      "APP_NATIVE_GAME_CENTER_AI_PROVIDER": "base44-managed",
+      "APP_MAIN_ACCOUNT_DELETION_ENABLED": "false"
+    },
+    "secret_bindings": {
+      "APP_IAP_PRIVATE_KEY_P8": {
+        "source_kind": "existing_local_file",
+        "source": "/Users/davidganzha/.appstoreconnect/private_keys/AuthKey_C9Z2RND4TQ.p8",
+        "format": "raw PEM PKCS8 text, not base64",
+        "value": null
+      },
+      "SPYCLASH_NATIVE_AI_RELAY_SECRET": {
+        "source_kind": "new_shared_random",
+        "shared_with": "Base44 SPYCLASH_NATIVE_AI_RELAY_SECRET",
+        "format": "32 random bytes encoded as64lowercasehex",
+        "value": null
+      },
+      "APP_DELETION_ARCHIVE_SECRET": {
+        "source_kind": "new_shared_random",
+        "shared_with": "Base44 APP_DELETION_ARCHIVE_SECRET",
+        "format": "32 random bytes encoded as64lowercasehex",
+        "value": null
+      },
+      "APP_DELETION_RECEIPT_SECRET": {
+        "source_kind": "new_random_if_absent",
+        "format": "32randombytes encodedas64hex",
+        "rotation": "retain unchanged while any deletion intent remains pending",
+        "value": null
+      },
+      "APP_WORKER_SECRET": {
+        "source_kind": "new_random_if_absent",
+        "format": "32randombytes encodedas64hex; handler requires >=32 characters",
+        "shared_with": "Vault spyclash_worker_secret",
+        "value": null
+      }
+    },
+    "public_material_bindings": {
+      "APP_IAP_ROOT_CERTIFICATES_JSON": {
+        "source_kind": "official_public_certificates",
+        "format": "JSON array of three base64-encoded DER certificates",
+        "artifact": ".local/public-backend-preflight/apple-roots/app-iap-root-certificates.json",
+        "roots": [
+          {
+            "file": "AppleIncRootCertificate.cer",
+            "url": "https://www.apple.com/appleca/AppleIncRootCertificate.cer",
+            "sha256": "b0b1730ecbc7ff4505142c49f1295e6eda6bcaed7e2c68c5be91b5a11001f024",
+            "certificate": [
+              "subject=C=US, O=Apple Inc., OU=Apple Certification Authority, CN=Apple Root CA",
+              "issuer=C=US, O=Apple Inc., OU=Apple Certification Authority, CN=Apple Root CA",
+              "notBefore=Apr 25 21:40:36 2006 GMT",
+              "notAfter=Feb  9 21:40:36 2035 GMT"
+            ]
+          },
+          {
+            "file": "AppleRootCA-G2.cer",
+            "url": "https://www.apple.com/certificateauthority/AppleRootCA-G2.cer",
+            "sha256": "c2b9b042dd57830e7d117dac55ac8ae19407d38e41d88f3215bc3a890444a050",
+            "certificate": [
+              "subject=CN=Apple Root CA - G2, OU=Apple Certification Authority, O=Apple Inc., C=US",
+              "issuer=CN=Apple Root CA - G2, OU=Apple Certification Authority, O=Apple Inc., C=US",
+              "notBefore=Apr 30 18:10:09 2014 GMT",
+              "notAfter=Apr 30 18:10:09 2039 GMT"
+            ]
+          },
+          {
+            "file": "AppleRootCA-G3.cer",
+            "url": "https://www.apple.com/certificateauthority/AppleRootCA-G3.cer",
+            "sha256": "63343abfb89a6a03ebb57e9b3f5fa7be7c4f5c756f3017b3a8c488c3653e9179",
+            "certificate": [
+              "subject=CN=Apple Root CA - G3, OU=Apple Certification Authority, O=Apple Inc., C=US",
+              "issuer=CN=Apple Root CA - G3, OU=Apple Certification Authority, O=Apple Inc., C=US",
+              "notBefore=Apr 30 18:19:06 2014 GMT",
+              "notAfter=Apr 30 18:19:06 2039 GMT"
+            ]
+          }
+        ]
+      }
+    },
+    "activate_after_readbacks": {
+      "GAME_CENTER_ENABLED": "true",
+      "APP_IAP_ENABLED": "true",
+      "APP_NATIVE_GAME_CENTER_IAP_ENABLED": "true",
+      "SPYCLASH_LIMITLESS_APPLE_PURCHASE_ENABLED": "true",
+      "APP_NATIVE_GAME_CENTER_AI_ENABLED": "true",
+      "APP_MAIN_ACCOUNT_DELETION_ENABLED": "true"
+    },
+    "not_needed": [
+      "OPENAI_API_KEY",
+      "APP_IAP_SHARED_SECRET",
+      "Game Center private signing key",
+      "new provider webhook",
+      "new client-side secret"
+    ]
+  },
+  "base44": {
+    "prepare_nonsecret": {
+      "APP_DELETION_ARCHIVE_KEY_VERIFIED": "false"
+    },
+    "secret_bindings": {
+      "SPYCLASH_NATIVE_AI_RELAY_SECRET": {
+        "same_as": "Supabase SPYCLASH_NATIVE_AI_RELAY_SECRET",
+        "value": null
+      },
+      "APP_DELETION_ARCHIVE_SECRET": {
+        "same_as": "Supabase APP_DELETION_ARCHIVE_SECRET",
+        "value": null
+      }
+    },
+    "public_material_bindings": {
+      "SPYCLASH_NATIVE_AI_RELAY_ANON_KEY": {
+        "source_kind": "main_supabase_legacy_anon_JWT",
+        "constraints": {
+          "role": "anon",
+          "ref": "bbkfsgnordtdiblgdzkg"
+        },
+        "not": "service_role JWT or sb_publishable string",
+        "value": null
+      }
+    },
+    "preserve_existing_keys": [
+      "SPYCLASH_PSEUDONYM_KEY",
+      "PUSH_TOKEN_ENCRYPTION_KEY",
+      "APPLE_PRIVATE_KEY_P8_B64",
+      "APPLE_KEY_ID",
+      "APPLE_TEAM_ID",
+      "APPLE_NATIVE_CLIENT_ID",
+      "APPLE_WEB_CLIENT_ID"
+    ],
+    "activate_only_after_positive_historical_selector_match": {
+      "APP_DELETION_ARCHIVE_KEY_VERIFIED": "true"
+    },
+    "managed_ai": {
+      "integration": "Core.InvokeLLM",
+      "model": "gpt_5_4",
+      "prompt_source": "unchanged canonical generateWordPack prompt/quality helpers",
+      "no_new_openai_account_or_key": true
+    }
+  },
+  "maintenance": {
+    "observed": {
+      "APP_WORKER_SECRET_present": false,
+      "pg_cron_installed": false,
+      "pg_cron_available_version": "1.6.4",
+      "pg_net_installed": false,
+      "pg_net_available_version": "0.20.4",
+      "vault_installed": "0.3.1",
+      "vault_secret_count": 0,
+      "maintenance_log_matches_last24h": 0,
+      "external_scheduler_verified": false,
+      "pg_cron_preloaded": true,
+      "pg_net_preloaded": true
+    },
+    "proposed_setup_requires_approval": {
+      "extensions": [
+        "pg_cron",
+        "pg_net"
+      ],
+      "vault_bindings": {
+        "spyclash_worker_secret": "same value as Supabase APP_WORKER_SECRET",
+        "spyclash_gateway_anon_jwt": "main legacy anon JWT, role anon/refmain"
+      },
+      "job_name": "spyclash-account-maintenance",
+      "schedule": "* * * * *",
+      "method": "POST",
+      "url": "https://bbkfsgnordtdiblgdzkg.supabase.co/functions/v1/app-services/maintenance",
+      "headers": {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer ${vault:spyclash_gateway_anon_jwt}",
+        "apikey": "${vault:spyclash_gateway_anon_jwt}",
+        "x-spyclash-worker": "${vault:spyclash_worker_secret}"
+      },
+      "body": {},
+      "timeout_milliseconds": 90000,
+      "required_private_access": [
+        "Vault secrets unavailable to public/anon/authenticated",
+        "net.http_request_queue headers unavailable to public/anon/authenticated",
+        "cron job runs only fixed reviewed statement as postgres"
+      ],
+      "do_not_create": [
+        "new RPC",
+        "service-role token in cron",
+        "additional replay nonce store",
+        "new push enable flags"
+      ],
+      "reviewed_sql_template": "release/PUBLIC-MAINTENANCE-201.sql"
+    },
+    "acceptance": [
+      "No-header/wrong-worker-secret returns401",
+      "Controlled no-work request returns200 with originalDeletion/deletion counters and configuredfalse push under preserved defaults",
+      "At least two scheduled invocations HTTP200; inspect status_code/timed_out/error only, never requestheaders",
+      "Pending fixture intent and Auth job finish idempotently under separately approved disposable account test"
+    ]
+  },
+  "limits_and_runtime": {
+    "native_free_ai_generations_per_utc_day": 10,
+    "native_free_history_rows": 5,
+    "native_paid_benefits": "unlimitedAI,fullhistory,premiumavatars,advancedstatistics only with server verified membership",
+    "iap_product_id": "com.spyclash.ios.limitless.weekly",
+    "iap_canonical_refresh_seconds": 60,
+    "iap_online_certificate_checks": true,
+    "ai_relay_signature_window_seconds": 60,
+    "ai_generation_lease_seconds": 120,
+    "max_provider_calls_per_generation": 2,
+    "maintenance_max_provider_deletion_jobs_per_run": 3,
+    "maintenance_max_auth_deletion_jobs_per_run": 3,
+    "game_center_certificate_trust": "bundled pinned DigiCert root/intermediate, separate from Apple IAP roots",
+    "game_center_requires_no_private_key": true
+  },
+  "current_verification_limits": {
+    "iap_key_acceptance": "valid JWT accepted for prod+sandbox synthetic transaction lookup4040010 vs intentionally bad signature401; does not prove any real purchase",
+    "game_center": "no real device Apple assertion authenticated inproduction",
+    "ai": "mocked provider+real localDB tests; actual Core.InvokeLLM and cloud callbacks notyetaccepted",
+    "deletion": "localAuth/Postgres+Base44moduletests; no realproductionaccountdeleted"
+  },
+  "sources": [
+    "https://www.apple.com/certificateauthority/",
+    "https://github.com/apple/app-store-server-library-node",
+    "https://supabase.com/docs/guides/functions/schedule-functions",
+    "https://supabase.com/docs/guides/database/extensions/pg_net",
+    "https://supabase.com/docs/guides/cron/quickstart"
+  ]
+}

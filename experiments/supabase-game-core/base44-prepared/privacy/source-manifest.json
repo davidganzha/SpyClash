@@ -1,0 +1,9 @@
+{
+  "app_id": "69a0e57fa939f578082f8091",
+  "remote_path": "src/pages/PrivacyPolicy.jsx",
+  "baseline_sha256": "760c2bc0d0dbc7c135199127e0609e059478adea4422970434c8432c0c72c696",
+  "prepared_sha256": "01d4d0f1f1d58830a92721622871bea1a79e884dc4697251e0c73c9bdd8e6c6c",
+  "published": false,
+  "provider": "base44-managed",
+  "note": "Single-file prepared change. Never deploy the ejected project or its generated app link."
+}

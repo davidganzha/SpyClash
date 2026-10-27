@@ -11,13 +11,14 @@ import {createAppHandler} from '../../supabase/functions/app-services/handler.ts
 import {createServer} from 'node:http';
 import {once} from 'node:events';
 import {digest} from '../../supabase/functions/app-services/integration-crypto.ts';
-import {prepareDeletionReceipt,markDeletionReceiptReady,deletionReceiptStatus} from '../../../../base44/functions/deleteAccount/deletion-receipt.ts';
+import {verifyArchiveErasureRequest} from '../../../../base44/functions/deleteAccount/deletion-archive-proof.ts';
+import {prepareDeletionReceipt,markDeletionReceiptReady,deletionReceiptStatus,recordDeletionArchiveProof} from '../../../../base44/functions/deleteAccount/deletion-receipt.ts';
 
 let db;
 let authConfiguration;
 const actors=[];
 const token='fixture-only-legacy-credential-not-for-network';
-const config={SUPABASE_URL:'http://127.0.0.1:56321',APP_MAIN_ACCOUNT_DELETION_ENABLED:'true',APP_DELETION_RECEIPT_SECRET:'09'.repeat(32)};
+const config={SUPABASE_URL:'http://127.0.0.1:56321',APP_MAIN_ACCOUNT_DELETION_ENABLED:'true',APP_DELETION_RECEIPT_SECRET:'09'.repeat(32),APP_DELETION_ARCHIVE_SECRET:'12'.repeat(32)};
 before(async()=>{
   const result=spawnSync('node_modules/.bin/supabase',['status','-o','json'],{encoding:'utf8',env:{...process.env,DOCKER_HOST:process.env.DOCKER_HOST||`unix://${homedir()}/.colima/spyclash-supabase/docker.sock`}});
   assert.equal(result.status,0);
@@ -31,6 +32,7 @@ after(async()=>{
   if(!db)return;
   for(const a of actors){
     await db`delete from app_private.main_account_deletions where user_id=${a.id}`;
+    await db`delete from app_private.legacy_links where user_id=${a.id}`;
     await executeApp(db,a,{service:'profile',action:'delete',request_id:crypto.randomUUID()});
     await db`delete from app_private.receipts where actor_id=${a.id}`;
     await db`delete from app_private.lifecycle_jobs where user_id=${a.id}`;
@@ -51,7 +53,7 @@ async function fixture(){
 function provider(input,remove=async()=>Response.json({success:true,manual_apple_revocation_required:true}),who={}){
   return async(url,options)=>{
     const body=options.body?JSON.parse(options.body):{};
-    if(body.action==='deletion_capabilities')return Response.json({protocol:'spyclash-deletion-receipt-v1'});
+    if(body.action==='deletion_capabilities')return Response.json({protocol:'spyclash-deletion-receipt-v2'});
     if(body.action==='deletion_status')return Response.json({complete:false,request_id:body.request_id,subject_hash:await (async()=>{const {digest}=await import('../../supabase/functions/app-services/integration-crypto.ts');return digest('spyclash-delete-user-v1:legacy-'+input.actor.id);})()});
     assert.equal(options.headers.Authorization,'Bearer '+token);
     assert.equal(options.redirect,'error');
@@ -61,7 +63,7 @@ function provider(input,remove=async()=>Response.json({success:true,manual_apple
     const response=await remove();
     if(!response.ok)return response;
     const value=await response.json();
-    return Response.json({...value,deletion_receipt:{complete:true,request_id:body.request_id,subject_hash:await digest('spyclash-delete-user-v1:legacy-'+input.actor.id)}});
+    return Response.json({...value,deletion_receipt:{complete:true,request_id:body.request_id,subject_hash:await digest('spyclash-delete-user-v1:legacy-'+input.actor.id),erasure_proof:{version:1,archive_alias_digest:await digest(JSON.stringify(body.archive_erasure_request.aliases)),apple_identity_keys:[],apple_record_ids:[]}}});
   };
 }
 
@@ -109,7 +111,7 @@ test('confirmed Base44 response gates Supabase purge and survives lost native ac
 test('lost provider acknowledgement remains pending; revoked token is never proof of erasure',async()=>{
   const input=await fixture();
   await assert.rejects(prepareMainAccountDeletion(input,{db,fetch:provider(input,async()=>{throw Error('Lost final ACK');})}),e=>e.code==='account_deletion_pending'&&e.retryable);
-  await assert.rejects(prepareMainAccountDeletion(input,{db,fetch:async(_url,options)=>JSON.parse(options.body||'{}').action==='deletion_capabilities'?Response.json({protocol:'spyclash-deletion-receipt-v1'}):Response.json({error:'unauthorized'},{status:401})}),e=>e.code==='account_deletion_pending');
+  await assert.rejects(prepareMainAccountDeletion(input,{db,fetch:async(_url,options)=>JSON.parse(options.body||'{}').action==='deletion_capabilities'?Response.json({protocol:'spyclash-deletion-receipt-v2'}):Response.json({error:'unauthorized'},{status:401})}),e=>e.code==='account_deletion_pending');
   await assert.rejects(db.begin(tx=>accountGate(tx,input.actor.id)),e=>e.code==='account_unavailable');
   await assert.rejects(executeApp(db,input.actor,{service:'profile',action:'delete',request_id:crypto.randomUUID()}),e=>e.code==='account_deletion_pending');
   const [intent]=await db`select * from app_private.main_account_deletions where user_id=${input.actor.id}`;
@@ -177,14 +179,19 @@ function lostAckProvider(input){
   return {receipts,get writes(){return writes;},fetch:async(url,options)=>{
     assert.ok(url.startsWith('https://spyclash.com/api/apps/69a0e57fa939f578082f8091/'));
     const body=options.body?JSON.parse(options.body):{};
-    if(body.action==='deletion_capabilities')return Response.json({protocol:'spyclash-deletion-receipt-v1'});
+    if(body.action==='deletion_capabilities')return Response.json({protocol:'spyclash-deletion-receipt-v2'});
     if(body.action==='deletion_status'){
       assert.equal(options.headers.Authorization,undefined,'Recovery cannot depend on a revoked user token');
+      const status=await deletionReceiptStatus(receipts,users,body);
+      const proof=await verifyArchiveErasureRequest(body,status.subject_hash,{secret:config.APP_DELETION_ARCHIVE_SECRET,deriveKey:async(alias)=>'apple-email:'+await digest(alias)});
+      if(proof)await recordDeletionArchiveProof(receipts,body,proof);
       return Response.json(await deletionReceiptStatus(receipts,users,body));
     }
     if(url.endsWith('/entities/User/me'))return users.rows.length?Response.json({...users.rows[0],role:'user'}):Response.json({error:'unauthorized'},{status:401});
     writes++;
+    const proof=await verifyArchiveErasureRequest(body,await digest('spyclash-delete-user-v1:'+users.rows[0].id),{secret:config.APP_DELETION_ARCHIVE_SECRET,deriveKey:async(alias)=>'apple-email:'+await digest(alias)});
     const receipt=await prepareDeletionReceipt(receipts,users.rows[0].id,body);
+    if(proof)await recordDeletionArchiveProof(receipts,body,proof);
     await markDeletionReceiptReady(receipts,receipt,true);users.rows=[];
     throw Error('Provider completed deletion; final HTTP response lost');
   }};
@@ -215,4 +222,37 @@ test('rotating the recovery secret cannot falsely confirm a pending account dele
   assert.equal((await db`select state from app_private.profiles where user_id=${input.actor.id}`)[0].state,'deleting');
   await db`update app_private.main_account_deletions set next_attempt_at=clock_timestamp() where user_id=${input.actor.id}`;
   assert.equal((await processMainAccountDeletionJobs(db,input.config,remote.fetch)).completed,1);
+});
+
+test('lost client journal resumes the canonical provider intent with a new command UUID',async()=>{
+  const input=await fixture();let writes=0;
+  const remote=provider(input,async()=>{writes++;return writes===1?Response.json({error:'retry'},{status:503}):Response.json({success:true});});
+  await assert.rejects(prepareMainAccountDeletion(input,{db,fetch:remote}),e=>e.code==='account_deletion_pending');
+  const restored={...input,body:{...input.body,request_id:crypto.randomUUID()}};
+  const evidence=await prepareMainAccountDeletion(restored,{db,fetch:remote});
+  const result=await executeApp(db,restored.actor,restored.body,restored.config,evidence);
+  assert.equal(result.body.original_account_deleted,true);assert.equal(writes,2);
+  const [intent]=await db`select request_id,phase from app_private.main_account_deletions where user_id=${input.actor.id}`;
+  assert.equal(intent.request_id,input.body.request_id);assert.equal(intent.phase,'complete');
+});
+
+test('new command after lost provider ACK uses original capability without trusting a stale bearer',async()=>{
+  const input=await fixture(),remote=lostAckProvider(input);
+  await assert.rejects(prepareMainAccountDeletion(input,{db,fetch:remote.fetch}),e=>e.code==='account_deletion_pending');
+  const restored={...input,body:{...input.body,request_id:crypto.randomUUID(),base44_access_token:''}};
+  const evidence=await prepareMainAccountDeletion(restored,{db,fetch:remote.fetch});
+  assert.equal((await executeApp(db,restored.actor,restored.body,restored.config,evidence)).body.original_account_deleted,true);
+  assert.equal(remote.writes,1);
+});
+
+test('parallel deletion commands after journal loss cannot issue a second provider write',async()=>{
+  const input=await fixture();let release,entered,writes=0;
+  const hold=new Promise(r=>release=r),started=new Promise(r=>entered=r);
+  const remote=provider(input,async()=>{writes++;entered();await hold;return Response.json({success:true});});
+  const first=prepareMainAccountDeletion(input,{db,fetch:remote});await started;
+  const restored={...input,body:{...input.body,request_id:crypto.randomUUID()}};
+  await assert.rejects(prepareMainAccountDeletion(restored,{db,fetch:remote}),e=>e.code==='account_deletion_pending');
+  release();const evidence=await first;
+  await executeApp(db,input.actor,input.body,input.config,evidence);
+  assert.equal(writes,1);
 });

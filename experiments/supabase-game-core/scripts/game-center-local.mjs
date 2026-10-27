@@ -20,7 +20,10 @@ const db=postgres(info.DB_URL,{max:1,onnotice:()=>{}});
 try{
   const [schema]=await db`select to_regclass('app_private.profiles') is not null and to_regclass('app_private.main_account_deletions') is not null as present`;
   if(!schema.present)throw new Error('Existing app schema required; this runner never resets the stack.');
-  await db.begin(async tx=>{await tx.unsafe(readFileSync(resolve(root,'supabase/functions/game-center-session/schema.sql'),'utf8'));});
+  await db.begin(async tx=>{
+    await tx.unsafe(readFileSync(resolve(root,'supabase/functions/game-center-session/schema.sql'),'utf8'));
+    await tx.unsafe(readFileSync(resolve(root,'supabase/migrations/20261026234309_native_game_center_ai_relay.sql'),'utf8'));
+  });
 }finally{await db.end();}
 const regression=process.argv[2]==='legacy-regression';
 const executable=regression?process.execPath:resolve(root,'node_modules/.bin/deno');

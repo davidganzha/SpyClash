@@ -47,3 +47,5 @@ alter table app_private.main_account_deletions add column if not exists attempts
 alter table app_private.main_account_deletions add column if not exists next_attempt_at timestamptz not null default clock_timestamp();
 alter table app_private.main_account_deletions enable row level security;
 revoke all on app_private.main_account_deletions from public, anon, authenticated;
+
+alter table app_private.main_account_deletions add column if not exists erasure_proof jsonb not null default '{}'::jsonb;

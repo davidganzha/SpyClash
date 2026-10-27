@@ -10,6 +10,7 @@
     "token_hash": {"type":"string"},
     "phase": {"type":"string","enum":["pending","user_delete_ready","complete"]},
     "manual_apple_revocation_required": {"type":"boolean","default":false},
+    "erasure_proof": {"type":"object","description":"Server-derived archive selectors. Never contains provider tokens or the pseudonym secret."},
     "expires_at": {"type":"string","format":"date-time"}
   },
   "required":["request_key","request_id","subject_hash","user_id","token_hash","phase","expires_at"],

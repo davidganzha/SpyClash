@@ -5,6 +5,7 @@ import {canonical,digest} from './integration-crypto.ts';
 import {createOpenAIWordPackProvider,assertNoKnownNamedThemeDrift,WORD_PACK_PROMPT_VERSION} from './word-generation/openai-word-pack-provider.ts';
 import {filterSafeCommunityStrings,requireSafeCommunityText} from './word-generation/content-safety.ts';
 import {normalizeGeneratedWordPack,wordPackComparisonKey} from './word-generation/generation-cache.ts';
+import {nativeRelayConfigured,createNativeAIRelayProvider,nativeRelayHasUnknownOutcome,settleNativeRelayFailure,unknownNativeAIOutcome} from './native-ai-relay.ts';
 
 type Config=Record<string,string|undefined>;
 type Input={actor:AppActor,body:Record<string,any>,config:Config};
@@ -12,7 +13,9 @@ const evidenceSet=new WeakSet<object>();
 export const NATIVE_AI_DAILY_LIMIT=10;
 const busy=()=>new AppServiceError('generation_in_progress','This word pack is still being prepared. Retry the same request.',503,true);
 export function nativeGenerationCapabilities(config:Config) {
-  return {generator_provider:'openai',configured:config.APP_NATIVE_GAME_CENTER_AI_ENABLED==='true'&&Boolean(config.OPENAI_API_KEY?.trim()),requires_legacy_session:false,linked:false};
+  const provider=config.APP_NATIVE_GAME_CENTER_AI_PROVIDER||'base44-managed';
+  const configured=provider==='base44-managed'?nativeRelayConfigured(config):provider==='openai'&&config.APP_NATIVE_GAME_CENTER_AI_ENABLED==='true'&&Boolean(config.OPENAI_API_KEY?.trim());
+  return {generator_provider:provider,configured,requires_legacy_session:false,linked:false};
 }
 function command(body:Record<string,any>) {
   if(typeof body.theme!=='string'||!body.theme.trim()||body.theme.length>80)throw new AppServiceError('invalid_theme','A theme of at most 80 characters is required.');
@@ -30,7 +33,7 @@ async function requireNative(tx:any,userID:string) {
 }
 /** The reservation is committed before provider work. The same UUID always
  * owns one quota charge and one durable result, including after a lost ACK.
- * An expired provider lease may be retried, but never grants another quota. */
+ * Relay claims survive an expired worker lease: paid work is never repeated. */
 export async function prepareNativeGeneration(input:Input,dependencies:{db:any,fetch?:typeof fetch}) {
   if(!nativeGenerationCapabilities(input.config).configured)throw new AppServiceError('native_generation_unconfigured','Word generation is not available yet. Try again later.',503,true);
   const request=command(input.body),hash=await requestHash(input.body),db=dependencies.db,leaseID=crypto.randomUUID();
@@ -43,6 +46,12 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
     if(prior&&prior.request_hash!==hash)throw new AppServiceError('request_id_reused','This request belongs to another word pack.',409);
     if(prior?.state==='complete')return {result:prior.result};
     if(prior?.leased)throw busy();
+    if(prior?.error_code==='generation_quality_failed')throw new AppServiceError('generation_quality_failed','The generated words did not meet the quality check.',422,false);
+    if(prior&&await nativeRelayHasUnknownOutcome(tx,input.actor.id,request.request_id)){
+      await tx`update game_center_private.generation_requests set state='failed',charged=true,lease_id=null,lease_until=null,error_code='generation_outcome_unknown',updated_at=clock_timestamp()
+        where user_id=${input.actor.id} and request_id=${request.request_id}`;
+      return {unknown:true};
+    }
     const [{today}]=await tx`select (clock_timestamp() at time zone 'UTC')::date::text as today`;
     const unlimited=await nativeGameCenterHasMembership(tx,input.actor.id);
     const [{used}]=await tx`select count(*)::int as used from game_center_private.generation_requests where user_id=${input.actor.id} and usage_date=${today} and charged`;
@@ -55,10 +64,12 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
         lease_id=excluded.lease_id,lease_until=excluded.lease_until,error_code=null,updated_at=clock_timestamp()`;
     return {unlimited,used:used+(keepsCharge?0:1)};
   });
+  if(reservation.unknown)throw unknownNativeAIOutcome();
   if(reservation.result)return evidenceFor(reservation.result);
   try{
-    const provider=createOpenAIWordPackProvider({apiKey:input.config.OPENAI_API_KEY!,model:input.config.SPYCLASH_OPENAI_MODEL,
-      timeoutMilliseconds:45_000,fetch:dependencies.fetch});
+    const provider=input.config.APP_NATIVE_GAME_CENTER_AI_PROVIDER==='base44-managed'
+      ?createNativeAIRelayProvider({db,config:input.config,actorID:input.actor.id,requestID:request.request_id,requestHash:hash,leaseID,fetch:dependencies.fetch})
+      :createOpenAIWordPackProvider({apiKey:input.config.OPENAI_API_KEY!,model:input.config.SPYCLASH_OPENAI_MODEL,timeoutMilliseconds:45_000,fetch:dependencies.fetch});
     const generate=async(count:number,excluded:string[])=>{
       // Recheck ownership before each external call; never continue provider
       // work on an account deleted while the first call was in flight.
@@ -92,6 +103,13 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
     });
     return evidenceFor(result);
   }catch(error){
+    if(input.config.APP_NATIVE_GAME_CENTER_AI_PROVIDER==='base44-managed'){
+      const outcome=await settleNativeRelayFailure(db,input.actor.id,request.request_id,leaseID).catch(()=> 'unknown');
+      if(outcome==='unknown')throw new AppServiceError('generation_in_progress','This attempt is awaiting confirmation. Retry the same request later.',503,true);
+      if(outcome==='quality')throw new AppServiceError('generation_quality_failed','The generated words did not meet the quality check.',422,false);
+      if(error instanceof AppServiceError&&error.code!=='generation_outcome_unknown')throw error;
+      throw new AppServiceError('ai_provider_unavailable','Word generation could not start. Retry the same request.',503,true);
+    }
     // Only the worker still owning this request may release its reservation.
     // Deletion removes these rows; this update can never recreate them.
     await db`update game_center_private.generation_requests set state='failed',charged=false,lease_id=null,lease_until=null,error_code='generation_failed',updated_at=clock_timestamp()

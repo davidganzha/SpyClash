@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Prepare and optionally test a local-only minimal main Game Center package.
+"""Prepare and optionally test a local-only main Game Center package.
 
 Never reads credentials or calls a cloud API. Inputs are read-only MCP source
 exports from the two explicitly pinned live versions. No workspace source is
-reverted. Only the generated entry point disables inherited legacy deletion.
+reverted. The default candidate disables inherited legacy deletion; --public
+preserves its runtime gate and includes the reviewed deletion and AI adapters.
 """
 import argparse
 import difflib
@@ -30,6 +31,8 @@ FROZEN = {
     'app-services/live-activity-policy.ts': '842d779d6ed126b6876fb7545bd78017938c08bbfc24736c72236780bd62fea0',
 }
 MIGRATIONS = ['20261013010810_main_account_deletion_intent.sql', '20261026172415_main_game_center_identity.sql']
+PUBLIC_MIGRATIONS = ['20261026232916_public_deletion_archive_erasure.sql',
+                     '20261026234309_native_game_center_ai_relay.sql']
 IMPORT = re.compile(r'''(?:from\s*|import\s*\(\s*|import\s*)["'](\.[^"']+)["']''')
 
 def sha(value):
@@ -98,18 +101,51 @@ def prepare(args):
     content = entry.read_text()
     if content.count(original) != 1:
         raise RuntimeError('App entry point changed; review the legacy-deletion pin before packaging')
-    entry.write_text(content.replace(original, replacement))
+    entry.write_text(content if args.public else content.replace(original, replacement))
     for relative in ['package.json', 'package-lock.json', 'GAME-CENTER-MAIN.md', 'supabase/config.toml',
                      'scripts/game-center-local.mjs', 'tests/app-services/native-game-center-billing.test.mjs']:
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(CORE / relative, target)
-    for name in MIGRATIONS:
+    # All source variants share the generation reservation implementation.
+    # Even the optional direct provider requires the provider-call table.
+    migrations = MIGRATIONS + PUBLIC_MIGRATIONS
+    for name in migrations:
         target = destination / 'supabase/migrations' / name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(CORE / 'supabase/migrations' / name, target)
     for name in ['game-center', 'full-core-engine']:
         shutil.copytree(CORE / 'tests' / name, destination / 'tests' / name)
+    base44_deployments = {}
+    if args.public:
+        for name, source in [
+            ('deleteAccount', CORE / 'base44-prepared/deleteAccount'),
+            ('nativeGameCenterWordPack', ROOT / 'base44/functions/nativeGameCenterWordPack'),
+        ]:
+            target = destination / 'base44/functions' / name
+            shutil.copytree(source, target)
+            configuration = json.loads((target / 'function.jsonc').read_text())
+            if configuration['name'] != name or not (target / configuration['entry']).is_file():
+                raise RuntimeError('Invalid prepared Base44 entry: ' + name)
+            base44_deployments[name] = {
+                'entry': configuration['entry'],
+                'files': sorted(str(p.relative_to(destination)) for p in target.rglob('*') if p.is_file()),
+            }
+        entity = destination / 'base44/entities/account-deletion-receipt.jsonc'
+        entity.parent.mkdir(parents=True)
+        shutil.copyfile(ROOT / 'base44/entities/account-deletion-receipt.jsonc', entity)
+        reference = destination / 'verification/base44-word-generation'
+        reference.mkdir(parents=True)
+        for name in ['openai-word-pack-provider.ts', 'word-pack-quality.ts']:
+            shutil.copyfile(ROOT / 'base44/functions/generateWordPack' / name, reference / name)
+        shutil.copytree(CORE / 'tests/app-services', destination / 'tests/app-services', dirs_exist_ok=True)
+        # Preserve the production sources exactly. Tests are relocated from the
+        # repository's nested CORE directory to this package root.
+        for test_file in (destination / 'tests/app-services').rglob('*.mjs'):
+            test_file.write_text(test_file.read_text()
+                .replace('../../../../base44/', '../../base44/')
+                .replace("new URL('../../../../',import.meta.url)", "new URL('../../',import.meta.url)")
+                .replace('base44/functions/generateWordPack/', 'verification/base44-word-generation/'))
     deployments, changes, patch = {}, {}, []
     for slug in ['app-services', 'full-game-core', 'game-center-session']:
         names = dependency_files(functions, f'{slug}/index.ts')
@@ -150,12 +186,36 @@ host-transfer tests are intentionally excluded because this live engine does not
 implement that pending feature. Test certificates/provider responses are fixtures.
 No real Apple sign-in, paid AI call or StoreKit transaction is asserted.
 ''')
+    if args.public:
+        (destination/'PACKAGE-README.md').write_text('''# Main Game Center public server package
+
+Local artifact only. No server deployment, key change or account deletion is
+performed by this script. The live engine, push, worker and Live Activity policy
+remain byte-for-byte frozen. The public app-services entry preserves the runtime
+deletion gate; deployment must leave it off until the historical-key verification,
+Base44 receipt v2 and account recovery preflight have passed.
+
+Deploy only the manifest's three Supabase functions, four additive migrations,
+AccountDeletionReceipt entity, and two listed Base44 functions after approval.
+Never deploy the source checkout or an ejected/copied Base44 app. The target is
+the original app 69a0e57fa939f578082f8091 and Supabase bbkfsgnordtdiblgdzkg.
+Runtime secrets and rollout flags are separate from the source archive.
+
+Verification covers this exact source overlay. Test-only relative Base44 imports
+are adjusted for the package directory layout; production sources are unchanged.
+Synthetic Apple signatures/provider fixtures do not establish physical-device
+acceptance or actual paid service availability.
+''')
     files = {str(p.relative_to(destination)):sha(p.read_bytes()) for p in sorted(destination.rglob('*')) if p.is_file()}
     manifest = {'format':1, 'target_project':'bbkfsgnordtdiblgdzkg', 'bundle_id':'com.spyclash.ios',
                 'source_git_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
                 'baselines':exports, 'frozen_live_files':FROZEN,
-                'generated_entrypoint_override':{'APP_MAIN_ACCOUNT_DELETION_ENABLED':'false'},
-                'migration_order':MIGRATIONS, 'deployments':deployments, 'files':files}
+                'audience':'public' if args.public else 'internal-candidate',
+                'generated_entrypoint_override':{} if args.public else {'APP_MAIN_ACCOUNT_DELETION_ENABLED':'false'},
+                'migration_order':migrations, 'deployments':deployments, 'files':files,
+                'base44_app_id':'69a0e57fa939f578082f8091' if args.public else None,
+                'base44_functions':base44_deployments,
+                'base44_entities':['base44/entities/account-deletion-receipt.jsonc'] if args.public else []}
     write_json(destination/'deployment-manifest.json',manifest)
     archive = destination.parent / 'server-package.tar.gz'
     with archive.open('wb') as output, gzip.GzipFile(filename='',mode='wb',fileobj=output,mtime=0) as zipped:
@@ -175,6 +235,11 @@ No real Apple sign-in, paid AI call or StoreKit transaction is asserted.
                   ['node_modules/.bin/deno','test','--config','supabase/functions/full-game-core/deno.json',
                    '--filter','/^(lobby contract|projection preserves|question turns|association order|strict majority|split vote|multi-spy|pause|spy guess|host return|active host departure|legacy explicit|original|database reader)/',
                    'tests/full-core-engine']]
+        if args.public:
+            commands.append(['node','--experimental-transform-types','--test','--test-concurrency=1',
+                             'tests/app-services/main-account-deletion.test.mjs',
+                             'tests/app-services/deletion-archive.test.mjs',
+                             'tests/app-services/native-ai-relay.test.mjs'])
         results=[]
         with (archive.parent/'overlay-verification.log').open('w') as log:
             for command in commands:
@@ -196,4 +261,5 @@ if __name__=='__main__':
     parser.add_argument('--deployed',type=Path,default=ROOT/'.local/gamecenter-main200/deployed-source')
     parser.add_argument('--output',type=Path,default=ROOT/'.local/gamecenter-main200/server-source')
     parser.add_argument('--test',action='store_true')
+    parser.add_argument('--public',action='store_true',help='Include the reviewed public deletion and managed AI prerequisites; never deploys.')
     prepare(parser.parse_args())

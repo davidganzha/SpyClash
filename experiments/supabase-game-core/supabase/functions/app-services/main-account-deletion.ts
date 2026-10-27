@@ -1,14 +1,15 @@
 import { AppServiceError, requireUUID, type AppActor, type AppContext } from './contracts.ts';
 import { verifyLegacyCredential, boundedLegacyJSON, canonicalBase44Configuration, type LegacyConfig } from './legacy-provider.ts';
 import {digest} from './integration-crypto.ts';
+import {signedArchiveErasureRequest,verifiedArchiveErasureProof} from './deletion-archive-proof.ts';
 import {nativeGameCenterAccount} from './native-game-center.ts';
 
 type Input = {actor: AppActor; body: Record<string, any>; config: LegacyConfig};
 const evidenceSet = new WeakSet<object>();
 const pending = () => new AppServiceError('account_deletion_pending', 'Account deletion is not yet confirmed. Retry the same request; contact support if the original sign-in no longer works.', 503, true);
 const mismatch = () => new AppServiceError('legacy_owner_mismatch', 'The original account does not match this game account.', 409);
-function evidenceFor(actor: string, requestID: string) {
-  const evidence={actor,requestID};evidenceSet.add(evidence);return evidence;
+function evidenceFor(actor: string, requestID: string, intentRequestID = requestID) {
+  const evidence={actor,requestID,intentRequestID};evidenceSet.add(evidence);return evidence;
 }
 const nativeEvidenceSet = new WeakSet<object>();
 async function recoveryToken(config: LegacyConfig, actor: string, requestID: string) {
@@ -20,17 +21,19 @@ async function recoveryToken(config: LegacyConfig, actor: string, requestID: str
 }
 async function reconcileReceipt(db: any, config: LegacyConfig, prior: any, fetcher: typeof fetch) {
   const destination=canonicalBase44Configuration(config);
+  const archiveRequest=await signedArchiveErasureRequest(db,config,prior.user_id,prior.legacy_user_id,prior.request_id);
   if(prior.source_origin!==destination.origin||prior.source_app_id!==destination.appID)throw mismatch();
   const response=await fetcher(destination.origin+'/api/apps/'+destination.appID+'/functions/deleteAccount',{
     method:'POST',headers:{'X-App-Id':destination.appID,Origin:destination.origin,'Content-Type':'application/json'},
-    body:JSON.stringify({action:'deletion_status',request_id:prior.request_id,recovery_token:await recoveryToken(config,prior.user_id,prior.request_id)}),
+    body:JSON.stringify({action:'deletion_status',request_id:prior.request_id,recovery_token:await recoveryToken(config,prior.user_id,prior.request_id),archive_erasure_request:archiveRequest}),
     credentials:'omit',redirect:'error',signal:AbortSignal.timeout(10_000),
   });
   if(!response.ok)return false;
   const result=await boundedLegacyJSON(response);
   if(result?.request_id!==prior.request_id||result?.subject_hash!==await digest('spyclash-delete-user-v1:'+prior.legacy_user_id))throw mismatch();
   if(result.complete!==true)return false;
-  const updated=await db`update app_private.main_account_deletions set phase='legacy_deleted',manual_apple_revocation_required=${result.manual_apple_revocation_required===true},last_error=null,updated_at=clock_timestamp()
+  const erasureProof=await verifiedArchiveErasureProof(result.erasure_proof,archiveRequest.aliases);
+  const updated=await db`update app_private.main_account_deletions set phase='legacy_deleted',erasure_proof=${db.json(erasureProof)},manual_apple_revocation_required=${result.manual_apple_revocation_required===true},last_error=null,updated_at=clock_timestamp()
     where user_id=${prior.user_id} and request_id=${prior.request_id} and phase='pending' returning user_id`;
   return updated.length>0;
 }
@@ -50,13 +53,15 @@ export async function prepareMainAccountDeletion(input: Input, dependencies: {db
     return evidence;
   }
   if (input.config.APP_MAIN_ACCOUNT_DELETION_ENABLED !== 'true') throw new AppServiceError('account_deletion_unconfigured', 'Full account deletion is not enabled for this build yet.', 503);
-  const requestID = requireUUID(input.body.request_id, 'request_id');
-  const recovery = await recoveryToken(input.config,input.actor.id,requestID);
+  const commandID = requireUUID(input.body.request_id, 'request_id');
+  // Validate configuration before reserving any intent. A restored client may
+  // supply a new command UUID; the provider capability always retains the
+  // original, server-owned intent UUID.
+  await recoveryToken(input.config,input.actor.id,commandID);
   const {db} = dependencies;
   const fetcher = dependencies.fetch || fetch;
   let [prior] = await db`select * from app_private.main_account_deletions where user_id=${input.actor.id}`;
-  if (prior && prior.request_id !== requestID) throw new AppServiceError('account_deletion_request_conflict', 'Continue the saved account deletion request.', 409);
-  const makeEvidence = () => evidenceFor(input.actor.id,requestID);
+  const makeEvidence = () => evidenceFor(input.actor.id,commandID,prior?.request_id || commandID);
   if (prior && ['legacy_deleted','complete'].includes(prior.phase)) return makeEvidence();
   if(prior) {
     try { if(await reconcileReceipt(db,input.config,prior,fetcher))return makeEvidence(); }
@@ -67,7 +72,7 @@ export async function prepareMainAccountDeletion(input: Input, dependencies: {db
     method:'POST',headers:{'X-App-Id':destination.appID,Origin:destination.origin,'Content-Type':'application/json'},
     body:JSON.stringify({action:'deletion_capabilities'}),credentials:'omit',redirect:'error',signal:AbortSignal.timeout(10_000),
   });
-  if(!capabilityResponse.ok||(await boundedLegacyJSON(capabilityResponse))?.protocol!=='spyclash-deletion-receipt-v1') {
+  if(!capabilityResponse.ok||(await boundedLegacyJSON(capabilityResponse))?.protocol!=='spyclash-deletion-receipt-v2') {
     throw new AppServiceError('deletion_recovery_unconfigured','The original account recovery protocol has not been deployed.',503);
   }
   let verified;
@@ -80,6 +85,8 @@ export async function prepareMainAccountDeletion(input: Input, dependencies: {db
   const role = String(verified.identity.role || '').trim().toLowerCase();
   if (role === 'admin') throw new AppServiceError('account_deletion_admin_transfer_required', 'Transfer administrator access before deleting this account.', 409);
   if (role !== 'user') throw new AppServiceError('account_deletion_role_unavailable', 'The original account role could not be verified.', 503, true);
+  // Fail before fencing the account if archive ownership/configuration is not ready.
+  await signedArchiveErasureRequest(db,input.config,input.actor.id,verified.identity.id,prior?.request_id||commandID);
   const leaseID = crypto.randomUUID();
   prior = await db.begin(async (tx: any) => {
     await tx`select pg_advisory_xact_lock(hashtextextended(${'spyclash-account:'+input.actor.id},0))`;
@@ -87,12 +94,11 @@ export async function prepareMainAccountDeletion(input: Input, dependencies: {db
     const [link] = await tx`select * from app_private.legacy_links where user_id=${input.actor.id} for update`;
     if (!link || link.state !== 'active' || link.legacy_user_id !== verified.identity.id || link.source_origin !== verified.origin) throw mismatch();
     const [existing] = await tx`select * from app_private.main_account_deletions where user_id=${input.actor.id} for update`;
-    if (existing && existing.request_id !== requestID) throw new AppServiceError('account_deletion_request_conflict', 'Continue the saved account deletion request.', 409);
     if (!existing && (!profile || profile.state !== 'active')) throw new AppServiceError('account_unavailable', 'This account is unavailable.', 403);
     if (existing && (existing.legacy_user_id !== verified.identity.id || existing.source_origin !== verified.origin || existing.source_app_id !== verified.appID)) throw mismatch();
     if (existing && ['legacy_deleted','complete'].includes(existing.phase)) return existing;
     if (!existing) await tx`insert into app_private.main_account_deletions(user_id,request_id,legacy_user_id,source_origin,source_app_id)
-      values(${input.actor.id},${requestID},${verified.identity.id},${verified.origin},${verified.appID})`;
+      values(${input.actor.id},${commandID},${verified.identity.id},${verified.origin},${verified.appID})`;
     const [leased] = await tx`update app_private.main_account_deletions set lease_id=${leaseID},lease_until=clock_timestamp()+interval '90 seconds',updated_at=clock_timestamp()
       where user_id=${input.actor.id} and (lease_until is null or lease_until<clock_timestamp()) returning *`;
     if (!leased) throw pending();
@@ -100,16 +106,20 @@ export async function prepareMainAccountDeletion(input: Input, dependencies: {db
     return leased;
   });
   if (['legacy_deleted','complete'].includes(prior.phase)) return makeEvidence();
+  const requestID = prior.request_id;
+  const recovery = await recoveryToken(input.config,input.actor.id,requestID);
   try {
+    const archiveRequest=await signedArchiveErasureRequest(db,input.config,input.actor.id,verified.identity.id,requestID);
     const response = await fetcher(verified.origin+'/api/apps/'+verified.appID+'/functions/deleteAccount', {
       method:'POST', headers:{Authorization:'Bearer '+verified.credential,'X-App-Id':verified.appID,Origin:verified.origin,'Content-Type':'application/json'},
-      body:JSON.stringify({request_id:requestID,recovery_token:recovery}), redirect:'error', signal:AbortSignal.timeout(60_000),
+      body:JSON.stringify({request_id:requestID,recovery_token:recovery,archive_erasure_request:archiveRequest}), redirect:'error', signal:AbortSignal.timeout(60_000),
     });
     if (!response.ok) throw pending();
     const result = await boundedLegacyJSON(response);
     if (result?.success !== true || result.deletion_receipt?.complete!==true || result.deletion_receipt?.request_id!==requestID
       || result.deletion_receipt?.subject_hash!==await digest('spyclash-delete-user-v1:'+verified.identity.id)) throw pending();
-    const updated = await db`update app_private.main_account_deletions set phase='legacy_deleted',manual_apple_revocation_required=${result.manual_apple_revocation_required === true},last_error=null,updated_at=clock_timestamp()
+    const erasureProof=await verifiedArchiveErasureProof(result.deletion_receipt.erasure_proof,archiveRequest.aliases);
+    const updated = await db`update app_private.main_account_deletions set phase='legacy_deleted',erasure_proof=${db.json(erasureProof)},manual_apple_revocation_required=${result.manual_apple_revocation_required === true},last_error=null,updated_at=clock_timestamp()
       where user_id=${input.actor.id} and request_id=${requestID} and lease_id=${leaseID} and phase='pending' returning user_id`;
     if (!updated.length) throw pending();
     return makeEvidence();
@@ -161,6 +171,6 @@ export async function assertMainDeletionEvidence(ctx: AppContext, body: Record<s
   if (body.deletion_scope !== 'account') throw new AppServiceError('account_deletion_pending', 'Continue full account deletion before clearing its local copy.', 503, true);
   const evidence = ctx.evidence;
   if (!evidence || !evidenceSet.has(evidence) || evidence.actor !== ctx.actor.id || evidence.requestID !== body.request_id
-    || !intent || intent.request_id !== body.request_id || !['legacy_deleted','complete'].includes(intent.phase)) throw pending();
+    || !intent || intent.request_id !== evidence.intentRequestID || !['legacy_deleted','complete'].includes(intent.phase)) throw pending();
   return intent;
 }

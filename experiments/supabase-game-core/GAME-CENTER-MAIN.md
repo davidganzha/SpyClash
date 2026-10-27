@@ -97,9 +97,13 @@ failure cannot grant paid access. Ordinary gameplay does not depend on that call
    endpoint stays disabled unless `GAME_CENTER_ENABLED=true` and
    `GAME_CENTER_ENVIRONMENT=main`; optional `GAME_CENTER_PROJECT_REF` must equal
    the pinned project. Production DB connections use TLS and its existing pooler.
-4. Native AI additionally requires `APP_NATIVE_GAME_CENTER_AI_ENABLED=true` and
-   server-only `OPENAI_API_KEY`. `SPYCLASH_OPENAI_MODEL` is optional; otherwise the
-   existing provider's pinned model remains in use. No key was copied or configured.
+4. Native AI uses the separately reviewed [managed AI relay](NATIVE-AI-RELAY.md):
+   `APP_NATIVE_GAME_CENTER_AI_ENABLED=true`,
+   `APP_NATIVE_GAME_CENTER_AI_PROVIDER=base44-managed`, its private migration,
+   and authenticated server configuration. The existing direct OpenAI provider
+   is available only with explicit `APP_NATIVE_GAME_CENTER_AI_PROVIDER=openai`
+   plus server-only `OPENAI_API_KEY`; it is never an automatic relay fallback.
+   No provider secret was copied or configured by this local change.
 5. Native Apple billing requires the separate reviewed main billing configuration:
    `APP_IAP_ENABLED=true`, `APP_NATIVE_GAME_CENTER_IAP_ENABLED=true`,
    `APP_IAP_BUNDLE_ID=com.spyclash.ios`, `APP_IAP_APPLE_ID=6793534085`, the explicit

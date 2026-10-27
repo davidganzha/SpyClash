@@ -81,5 +81,22 @@ export async function deletionReceiptStatus(store: Store, users: Pick<Store,'fil
     if(!matches.some(value=>value.id===row.user_id))row=await transition(store,row,'complete',row.manual_apple_revocation_required===true);
   }
   if(row.phase==='complete')row=await transition(store,row,'complete',row.manual_apple_revocation_required===true);
-  return {request_id:requestID,subject_hash:row.subject_hash,complete:row.phase==='complete',manual_apple_revocation_required:row.manual_apple_revocation_required===true};
+  return {request_id:requestID,subject_hash:row.subject_hash,complete:row.phase==='complete',manual_apple_revocation_required:row.manual_apple_revocation_required===true,...(row.erasure_proof?{erasure_proof:row.erasure_proof}:{})};
+}
+
+/** Called only with server-derived proof after the signed archive request was
+ * verified. The capability and immutable subject bind each persisted update. */
+export async function recordDeletionArchiveProof(store: Store, body: Row, proof: Row) {
+  const {requestID,token}=input(body),tokenHash=await hash(token);
+  const row=canonical(await store.filter({token_hash:tokenHash,request_id:requestID},'created_date',9,0),new Date());
+  const prior=row.erasure_proof;
+  const merged={version:1,archive_alias_digest:proof.archive_alias_digest,
+    apple_identity_keys:[...new Set([...(prior?.apple_identity_keys||[]),...proof.apple_identity_keys])].sort(),
+    apple_record_ids:[...new Set([...(prior?.apple_record_ids||[]),...proof.apple_record_ids])].sort()};
+  if(merged.apple_identity_keys.length>256||merged.apple_record_ids.length>4096)throw new DeletionReceiptError('deletion_archive_proof_too_large');
+  try {await store.updateMany({request_key:row.request_key,token_hash:tokenHash},{$set:{erasure_proof:merged}});}
+  catch { /* Re-read a lost acknowledgement before deleting credentials. */ }
+  const rows=await store.filter({request_key:row.request_key},'created_date',9,0);canonical(rows,new Date());
+  if(rows.some(value=>JSON.stringify(value.erasure_proof)!==JSON.stringify(merged)))throw new DeletionReceiptError('deletion_archive_proof_pending');
+  return merged;
 }

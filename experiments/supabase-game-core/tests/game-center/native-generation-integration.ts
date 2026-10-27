@@ -12,7 +12,7 @@ function heldProvider(){
   return {began,release:()=>release(),fetch:async()=>{started();await waiting;return reply();}};
 }
 export async function runNativeGenerationChecks({runtime,exchange,fixture,check}:any){
-  const config={APP_NATIVE_GAME_CENTER_AI_ENABLED:'true',OPENAI_API_KEY:'local-fixture-not-a-provider-secret',
+  const config={APP_NATIVE_GAME_CENTER_AI_ENABLED:'true',APP_NATIVE_GAME_CENTER_AI_PROVIDER:'openai',OPENAI_API_KEY:'local-fixture-not-a-provider-secret',
     SUPABASE_URL:runtime.config.origin,SUPABASE_SERVICE_ROLE_KEY:runtime.config.serviceRoleKey};
   const handler=(fetcher:typeof fetch,options=config)=>createAppHandler({db:runtime.db,config:options,fetch:fetcher,
     authenticate:createActorAuthenticator(runtime.auth,()=>new AppServiceError('unauthorized','Sign in again.',401))});

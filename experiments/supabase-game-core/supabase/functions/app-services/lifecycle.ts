@@ -2,11 +2,13 @@ import type { AppContext } from './contracts.ts';
 import { AppServiceError, requireUUID } from './contracts.ts';
 import { cleanupBillingPush } from './membership.ts';
 import { assertMainDeletionEvidence } from './main-account-deletion.ts';
+import { eraseAccountArchives } from './deletion-archive.ts';
 
 /** Called only while holding the actor's exclusive account gate. */
 export async function deleteAccount(ctx: AppContext, body: any) {
   const mainDeletion = await assertMainDeletionEvidence(ctx, body);
   const { tx, actor, now } = ctx;
+  await eraseAccountArchives(ctx,mainDeletion);
   await tx`insert into app_private.profiles(user_id,state,contact_email,data) values(${actor.id},'deleting','','{}') on conflict(user_id) do update set state='deleting',updated_at=${now}`;
   // Lock shared rooms in a stable order, then end them atomically. No peer can
   // observe a partially scrubbed roster or continue a deleted player's turn.
@@ -52,7 +54,7 @@ export async function deleteAccount(ctx: AppContext, body: any) {
     await tx`delete from game_center_private.generation_requests where user_id=${actor.id}`;
     await tx`update game_center_private.accounts set state='deleted',lease_id=null,lease_until=null,updated_at=${now}
       where user_id=${actor.id} and identity_key=${mainDeletion.identity_key}`;
-  } else if (mainDeletion) await tx`update app_private.main_account_deletions set phase='complete',updated_at=${now} where user_id=${actor.id}`;
+  } else if (mainDeletion) await tx`update app_private.main_account_deletions set phase='complete',erasure_proof='{}',updated_at=${now} where user_id=${actor.id}`;
   return { success: true, deleted: true, auth_cleanup_pending: true,
     ...(mainDeletion?.native_account ? {native_account_deleted:true}
       : mainDeletion ? {original_account_deleted:true,manual_apple_revocation_required:mainDeletion.manual_apple_revocation_required} : {}) };
