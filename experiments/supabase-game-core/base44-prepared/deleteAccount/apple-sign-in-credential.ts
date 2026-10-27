@@ -1347,7 +1347,10 @@ export async function revokeAppleSignInCredentials(input: {
               "Content-Type": "application/x-www-form-urlencoded",
             },
             body,
-            redirect: "error",
+            // Workers rejects redirect:"error" before sending. Never forward
+            // the token/client secret; the existing non-2xx handling below
+            // treats a redirect as unconfirmed manual revocation.
+            redirect: "manual",
             signal: AbortSignal.timeout(
               Math.min(
                 APPLE_REVOCATION_TIMEOUT_MILLISECONDS,

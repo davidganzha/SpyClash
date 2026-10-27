@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "partially_applied_new_deletion_route_awaiting_approval",
+  "status": "native_features_active_legacy_full_deletion_blocked",
   "verified_at": "2026-10-27",
   "targets": {
     "supabase_project_ref": "bbkfsgnordtdiblgdzkg",
@@ -11,7 +11,7 @@
     "app_apple_id": "6793534085",
     "client_version": "1.0.3",
     "client_build": "200",
-    "backend_checkpoint": "202"
+    "backend_checkpoint": "203"
   },
   "do_not_target": [
     "ovowoixuyabccgkxcexp",
@@ -345,7 +345,7 @@
   "current_verification_limits": {
     "iap_key_acceptance": "valid JWT accepted for prod+sandbox synthetic transaction lookup4040010 vs intentionally bad signature401; does not prove any real purchase",
     "game_center": "no real device Apple assertion authenticated inproduction",
-    "ai": "mocked provider+real localDB tests; actual Core.InvokeLLM and cloud callbacks notyetaccepted",
+    "ai": "live signed Base44 to Supabase claim callback confirmed with expected403 for absent actor and no rows/provider calls; actual Core.InvokeLLM generation remains unverified",
     "deletion": "localAuth/Postgres+Base44moduletests; no realproductionaccountdeleted"
   },
   "sources": [
@@ -354,5 +354,13 @@
     "https://supabase.com/docs/guides/functions/schedule-functions",
     "https://supabase.com/docs/guides/database/extensions/pg_net",
     "https://supabase.com/docs/guides/cron/quickstart"
-  ]
+  ],
+  "observed_activation_20261027": {
+    "native_game_center": true,
+    "native_iap": true,
+    "native_managed_ai": true,
+    "legacy_full_deletion": false,
+    "base44_archive_key_verified": false,
+    "unexplained_legacy_apple_rows": 4
+  }
 }

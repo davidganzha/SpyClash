@@ -41,7 +41,7 @@ function network({invoke,loseInvokeACK=false,loseCompleteACK=false}={}){
     invoke:async(request,input)=>{state.calls++;assert.equal(input.model,'gpt_5_4');assert.equal(typeof input.prompt,'string');assert.equal(input.response_json_schema.type,'object');assert.equal(Object.keys(input).sort().join(','),'model,prompt,response_json_schema');return invoke?invoke(request,input,state.calls):candidate();},
     fetch:async(url,init)=>{
       assert.ok(String(url)===RELAY_CALLBACK_URL+'/claim'||String(url)===RELAY_CALLBACK_URL+'/complete');
-      assert.equal(init.headers.Authorization,'Bearer '+gatewayToken);assert.equal(init.headers.apikey,gatewayToken);assert.equal(init.redirect,'error');
+      assert.equal(init.headers.Authorization,'Bearer '+gatewayToken);assert.equal(init.headers.apikey,gatewayToken);assert.equal(init.redirect,'manual');
       state.callbacks.push(JSON.parse(init.body));const response=await control(new Request(url,init));
       if(loseCompleteACK&&String(url).endsWith('/complete')&&response.ok)throw new Error('lost completion acknowledgement');return response;
     }});

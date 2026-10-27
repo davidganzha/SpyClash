@@ -144,9 +144,12 @@ def prepare(args):
         shutil.copytree(CORE / 'tests/app-services', destination / 'tests/app-services', dirs_exist_ok=True)
         # Preserve the production sources exactly. Tests are relocated from the
         # repository's nested CORE directory to this package root.
-        for test_file in (destination / 'tests/app-services').rglob('*.mjs'):
+        for test_file in (destination / 'tests/app-services').rglob('*'):
+            if not test_file.is_file() or test_file.suffix not in {'.mjs', '.ts'}:
+                continue
             test_file.write_text(test_file.read_text()
                 .replace('../../../../base44/', '../../base44/')
+                .replace('../../base44-prepared/deleteAccount/', '../../base44/functions/deleteAccountPublic/')
                 .replace('base44/functions/deleteAccount/', 'base44/functions/deleteAccountPublic/')
                 .replace("new URL('../../../../',import.meta.url)", "new URL('../../',import.meta.url)")
                 .replace('base44/functions/generateWordPack/', 'verification/base44-word-generation/'))
@@ -245,7 +248,10 @@ acceptance or actual paid service availability.
             commands.append(['node','--experimental-transform-types','--test','--test-concurrency=1',
                              'tests/app-services/main-account-deletion.test.mjs',
                              'tests/app-services/deletion-archive.test.mjs',
-                             'tests/app-services/native-ai-relay.test.mjs'])
+                             'tests/app-services/native-ai-relay.test.mjs',
+                             'tests/app-services/native-ai-relay-diagnostics.test.mjs'])
+            commands.append(['node_modules/.bin/deno', 'test',
+                             'tests/app-services/public-apple-revocation-redirect_test.ts'])
         results=[]
         with (archive.parent/'overlay-verification.log').open('w') as log:
             for command in commands:

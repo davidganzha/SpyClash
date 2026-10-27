@@ -1,7 +1,7 @@
 # Main Game Center server activation: 27 October 2026
 
 The signed client remains App Store 1.0.3 (200), source `da2e8584`. The backend
-checkpoint is 202; this does not replace or re-upload the signed client.
+checkpoint is 203; this does not replace or re-upload the signed client.
 
 ## Completed and read back
 
@@ -20,7 +20,16 @@ checkpoint is 202; this does not replace or re-upload the signed client.
   unrelated editor drafts remain in place.
 - The new deletion route serves the prepared handler. A valid read-only signed
   archive probe matched the one bound historical Apple credential exactly.
-  Coverage/readiness is still being reconciled; flags remain off until it passes.
+  All 75 current/archive user identities were probed successfully. Twenty-five
+  of 29 Apple rows are explained; four pending encrypted credential records have
+  no immutable owner, alias or Apple-subject continuity. Expired binding tickets
+  do not prove revocation. Independent review confirmed this blocker. The legacy
+  full-deletion and Base44 archive-readiness flags remain false. This is a
+  conservative global readiness gate, not evidence that all ordinary accounts
+  own those four rows. The current per-request proof establishes authority over
+  selected identifiers, but cannot certify that an unrecorded historical alias
+  has no additional credential. No independently certified complete subset has
+  been established, so enabling the global gate would overstate completeness.
 - Approved maintenance job runs every minute, with public anon gateway token
   plus private worker header. Wrong header returns 401; empty work returns 200.
   Two scheduled HTTP200 responses were confirmed after access-boundary review.
@@ -39,26 +48,75 @@ checkpoint is 202; this does not replace or re-upload the signed client.
 
 ## Verification and artifacts
 
-The final combined local source package passed 99 checks (31+11+15+42), zero
-failures. Two unshipped engine cases remain intentionally filtered. The route
+The final checkpoint-203 combined source package passed 116 checks
+(31+11+15+53+6), zero failures. Two unshipped engine cases remain intentionally
+filtered. The route
 change passed 25 focused database/auth/archive checks and independent review;
 maintenance guards passed seven local PostgreSQL checks and independent review.
 
 - Scoped alias archive SHA256:
   `7d503d69630416058c15a92b4c8dcdf32dc89a4af9b36fe0cc6179fde01574df`.
 - Combined reproducible server archive SHA256:
-  `acb8f7a80626c20d093b13ba7251ab91abd73bdc60b4980f277c59c9e0d7fdbf`.
+  `a74ca62ca2553e6184d26151d96769999facf54ed5f35970b2b6197ca177daf8`.
 - Published site-only archive SHA256:
   `17b92ffccf9d8237e4f8e4b5818285c537add2a864e7f9a4da0121c32d35e74c`.
 
 Local sanitized receipts are under `.local/public-server201/activation`,
-`.local/public-server202-alias`, `.local/public-server202-combined`, and
+`.local/public-server202-alias`, `.local/public-server203-final`,
+`.local/public-server203-relay`, `.local/public-server203-deletion-redirect`, and
 `.local/privacy201-isolated-site`. Restricted credential/identity files beside
 them are ignored, must not be printed and are not release artifacts.
 
-## Remaining acceptance
+## Runtime callback correction in checkpoint 203
 
-Final historical coverage and feature activation are pending. No real iPhone
+The first signed Base44 relay probe stopped at `claim_transport` without an HTTP
+response or a corresponding Supabase callback. The Cloudflare Workers runtime
+does not support `redirect: "error"`; it rejects that request option before
+sending. The existing relay now uses `manual`, with its existing non-2xx guard
+rejecting every redirect. It neither follows Location nor retries paid work.
+Diagnostics contain only fixed stage names and an optional numeric HTTP status.
+See the [official Workers request documentation](https://developers.cloudflare.com/workers/runtime-apis/request/).
+
+After the scoped function deployment, one signed missing-account probe at
+14:54:08–14:54:12 UTC reached the fixed Supabase claim route. Supabase logged HTTP
+403 on app-services version 15, request `01a17dda-b95d-7783-934d-e0693d6582c4`.
+This is the expected rejection for the deliberately absent actor: the outer
+Base44 result remains 503. Before/after account, assertion, generation-request
+and provider-call counts remained zero. This proves the live authenticated
+callback channel and its refusal boundary, not paid generation or device login.
+All six deployed relay source files were read back exactly. Eleven focused
+diagnostic/redirect checks and Deno type checking passed.
+
+The same unsupported option was present in the prepared Apple revocation
+module. Only that module was updated in `deleteAccountPublic`; all 15 deployed
+source files match the reviewed payload. Manual redirects preserve the existing
+unconfirmed/manual-revocation behavior, without forwarding the refresh token
+or client secret. Six local tests cover HTTP200 and 301/302/303/307/308; the
+original option fails the runtime-compatible negative control. Live read-only
+checks return malformed400, unsigned403 and capabilities503, confirming the
+readiness gate is still closed. No real Apple token was refreshed or revoked.
+
+## Activation and remaining acceptance
+
+Five native Game Center/IAP/AI flags are now true; 24 configuration digests match
+including preserved legacy values and the false legacy-deletion flag. Native
+Game Center account deletion uses its independent ownership path. The scheduled
+maintenance runner remains active; ordinary full deletion in client 200 is not
+ready for release while the four historical Apple records remain unexplained.
+They were not deleted, revoked or reassigned.
+
+The remaining historical evidence gap is the provenance of all Apple credential
+writers/key generations and any administrative/provider identity reconciliation,
+or an exhaustive per-account alias/credential journal. Ordinary `auth.updateMe`
+cannot change email, so routine email editing is not an established explanation
+for those four rows. Repeating the same 75-identity inventory cannot resolve the
+gap. A future per-account readiness gate would need a complete ownership
+certificate before irreversible provider deletion; the current code has no such
+certificate. Do not infer ownership or purge the four records from ticket expiry.
+
+Current runtime versions are app-services 15, full-game-core 11 and
+game-center-session 3. Configuration changes increment runtime versions without
+changing the verified source hashes. No real iPhone
 Game Center login, sandbox purchase/restore, paid managed AI generation or real
 account deletion is claimed. Apple processed client 200 as VALID and attached it
 to 1.0.3; no App Review submission or public App Store release has occurred.
