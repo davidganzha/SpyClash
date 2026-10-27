@@ -1,5 +1,10 @@
 # Main Game Center server activation: 27 October 2026
 
+This is the checkpoint-203 historical snapshot. The later investigation and
+activation of ordinary full deletion are recorded in
+[checkpoint 204](PUBLIC-DELETION-ACTIVATION-204.md); its readiness decision
+supersedes the conservative global stop described below.
+
 The signed client remains App Store 1.0.3 (200), source `da2e8584`. The backend
 checkpoint is 203; this does not replace or re-upload the signed client.
 

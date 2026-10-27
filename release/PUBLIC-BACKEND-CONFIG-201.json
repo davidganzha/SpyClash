@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "native_features_active_legacy_full_deletion_blocked",
+  "status": "native_features_and_account_scoped_full_deletion_active",
   "verified_at": "2026-10-27",
   "targets": {
     "supabase_project_ref": "bbkfsgnordtdiblgdzkg",
@@ -11,7 +11,7 @@
     "app_apple_id": "6793534085",
     "client_version": "1.0.3",
     "client_build": "200",
-    "backend_checkpoint": "203"
+    "backend_checkpoint": "204"
   },
   "do_not_target": [
     "ovowoixuyabccgkxcexp",
@@ -359,8 +359,10 @@
     "native_game_center": true,
     "native_iap": true,
     "native_managed_ai": true,
-    "legacy_full_deletion": false,
-    "base44_archive_key_verified": false,
-    "unexplained_legacy_apple_rows": 4
+    "legacy_full_deletion": true,
+    "base44_archive_key_verified": true,
+    "unexplained_legacy_apple_rows": 4,
+    "unmatched_records_preserved_unassigned": true,
+    "readiness_basis": "positive immutable-owner historical selector match; unknown unrelated rows do not globally block account-scoped deletion"
   }
 }

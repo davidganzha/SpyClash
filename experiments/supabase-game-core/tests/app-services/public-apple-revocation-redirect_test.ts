@@ -2,9 +2,17 @@ import {
   type AppleSignInCredentialRecord,
   type AppleSignInCredentialStore,
   bindPendingAppleSignInCredentials,
+  deleteAppleSignInCredentialRecords,
   persistPendingAppleSignInCredential,
   revokeAppleSignInCredentials,
 } from "../../base44-prepared/deleteAccount/apple-sign-in-credential.ts";
+import {
+  completeDeletionReceipt,
+  deletionReceiptStatus,
+  markDeletionReceiptReady,
+  prepareDeletionReceipt,
+} from "../../base44-prepared/deleteAccount/deletion-receipt.ts";
+import { deleteUserRecord } from "../../base44-prepared/deleteAccount/user-deletion.ts";
 
 function assert(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
@@ -22,12 +30,14 @@ class MemoryStore implements AppleSignInCredentialStore {
     this.records.push(row);
     return { ...row };
   }
-  async updateMany(query: Record<string, unknown>, update: { $set: Record<string, unknown> }) {
+  async updateMany(query: Record<string, unknown>, update: Record<string, unknown>) {
+    assert(update.$set && typeof update.$set === "object", "test store requires a set update");
+    const changes = update.$set as Record<string, unknown>;
     let updated = 0;
     this.records = this.records.map((row) => {
       if (!Object.entries(query).every(([key, value]) => (row as Record<string, unknown>)[key] === value)) return row;
       updated += 1;
-      return { ...row, ...update.$set };
+      return { ...row, ...changes };
     });
     return { success: true, updated, has_more: false };
   }
@@ -82,3 +92,54 @@ for (const status of [200, 301, 302, 303, 307, 308]) {
       "terminal cleanup retained encrypted bearer material");
   });
 }
+
+Deno.test("public deletion removes owned and exact-selector tokens while preserving unrelated pending credentials", async () => {
+  const input = await fixture();
+  const matchingPending = await persistPendingAppleSignInCredential({ ...input,
+    subject: "fixture-second-subject", clientID: "com.spyclash.ios",
+    refreshToken: "private-matching-pending-token", randomTicket: () => "matching-ticket" });
+  const unrelatedPending = await persistPendingAppleSignInCredential({ ...input,
+    email: "unrelated@example.test", subject: "fixture-unrelated-subject", clientID: "com.spyclash.ios",
+    refreshToken: "private-unrelated-token", randomTicket: () => "unrelated-ticket",
+    now: () => new Date(Date.now() - 3_600_000) });
+  const unrelated = input.store.records.find((row) => row.id === unrelatedPending.recordIDs[0])!;
+  assert(unrelated.state === "pending" && !unrelated.user_id, "unrelated fixture must have no bound owner");
+  assert(Date.parse(String(unrelated.binding_ticket_expires_at)) < Date.now(), "fixture ticket must be expired");
+  const before = JSON.stringify(unrelated);
+  let revocations = 0;
+  const result = await revokeAppleSignInCredentials({ ...input, fetcher: async (_url, init) => {
+    const token = (init?.body as URLSearchParams).get("token");
+    assert(token !== "private-unrelated-token", "unrelated credential reached Apple");
+    revocations += 1;
+    return new Response(null, { status: 200 });
+  } });
+  assert(revocations === 2 && result.revoked === 2, "own bound and matching pending credentials must be revoked");
+  assert(result.recordIDs.includes(matchingPending.recordIDs[0]), "exact owned selector was not cleaned");
+  assert(!result.recordIDs.includes(unrelated.id!), "unrelated record entered deletion scope");
+  await deleteAppleSignInCredentialRecords(input.store, result.recordIDs);
+  assert(input.store.records.length === 1 && JSON.stringify(input.store.records[0]) === before,
+    "unrelated encrypted pending credential must remain byte-for-byte unchanged");
+});
+
+Deno.test("public deletion without an owned Apple token completes its receipt with manual revocation guidance", async () => {
+  const store = new MemoryStore(), lifecycleStore = new MemoryStore(), users = new MemoryStore(), receipts = new MemoryStore();
+  const userID = "fixture-missing-token-user", body = { request_id: crypto.randomUUID(), recovery_token: "23".repeat(32) };
+  await users.create({ id: userID, email: "missing-token@example.test" });
+  const receipt = await prepareDeletionReceipt(receipts, userID, body);
+  const result = await revokeAppleSignInCredentials({ store, lifecycleStore, userID,
+    email: "missing-token@example.test", pseudonymSecret: "p".repeat(32), encryptionSecret: "11".repeat(32),
+    createClientSecret: async () => { throw new Error("missing token must not request Apple credentials"); },
+    fetcher: async () => { throw new Error("missing token must not call Apple"); },
+  });
+  assert(result.manualRevocationRequired && result.recordIDs.length === 0, "missing token lost manual fallback");
+  await deleteAppleSignInCredentialRecords(store, result.recordIDs);
+  await markDeletionReceiptReady(receipts, receipt, result.manualRevocationRequired);
+  assert(!(await deletionReceiptStatus(receipts, users, body)).complete, "live user was prematurely reported deleted");
+  await deleteUserRecord(users, userID);
+  await completeDeletionReceipt(receipts, receipt, result.manualRevocationRequired);
+  const completed = await deletionReceiptStatus(receipts, users, body);
+  assert(completed.complete && completed.manual_apple_revocation_required,
+    "completed deletion must retain the existing client manual-revocation signal");
+  assert(users.records.length === 0 && store.records.length === 0, "missing-token account was not deleted");
+  assert(receipts.records[0].user_id === "", "completed receipt retained the account identifier");
+});

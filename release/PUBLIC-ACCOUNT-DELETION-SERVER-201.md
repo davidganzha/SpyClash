@@ -2,6 +2,11 @@
 
 The signed public client 1.0.3 (200), commit `da2e8584`, remains unchanged. This backend-only follow-up is prepared separately for checkpoint 201. Nothing in this document records a production deployment or successful real-account deletion.
 
+The historical global readiness stop was reassessed in
+[checkpoint 204](PUBLIC-DELETION-ACTIVATION-204.md). That document records the
+current account-scoped readiness criterion and activation; this file preserves
+the original protocol preparation.
+
 ## Confirmed gap and resulting behavior
 
 Live main Supabase was `app-services` v10 / `full-game-core` v7. Its `main_account_deletions` table was absent. Live Base44 `deleteAccount` had no receipt protocol. The internal Game Center overlay deliberately pins `APP_MAIN_ACCOUNT_DELETION_ENABLED=false`; it is unsuitable for the public client's enabled full-account deletion.
@@ -61,7 +66,7 @@ For each chosen immutable subject and its sorted unique lowercase archive aliase
 
 The timestamp is current Unix milliseconds, within five minutes. Sign UTF-8 `JSON.stringify(["spyclash-deletion-archive-v1", request_id, subject_hash, aliases, timestamp])` with the independent archive secret decoded from hex. Send JSON only to the fixed canonical origin, with redirects disabled; never put secret/capability data in a URL. The response contains `erasure_proof.apple_identity_keys` and `archive_alias_digest`, without credentials or raw aliases.
 
-A successful HTTP response is insufficient. At least one returned selector must exactly match the archived bound credential's `identity_key` for the same immutable subject. Where multiple historical selector versions or aliases exist, verify each relevant version; unexplained rows remain a blocker requiring ownership investigation, not deletion by email equality. For coverage, derive selectors for archived immutable User subjects and compare the returned key set with unbound archived keys, preserving foreign-bound credentials. Report matched/unmatched counts, never token material. If positive historical matching fails, leave both readiness/enabled flags off. Do not solve the mismatch by generating a replacement pseudonym key.
+A successful HTTP response is insufficient. At least one returned selector must exactly match the archived bound credential's `identity_key` for the same immutable subject. Where multiple historical selector versions or aliases are evidenced, verify each relevant version. Unmatched records remain untouched and must not be assigned or deleted by guessed email equality; their unknown ownership alone is not a global stop on other users' verified deletion requests. A concrete conflicting owner, reassigned alias or incompatible historical selector still blocks the affected request. For coverage, derive selectors for archived immutable User subjects and compare the returned key set with unbound archived keys, preserving foreign-bound credentials. Report matched/unmatched counts, never token material. If positive historical matching fails, leave both readiness/enabled flags off. Do not solve the mismatch by generating a replacement pseudonym key. See checkpoint 204 for the evidence supporting this clarification.
 
 ## Verification recorded locally
 
