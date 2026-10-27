@@ -146,5 +146,7 @@ Simulator evidence is under `.local/appstore200-review-current/simulator`, with
 is real classic-auth/onboarding verification against the main backend, not
 physical-device Game Center or StoreKit acceptance.
 
-App Review has not been submitted by this checkpoint. Final submission requires
-the exact version/build confirmation; publication remains manual after approval.
+At this checkpoint App Review had not yet been submitted. The user subsequently
+confirmed the exact version/build, and Apple accepted 1.0.3 (200) on 27 October
+2026. See [the submission record](APP-REVIEW-SUBMISSION-200.md). Publication
+remains manual after approval.
