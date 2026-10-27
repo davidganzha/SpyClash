@@ -5,6 +5,10 @@ import {signedArchiveErasureRequest,verifiedArchiveErasureProof} from './deletio
 import {nativeGameCenterAccount} from './native-game-center.ts';
 
 type Input = {actor: AppActor; body: Record<string, any>; config: LegacyConfig};
+// A separate immutable route avoids publishing unrelated Base44 editor drafts.
+// Only the already validated provider origin/app may select this protocol.
+const deletionEndpoint = (destination: {origin: string; appID: string}) =>
+  destination.origin+'/api/apps/'+destination.appID+'/functions/deleteAccountPublic';
 const evidenceSet = new WeakSet<object>();
 const pending = () => new AppServiceError('account_deletion_pending', 'Account deletion is not yet confirmed. Retry the same request; contact support if the original sign-in no longer works.', 503, true);
 const mismatch = () => new AppServiceError('legacy_owner_mismatch', 'The original account does not match this game account.', 409);
@@ -23,7 +27,7 @@ async function reconcileReceipt(db: any, config: LegacyConfig, prior: any, fetch
   const destination=canonicalBase44Configuration(config);
   const archiveRequest=await signedArchiveErasureRequest(db,config,prior.user_id,prior.legacy_user_id,prior.request_id);
   if(prior.source_origin!==destination.origin||prior.source_app_id!==destination.appID)throw mismatch();
-  const response=await fetcher(destination.origin+'/api/apps/'+destination.appID+'/functions/deleteAccount',{
+  const response=await fetcher(deletionEndpoint(destination),{
     method:'POST',headers:{'X-App-Id':destination.appID,Origin:destination.origin,'Content-Type':'application/json'},
     body:JSON.stringify({action:'deletion_status',request_id:prior.request_id,recovery_token:await recoveryToken(config,prior.user_id,prior.request_id),archive_erasure_request:archiveRequest}),
     credentials:'omit',redirect:'error',signal:AbortSignal.timeout(10_000),
@@ -68,7 +72,7 @@ export async function prepareMainAccountDeletion(input: Input, dependencies: {db
     catch { /* Retain the intent until exact provider proof becomes available. */ }
   }
   const destination=canonicalBase44Configuration(input.config);
-  const capabilityResponse=await fetcher(destination.origin+'/api/apps/'+destination.appID+'/functions/deleteAccount',{
+  const capabilityResponse=await fetcher(deletionEndpoint(destination),{
     method:'POST',headers:{'X-App-Id':destination.appID,Origin:destination.origin,'Content-Type':'application/json'},
     body:JSON.stringify({action:'deletion_capabilities'}),credentials:'omit',redirect:'error',signal:AbortSignal.timeout(10_000),
   });
@@ -110,7 +114,7 @@ export async function prepareMainAccountDeletion(input: Input, dependencies: {db
   const recovery = await recoveryToken(input.config,input.actor.id,requestID);
   try {
     const archiveRequest=await signedArchiveErasureRequest(db,input.config,input.actor.id,verified.identity.id,requestID);
-    const response = await fetcher(verified.origin+'/api/apps/'+verified.appID+'/functions/deleteAccount', {
+    const response = await fetcher(deletionEndpoint(verified), {
       method:'POST', headers:{Authorization:'Bearer '+verified.credential,'X-App-Id':verified.appID,Origin:verified.origin,'Content-Type':'application/json'},
       body:JSON.stringify({request_id:requestID,recovery_token:recovery,archive_erasure_request:archiveRequest}), redirect:'error', signal:AbortSignal.timeout(60_000),
     });

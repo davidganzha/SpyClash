@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "review_only_not_applied",
+  "status": "partially_applied_new_deletion_route_awaiting_approval",
   "verified_at": "2026-10-27",
   "targets": {
     "supabase_project_ref": "bbkfsgnordtdiblgdzkg",
@@ -11,7 +11,7 @@
     "app_apple_id": "6793534085",
     "client_version": "1.0.3",
     "client_build": "200",
-    "backend_checkpoint": "201"
+    "backend_checkpoint": "202"
   },
   "do_not_target": [
     "ovowoixuyabccgkxcexp",
@@ -35,8 +35,11 @@
     ],
     "base44_functions": [
       {
-        "name": "deleteAccount",
-        "source": "experiments/supabase-game-core/base44-prepared/deleteAccount"
+        "name": "deleteAccountPublic",
+        "source": "experiments/supabase-game-core/base44-prepared/deleteAccount",
+        "deployment_metadata_override": {
+          "name": "deleteAccountPublic"
+        }
       },
       {
         "name": "nativeGameCenterWordPack",
@@ -59,7 +62,8 @@
       "generateWordPack",
       "checkSubscription",
       "app-store-entitlement",
-      "stripe-entitlement-webhook"
+      "stripe-entitlement-webhook",
+      "deleteAccount"
     ],
     "preserve_other_behavior": [
       "live full-game-core engine",
@@ -253,7 +257,8 @@
       "maintenance_log_matches_last24h": 0,
       "external_scheduler_verified": false,
       "pg_cron_preloaded": true,
-      "pg_net_preloaded": true
+      "pg_net_preloaded": true,
+      "scope": "historical pre-activation baseline; not current installed state"
     },
     "proposed_setup_requires_approval": {
       "extensions": [
@@ -277,9 +282,11 @@
       "body": {},
       "timeout_milliseconds": 90000,
       "required_private_access": [
-        "Vault secrets unavailable to public/anon/authenticated",
-        "net.http_request_queue headers unavailable to public/anon/authenticated",
-        "cron job runs only fixed reviewed statement as postgres"
+        "Vault schema/table/column privileges unavailable to PUBLIC/anon/authenticated",
+        "net excluded from hosted Data API exposed schemas and API/GraphQL search paths; Accept-Profile net rejected with PGRST106",
+        "anon/authenticated/service_role remain NOLOGIN; every direct database LOGIN credential belongs to trusted infrastructure or administrators",
+        "No exposed RPC/view or reachable function provides net access or an arbitrary SQL bridge",
+        "cron job runs only the fixed reviewed statement as postgres"
       ],
       "do_not_create": [
         "new RPC",
@@ -287,9 +294,33 @@
         "additional replay nonce store",
         "new push enable flags"
       ],
-      "reviewed_sql_template": "release/PUBLIC-MAINTENANCE-201.sql"
+      "reviewed_sql_template": "release/PUBLIC-MAINTENANCE-201.sql",
+      "pg_net_platform_boundary": {
+        "owner": "supabase_admin",
+        "public_object_grants": "platform default; not revocable by hosted postgres and not a successful-install assertion",
+        "request_header_visibility": "all roles able to connect directly can read queued credentials; Vault only protects the stored source secret",
+        "unsupported_actions": [
+          "per-project net ACL changes",
+          "RLS on platform-owned net queue",
+          "supabase_admin escalation"
+        ],
+        "alternative_if_direct_role_trust_is_unacceptable": "external scheduler, separately reviewed and approved"
+      },
+      "external_preflight_required": [
+        "Read hosted API schema list via Management API or supabase config pull --dry-run; expect exactly public,graphql_public, writtenfalse",
+        "Verify net absent from API/GraphQL search paths and public anon Accept-Profile net rejected with PGRST106 without selecting queue contents",
+        "Review RPC/view reachable call graph in both exposed schemas and repeat after enabling GraphQL or changing schemas/search paths",
+        "Review all LOGIN roles and credential holders; SQL role names alone do not establish trust"
+      ],
+      "sql_guards_before_schedule": [
+        "anon/authenticated/service_role exist and rolcanlogin=false",
+        "Vault secrets/decrypted_secrets objects exist",
+        "Vault schema and relation PUBLIC ACLs absent; no anon/authenticated schema/table/column access",
+        "Both named Vault values exist exactly once; worker length>=32; public anon JWT role/ref match main project"
+      ]
     },
     "acceptance": [
+      "External API/RPC/direct-role preflight and SQL NOLOGIN/Vault guards pass; do not require impossible net ACL revocation",
       "No-header/wrong-worker-secret returns401",
       "Controlled no-work request returns200 with originalDeletion/deletion counters and configuredfalse push under preserved defaults",
       "At least two scheduled invocations HTTP200; inspect status_code/timed_out/error only, never requestheaders",

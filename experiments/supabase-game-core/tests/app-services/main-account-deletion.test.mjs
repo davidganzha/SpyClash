@@ -18,6 +18,7 @@ let db;
 let authConfiguration;
 const actors=[];
 const token='fixture-only-legacy-credential-not-for-network';
+const deletionURL='https://spyclash.com/api/apps/69a0e57fa939f578082f8091/functions/deleteAccountPublic';
 const config={SUPABASE_URL:'http://127.0.0.1:56321',APP_MAIN_ACCOUNT_DELETION_ENABLED:'true',APP_DELETION_RECEIPT_SECRET:'09'.repeat(32),APP_DELETION_ARCHIVE_SECRET:'12'.repeat(32)};
 before(async()=>{
   const result=spawnSync('node_modules/.bin/supabase',['status','-o','json'],{encoding:'utf8',env:{...process.env,DOCKER_HOST:process.env.DOCKER_HOST||`unix://${homedir()}/.colima/spyclash-supabase/docker.sock`}});
@@ -53,12 +54,13 @@ async function fixture(){
 function provider(input,remove=async()=>Response.json({success:true,manual_apple_revocation_required:true}),who={}){
   return async(url,options)=>{
     const body=options.body?JSON.parse(options.body):{};
+    if(!url.endsWith('/entities/User/me'))assert.equal(url,deletionURL);
     if(body.action==='deletion_capabilities')return Response.json({protocol:'spyclash-deletion-receipt-v2'});
     if(body.action==='deletion_status')return Response.json({complete:false,request_id:body.request_id,subject_hash:await (async()=>{const {digest}=await import('../../supabase/functions/app-services/integration-crypto.ts');return digest('spyclash-delete-user-v1:legacy-'+input.actor.id);})()});
     assert.equal(options.headers.Authorization,'Bearer '+token);
     assert.equal(options.redirect,'error');
     if(url.endsWith('/entities/User/me'))return Response.json({id:'legacy-'+input.actor.id,role:'user',...who});
-    assert.equal(url,'https://spyclash.com/api/apps/69a0e57fa939f578082f8091/functions/deleteAccount');
+    assert.equal(url,deletionURL);
     assert.equal(body.request_id,input.body.request_id);assert.match(body.recovery_token,/^[a-f0-9]{64}$/);
     const response=await remove();
     if(!response.ok)return response;
@@ -81,10 +83,11 @@ test('main deletion is explicitly disabled and validates identity before fencing
   assert.equal((await db`select * from app_private.main_account_deletions where user_id=${input.actor.id}`).length,0);
 });
 
-test('old Base44 capability preflight carries no user authentication and never falls back to deletion',async()=>{
+test('fixed public protocol preflight carries no user authentication and never falls back to old deletion',async()=>{
   const input=await fixture();let calls=0;
   await assert.rejects(prepareMainAccountDeletion(input,{db,fetch:async(url,options)=>{
     calls++;
+    assert.equal(url,deletionURL);
     assert.equal(options.headers.Authorization,undefined);assert.equal(options.headers.Cookie,undefined);
     assert.equal(options.credentials,'omit');assert.equal(options.redirect,'error');
     assert.deepEqual(JSON.parse(options.body),{action:'deletion_capabilities'});
@@ -93,6 +96,18 @@ test('old Base44 capability preflight carries no user authentication and never f
   assert.equal(calls,1);
   assert.equal((await db`select state from app_private.profiles where user_id=${input.actor.id}`)[0].state,'active');
   assert.equal((await db`select * from app_private.main_account_deletions where user_id=${input.actor.id}`).length,0);
+});
+
+test('deletion destination cannot be redirected by configuration or request fields',async()=>{
+  const input=await fixture();let calls=0;
+  const badConfig={...config,BASE44_STAGING_ORIGIN:'https://attacker.example',BASE44_STAGING_APP_ID:'69a0e57fa939f578082f8091',BASE44_STAGING_ORIGIN_ALLOWLIST:'["https://attacker.example"]',LEGACY_BRIDGE_ENABLED:'true',APP_ENVIRONMENT:'staging'};
+  await assert.rejects(prepareMainAccountDeletion({...input,config:badConfig},{db,fetch:async()=>{calls++;throw Error('must not contact redirected provider');}}),e=>e.code==='legacy_destination_forbidden');
+  assert.equal(calls,0);
+  const observed=[];
+  const remote=provider(input);
+  const evidence=await prepareMainAccountDeletion({...input,body:{...input.body,deletion_url:'https://attacker.example',function_name:'deleteAccount'},config:{...config,APP_DELETION_FUNCTION:'deleteAccount'}},{db,fetch:async(url,options)=>{observed.push({url,action:JSON.parse(options.body||'{}').action});return remote(url,options);}});
+  assert.deepEqual(observed.filter(row=>row.url.includes('/functions/')),[{url:deletionURL,action:'deletion_capabilities'},{url:deletionURL,action:undefined}]);
+  assert.equal((await executeApp(db,input.actor,input.body,input.config,evidence)).body.original_account_deleted,true);
 });
 
 test('confirmed Base44 response gates Supabase purge and survives lost native acknowledgement',async()=>{
@@ -178,6 +193,7 @@ function lostAckProvider(input){
   let writes=0;
   return {receipts,get writes(){return writes;},fetch:async(url,options)=>{
     assert.ok(url.startsWith('https://spyclash.com/api/apps/69a0e57fa939f578082f8091/'));
+    if(!url.endsWith('/entities/User/me'))assert.equal(url,deletionURL);
     const body=options.body?JSON.parse(options.body):{};
     if(body.action==='deletion_capabilities')return Response.json({protocol:'spyclash-deletion-receipt-v2'});
     if(body.action==='deletion_status'){

@@ -119,12 +119,15 @@ def prepare(args):
     base44_deployments = {}
     if args.public:
         for name, source in [
-            ('deleteAccount', CORE / 'base44-prepared/deleteAccount'),
+            ('deleteAccountPublic', CORE / 'base44-prepared/deleteAccount'),
             ('nativeGameCenterWordPack', ROOT / 'base44/functions/nativeGameCenterWordPack'),
         ]:
             target = destination / 'base44/functions' / name
             shutil.copytree(source, target)
             configuration = json.loads((target / 'function.jsonc').read_text())
+            if name == 'deleteAccountPublic' and configuration['name'] == 'deleteAccount':
+                configuration['name'] = name
+                write_json(target / 'function.jsonc', configuration)
             if configuration['name'] != name or not (target / configuration['entry']).is_file():
                 raise RuntimeError('Invalid prepared Base44 entry: ' + name)
             base44_deployments[name] = {
@@ -144,6 +147,7 @@ def prepare(args):
         for test_file in (destination / 'tests/app-services').rglob('*.mjs'):
             test_file.write_text(test_file.read_text()
                 .replace('../../../../base44/', '../../base44/')
+                .replace('base44/functions/deleteAccount/', 'base44/functions/deleteAccountPublic/')
                 .replace("new URL('../../../../',import.meta.url)", "new URL('../../',import.meta.url)")
                 .replace('base44/functions/generateWordPack/', 'verification/base44-word-generation/'))
     deployments, changes, patch = {}, {}, []
@@ -197,6 +201,8 @@ Base44 receipt v2 and account recovery preflight have passed.
 
 Deploy only the manifest's three Supabase functions, four additive migrations,
 AccountDeletionReceipt entity, and two listed Base44 functions after approval.
+The new deleteAccountPublic route requires the explicit checkpoint 202 approval;
+it retains the existing published deleteAccount function and unrelated drafts.
 Never deploy the source checkout or an ejected/copied Base44 app. The target is
 the original app 69a0e57fa939f578082f8091 and Supabase bbkfsgnordtdiblgdzkg.
 Runtime secrets and rollout flags are separate from the source archive.
