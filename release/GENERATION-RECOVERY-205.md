@@ -1,7 +1,8 @@
 # Native AI generation recovery — build checkpoint 205
 
-Status: prepared and locally verified; **not deployed**. This is a server-only
-change. The installed App Store client remains build 200. Build metadata is
+Status: **deployed on 2026-11-01 after explicit approval**; see
+`GENERATION-RECOVERY-205-ACTIVATION.md` for read-back and production evidence.
+This is a server-only change. The installed App Store client remains build 200. Build metadata is
 incremented to 205 in both project files; marketing version remains 1.0.3.
 
 ## Problem and behavior
