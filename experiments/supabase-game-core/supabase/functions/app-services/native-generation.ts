@@ -5,7 +5,7 @@ import {canonical,digest} from './integration-crypto.ts';
 import {createOpenAIWordPackProvider,assertNoKnownNamedThemeDrift,WORD_PACK_PROMPT_VERSION} from './word-generation/openai-word-pack-provider.ts';
 import {filterSafeCommunityStrings,requireSafeCommunityText} from './word-generation/content-safety.ts';
 import {normalizeGeneratedWordPack,wordPackComparisonKey} from './word-generation/generation-cache.ts';
-import {nativeRelayConfigured,createNativeAIRelayProvider,nativeRelayHasUnknownOutcome,settleNativeRelayFailure,unknownNativeAIOutcome} from './native-ai-relay.ts';
+import {nativeRelayConfigured,createNativeAIRelayProvider,nativeRelayHasUnknownOutcome,settleNativeRelayFailure,terminalNativeAIOutcome,failedNativeAIOutcome} from './native-ai-relay.ts';
 
 type Config=Record<string,string|undefined>;
 type Input={actor:AppActor,body:Record<string,any>,config:Config};
@@ -46,7 +46,8 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
     if(prior&&prior.request_hash!==hash)throw new AppServiceError('request_id_reused','This request belongs to another word pack.',409);
     if(prior?.state==='complete')return {result:prior.result};
     if(prior?.leased)throw busy();
-    if(prior?.error_code==='generation_quality_failed')throw new AppServiceError('generation_quality_failed','The generated words did not meet the quality check.',422,false);
+    if(prior?.error_code==='generation_quality_failed')throw failedNativeAIOutcome('quality_failed');
+    if(prior?.error_code==='generation_provider_failed')throw failedNativeAIOutcome('provider_failed');
     if(prior&&await nativeRelayHasUnknownOutcome(tx,input.actor.id,request.request_id)){
       await tx`update game_center_private.generation_requests set state='failed',charged=true,lease_id=null,lease_until=null,error_code='generation_outcome_unknown',updated_at=clock_timestamp()
         where user_id=${input.actor.id} and request_id=${request.request_id}`;
@@ -64,8 +65,12 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
         lease_id=excluded.lease_id,lease_until=excluded.lease_until,error_code=null,updated_at=clock_timestamp()`;
     return {unlimited,used:used+(keepsCharge?0:1)};
   });
-  if(reservation.unknown)throw unknownNativeAIOutcome();
+  if(reservation.unknown)throw terminalNativeAIOutcome();
   if(reservation.result)return evidenceFor(reservation.result);
+  let qualityRejected=false;
+  const validate=<T>(operation:()=>T):T=>{
+    try{return operation();}catch(error){qualityRejected=true;throw error;}
+  };
   try{
     const provider=input.config.APP_NATIVE_GAME_CENTER_AI_PROVIDER==='base44-managed'
       ?createNativeAIRelayProvider({db,config:input.config,actorID:input.actor.id,requestID:request.request_id,requestHash:hash,leaseID,fetch:dependencies.fetch})
@@ -80,10 +85,12 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
         if(!rows.length)throw busy();
       });
       const generated=await provider.generate({theme:request.theme,count,alreadyUsed:excluded});
-      const denied=new Set(excluded.map(wordPackComparisonKey));
-      const safe=filterSafeCommunityStrings(generated.words).filter(w=>!denied.has(wordPackComparisonKey(w)));
-      assertNoKnownNamedThemeDrift(request.theme,safe);
-      return {...generated,words:safe};
+      return validate(()=>{
+        const denied=new Set(excluded.map(wordPackComparisonKey));
+        const safe=filterSafeCommunityStrings(generated.words).filter(w=>!denied.has(wordPackComparisonKey(w)));
+        assertNoKnownNamedThemeDrift(request.theme,safe);
+        return {...generated,words:safe};
+      });
     };
     const first=await generate(request.count,request.exclude_words);
     let words=first.words,exhausted=first.exhausted&&words.length<request.count;
@@ -91,8 +98,11 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
       const second=await generate(Math.max(2,request.count-words.length),[...request.exclude_words,...words]);
       words=[...words,...second.words];exhausted=second.exhausted&&words.length<request.count;
     }
-    const normalized=normalizeGeneratedWordPack({category:request.theme,words:words.slice(0,request.count),exhausted});
-    if(normalized.words.length<request.count&&!normalized.exhausted)throw new Error('quality');
+    const normalized=validate(()=>{
+      const pack=normalizeGeneratedWordPack({category:request.theme,words:words.slice(0,request.count),exhausted});
+      if(pack.words.length<request.count&&!pack.exhausted)throw new Error('quality');
+      return pack;
+    });
     const result={name:request.theme,...normalized,ai_limit:reservation.unlimited?null:NATIVE_AI_DAILY_LIMIT,
       ai_generations_today:reservation.used,ai_remaining:reservation.unlimited?null:Math.max(0,NATIVE_AI_DAILY_LIMIT-reservation.used)};
     await db.begin(async(tx:any)=>{
@@ -104,9 +114,11 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
     return evidenceFor(result);
   }catch(error){
     if(input.config.APP_NATIVE_GAME_CENTER_AI_PROVIDER==='base44-managed'){
-      const outcome=await settleNativeRelayFailure(db,input.actor.id,request.request_id,leaseID).catch(()=> 'unknown');
+      const outcome=await settleNativeRelayFailure(db,input.actor.id,request.request_id,leaseID,qualityRejected).catch(()=> 'unknown');
       if(outcome==='unknown')throw new AppServiceError('generation_in_progress','This attempt is awaiting confirmation. Retry the same request later.',503,true);
-      if(outcome==='quality')throw new AppServiceError('generation_quality_failed','The generated words did not meet the quality check.',422,false);
+      if(outcome==='quality')throw failedNativeAIOutcome('quality_failed');
+      if(outcome==='failed')throw failedNativeAIOutcome('provider_failed');
+      if(outcome==='replayable')throw new AppServiceError('generation_persistence_retry','The generated words are saved. Retry this same request to recover them.',503,true);
       if(error instanceof AppServiceError&&error.code!=='generation_outcome_unknown')throw error;
       throw new AppServiceError('ai_provider_unavailable','Word generation could not start. Retry the same request.',503,true);
     }

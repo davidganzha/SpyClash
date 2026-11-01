@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createNativeWordPackRelay} from '../../../../base44/functions/nativeGameCenterWordPack/handler.ts';
-import {relayHeaders,relayDigest,relayCanonical,RELAY_PROMPT_VERSION,RELAY_BASE44_URL,RELAY_CALLBACK_URL} from '../../../../base44/functions/nativeGameCenterWordPack/relay-protocol.ts';
+import {relayHeaders,relayDigest,relayCanonical,readRelayRequest,RELAY_PROMPT_VERSION,RELAY_BASE44_URL,RELAY_CALLBACK_URL} from '../../../../base44/functions/nativeGameCenterWordPack/relay-protocol.ts';
 
 const secret='1'.repeat(64),gatewayToken='fixture.'+Buffer.from(JSON.stringify({role:'anon',ref:'bbkfsgnordtdiblgdzkg'})).toString('base64url')+'.fixture';
 async function signed(){
@@ -40,18 +40,140 @@ test('a failing diagnostic sink cannot change the external response',async()=>{
   assert.equal(response.status,503);assert.deepEqual(await response.json(),{ok:false,code:'relay_unavailable'});assert.equal(calls,0);
 });
 test('provider failure clears previous callback status and never retries the provider',async()=>{
-  const {request}=await signed();let calls=0,callbacks=0;const events=[];
+  const {ticket,request}=await signed();let calls=0,callbacks=0;const events=[],claimID=crypto.randomUUID();
   const response=await createNativeWordPackRelay({secret,gatewayToken,diagnose:event=>events.push(event),
     invoke:async()=>{calls++;throw Error('PRIVATE_PROVIDER_ERROR '+secret);},
-    fetch:async()=>{callbacks++;return Response.json({state:'started',claim_id:crypto.randomUUID()});}})(request);
-  assert.equal(response.status,503);assert.equal(calls,1);assert.equal(callbacks,1);assert.deepEqual(events,[{stage:'provider'}]);
+    fetch:async(url,options)=>{
+      callbacks++;
+      if(url.endsWith('/claim'))return Response.json({state:'started',claim_id:claimID});
+      assert.equal(url,RELAY_CALLBACK_URL+'/fail');
+      assert.deepEqual(await readRelayRequest(new Request(url,options),secret,'fail'),{ticket,claim_id:claimID,failure:'provider_failed'});
+      assert.equal(options.body.includes('PRIVATE_PROVIDER_ERROR'),false);
+      return Response.json({state:'failed'});
+    }})(request);
+  assert.equal(response.status,503);assert.equal(calls,1);assert.equal(callbacks,2);assert.deepEqual(events,[{stage:'provider'}]);
 });
 test('completion failure logs only its own status without retrying a completed provider call',async()=>{
-  const {request}=await signed();let calls=0,callbacks=0;const events=[];
-  const response=await createNativeWordPackRelay({secret,gatewayToken,diagnose:event=>events.push(event),
+  const {request}=await signed();let calls=0,callbacks=0;const events=[],delays=[];
+  const response=await createNativeWordPackRelay({secret,gatewayToken,diagnose:event=>events.push(event),delay:async ms=>{delays.push(ms);},
     invoke:async()=>{calls++;return {draft_words:['Apple','Pear'],accepted_indices:[0,1],replacement_words:[],accepted_replacement_indices:[],category:'Fruit',exhausted:false};},
     fetch:async()=>{callbacks++;return callbacks===1?Response.json({state:'started',claim_id:crypto.randomUUID()}):new Response('PRIVATE_COMPLETION_BODY',{status:500});}})(request);
-  assert.equal(response.status,503);assert.equal(calls,1);assert.equal(callbacks,2);assert.deepEqual(events,[{stage:'complete_response',callback_status:500}]);
+  assert.equal(response.status,503);assert.equal(calls,1);assert.equal(callbacks,4);assert.deepEqual(delays,[250,750]);assert.deepEqual(events,[{stage:'complete_response',callback_status:500}]);
+});
+
+const candidate=()=>({draft_words:['Apple','Pear'],accepted_indices:[0,1],replacement_words:[],accepted_replacement_indices:[],category:'Fruit',exhausted:false});
+for(const status of [408,425,429,500,502,503,504])test(`completion retries transient HTTP ${status} with fresh authentication and no repeated provider call`,async()=>{
+  const {request}=await signed();let calls=0,completions=0,now=Date.now();
+  const delays=[],bodies=[],timestamps=[],signatures=[],signals=[],events=[];
+  const response=await createNativeWordPackRelay({secret,gatewayToken,now:()=>now,diagnose:event=>events.push(event),
+    delay:async ms=>{delays.push(ms);now+=1_000;},invoke:async()=>{calls++;return candidate();},
+    fetch:async(url,options)=>{
+      assert.equal(options.redirect,'manual');
+      if(url.endsWith('/claim'))return Response.json({state:'started',claim_id:crypto.randomUUID()});
+      completions++;bodies.push(options.body);signals.push(options.signal);
+      timestamps.push(options.headers['X-SpyClash-Relay-Time']);signatures.push(options.headers['X-SpyClash-Relay-Signature']);
+      await readRelayRequest(new Request(url,options),secret,'complete',now);
+      return completions<3?new Response('PRIVATE_BODY',{status}):Response.json({state:'complete'});
+    }})(request);
+  assert.equal(response.status,200);assert.deepEqual(await response.json(),{ok:true});assert.equal(calls,1);assert.equal(completions,3);
+  assert.deepEqual(delays,[250,750]);assert.equal(new Set(bodies).size,1);assert.equal(new Set(timestamps).size,3);assert.equal(new Set(signatures).size,3);
+  assert.equal(new Set(signals).size,3);assert.ok(signals.every(signal=>signal instanceof AbortSignal));assert.deepEqual(events,[]);
+});
+for(const failure of ['transport','lost_ack','truncated_ack'])test(`completion recovers ${failure} without another paid provider invocation`,async()=>{
+  const {request}=await signed();let calls=0,completions=0;const delays=[],committed=[];
+  const response=await createNativeWordPackRelay({secret,gatewayToken,delay:async ms=>{delays.push(ms);},invoke:async()=>{calls++;return candidate();},
+    fetch:async(url,options)=>{
+      if(url.endsWith('/claim'))return Response.json({state:'started',claim_id:crypto.randomUUID()});
+      completions++;
+      if(failure!=='transport'||completions>1)committed.push(options.body);
+      if(completions===1){
+        if(failure==='truncated_ack')return new Response('{"state":');
+        throw new TypeError('PRIVATE_TIMEOUT '+secret);
+      }
+      return Response.json({state:'complete'});
+    }})(request);
+  assert.equal(response.status,200);assert.equal(calls,1);assert.equal(completions,2);assert.deepEqual(delays,[250]);assert.equal(new Set(committed).size,1);
+});
+test('repeated completion transport failures are bounded and retain sanitized diagnostics',async()=>{
+  const {request}=await signed();let calls=0,completions=0;const delays=[],events=[];
+  const response=await createNativeWordPackRelay({secret,gatewayToken,delay:async ms=>{delays.push(ms);},diagnose:event=>events.push(event),invoke:async()=>{calls++;return candidate();},
+    fetch:async url=>{
+      if(url.endsWith('/claim'))return Response.json({state:'started',claim_id:crypto.randomUUID()});
+      completions++;throw new TypeError('PRIVATE_TRANSPORT '+secret);
+    }})(request);
+  assert.equal(response.status,503);assert.equal(calls,1);assert.equal(completions,3);assert.deepEqual(delays,[250,750]);assert.deepEqual(events,[{stage:'complete_transport'}]);
+});
+for(const status of [400,401,403,404,409,410,422,501])test(`completion does not retry permanent HTTP ${status}`,async()=>{
+  const {request}=await signed();let calls=0,completions=0;const events=[];
+  const response=await createNativeWordPackRelay({secret,gatewayToken,delay:async()=>assert.fail('must not retry'),diagnose:event=>events.push(event),invoke:async()=>{calls++;return candidate();},
+    fetch:async url=>{
+      if(url.endsWith('/claim'))return Response.json({state:'started',claim_id:crypto.randomUUID()});
+      completions++;return new Response('PRIVATE_BODY',{status});
+    }})(request);
+  assert.equal(response.status,503);assert.equal(calls,1);assert.equal(completions,1);assert.deepEqual(events,[{stage:'complete_response',callback_status:status}]);
+});
+test('an invalid completion acknowledgement cannot report success',async()=>{
+  const {request}=await signed();let calls=0,completions=0;
+  const response=await createNativeWordPackRelay({secret,gatewayToken,delay:async()=>assert.fail('invalid semantic acknowledgement must not retry'),invoke:async()=>{calls++;return candidate();},
+    fetch:async url=>{
+      if(url.endsWith('/claim'))return Response.json({state:'started',claim_id:crypto.randomUUID()});
+      completions++;return Response.json({state:'started'});
+    }})(request);
+  assert.equal(response.status,503);assert.equal(calls,1);assert.equal(completions,1);
+});
+
+test('invalid provider output reports one authenticated terminal quality failure without raw output',async()=>{
+  const {ticket,request}=await signed();const claimID=crypto.randomUUID(),events=[],urls=[];let calls=0;
+  const response=await createNativeWordPackRelay({secret,gatewayToken,diagnose:event=>events.push(event),invoke:async()=>{calls++;return {private:'PRIVATE_PROVIDER_OUTPUT'};},
+    fetch:async(url,options)=>{
+      urls.push(url);
+      if(url.endsWith('/claim'))return Response.json({state:'started',claim_id:claimID});
+      assert.deepEqual(await readRelayRequest(new Request(url,options),secret,'fail'),{ticket,claim_id:claimID,failure:'quality_failed'});
+      assert.equal(options.body.includes('PRIVATE_PROVIDER_OUTPUT'),false);
+      return Response.json({state:'failed'});
+    }})(request);
+  assert.equal(response.status,503);assert.equal(calls,1);assert.deepEqual(urls,[RELAY_CALLBACK_URL+'/claim',RELAY_CALLBACK_URL+'/fail']);assert.deepEqual(events,[{stage:'validate_result'}]);
+});
+for(const failure of ['transport','503','lost_ack'])test(`terminal failure callback recovers ${failure} with fresh authentication and the same claim`,async()=>{
+  const {ticket,request}=await signed();const claimID=crypto.randomUUID(),events=[],delays=[],bodies=[],signatures=[],signals=[];
+  let now=Date.now(),calls=0,failures=0;
+  const response=await createNativeWordPackRelay({secret,gatewayToken,now:()=>now,delay:async ms=>{delays.push(ms);now+=1_000;},diagnose:event=>events.push(event),
+    invoke:async()=>{calls++;throw Error('PRIVATE_PROVIDER_ERROR');},
+    fetch:async(url,options)=>{
+      if(url.endsWith('/claim'))return Response.json({state:'started',claim_id:claimID});
+      assert.equal(url,RELAY_CALLBACK_URL+'/fail');failures++;
+      assert.deepEqual(await readRelayRequest(new Request(url,options),secret,'fail',now),{ticket,claim_id:claimID,failure:'provider_failed'});
+      bodies.push(options.body);signatures.push(options.headers['X-SpyClash-Relay-Signature']);signals.push(options.signal);
+      if(failures===1){if(failure==='503')return new Response('PRIVATE',{status:503});throw new TypeError('PRIVATE_LOST_ACK');}
+      return Response.json({state:'failed'});
+    }})(request);
+  assert.equal(response.status,503);assert.equal(calls,1);assert.equal(failures,2);assert.deepEqual(delays,[250]);assert.deepEqual(events,[{stage:'provider'}]);
+  assert.equal(new Set(bodies).size,1);assert.equal(new Set(signatures).size,2);assert.equal(new Set(signals).size,2);
+});
+for(const failure of ['transport','503'])test(`terminal failure callback ${failure} exhaustion remains bounded and sanitized`,async()=>{
+  const {request}=await signed();const events=[],delays=[];let calls=0,failures=0;
+  const response=await createNativeWordPackRelay({secret,gatewayToken,delay:async ms=>{delays.push(ms);},diagnose:event=>events.push(event),
+    invoke:async()=>{calls++;throw Error('PRIVATE_PROVIDER_ERROR');},
+    fetch:async url=>{
+      if(url.endsWith('/claim'))return Response.json({state:'started',claim_id:crypto.randomUUID()});
+      assert.equal(url,RELAY_CALLBACK_URL+'/fail');failures++;
+      if(failure==='503')return new Response('PRIVATE',{status:503});throw Error('PRIVATE');
+    }})(request);
+  assert.equal(response.status,503);assert.equal(calls,1);assert.equal(failures,3);assert.deepEqual(delays,[250,750]);
+  assert.deepEqual(events,[failure==='503'?{stage:'fail_response',callback_status:503}:{stage:'fail_transport'},{stage:'provider'}]);
+});
+test('terminal failure callbacks never retry redirects, auth failures or conflicts',async()=>{
+  for(const status of [301,302,303,307,308,400,401,403,409,422]){
+    const {request}=await signed();const urls=[],events=[];let calls=0;
+    const response=await createNativeWordPackRelay({secret,gatewayToken,delay:async()=>assert.fail('must not retry'),diagnose:event=>events.push(event),
+      invoke:async()=>{calls++;throw Error('PRIVATE');},fetch:async(url,options)=>{
+        urls.push(url);assert.equal(options.redirect,'manual');
+        if(url.endsWith('/claim'))return Response.json({state:'started',claim_id:crypto.randomUUID()});
+        return new Response('PRIVATE',{status,headers:{Location:'https://forbidden.example'}});
+      }})(request);
+    assert.equal(response.status,503);assert.equal(calls,1);assert.deepEqual(urls,[RELAY_CALLBACK_URL+'/claim',RELAY_CALLBACK_URL+'/fail']);
+    assert.deepEqual(events,[{stage:'fail_response',callback_status:status},{stage:'provider'}]);
+  }
 });
 for(const status of [301,302,303,307,308])test(`redirect ${status} cannot forward callback credentials or retry a provider call`,async()=>{
   for(const phase of ['claim','complete']){

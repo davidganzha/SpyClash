@@ -2,7 +2,7 @@
 export const RELAY_BASE44_URL = 'https://spyclash.com/api/apps/69a0e57fa939f578082f8091/functions/nativeGameCenterWordPack';
 export const RELAY_CALLBACK_URL = 'https://bbkfsgnordtdiblgdzkg.supabase.co/functions/v1/app-services/native-ai-relay';
 export const RELAY_PROMPT_VERSION = 'word-pack-2026-08-29-v5';
-export type RelayAction = 'invoke' | 'claim' | 'complete';
+export type RelayAction = 'invoke' | 'claim' | 'complete' | 'fail';
 export type RelayInput = {theme:string,count:number,alreadyUsed:string[]};
 export type RelayTicket = {actor_id:string,request_id:string,request_hash:string,lease_id:string,call_index:number,input_hash:string,input:RelayInput};
 export type RelayResult = {words:string[],category:string,exhausted:boolean};
