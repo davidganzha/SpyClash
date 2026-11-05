@@ -1958,10 +1958,10 @@ struct OnlineActiveGameScene: View {
         let selectedTarget = myVote?.votedForEmail ?? pendingVoteTargetEmail
         return VStack(spacing: 12) {
             Text(fanCopy.ballotTitle)
-                .font(SpyTheme.brandFont(size: 24))
+                .font(.system(size: 24, weight: .bold, design: .monospaced))
                 .foregroundStyle(.white)
             Text(fanCopy.ballotRequirement(playerVotes: room.exclusionVoteThreshold, total: room.activePlayers.count))
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .foregroundStyle(Color.white.opacity(0.64))
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)

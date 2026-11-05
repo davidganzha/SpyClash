@@ -28,8 +28,9 @@ struct FanModeSettingsPanel: View {
                 if expanded {
                     Toggle(copy.text("System sabotage", "Саботаж системы", "Sabotaje del sistema", "Саботаж системи"), isOn: Binding(
                         get: { settings.isEnabled }, set: { settings.isEnabled = $0; onChange() }
-                    )).tint(SpyTheme.amber).disabled(!editable).accessibilityIdentifier("fanMode.enabled")
-                    Text(copy.rules).font(.system(size: 12)).foregroundStyle(SpyTheme.muted).fixedSize(horizontal: false, vertical: true)
+                    )).font(.system(size: 14, weight: .bold, design: .monospaced))
+                        .tint(SpyTheme.amber).disabled(!editable).accessibilityIdentifier("fanMode.enabled")
+                    Text(copy.rules).font(.system(size: 12, design: .monospaced)).foregroundStyle(SpyTheme.muted).fixedSize(horizontal: false, vertical: true)
                     if settings.isEnabled {
                         chance(.allSpies)
                         chance(.noSpies)
@@ -39,7 +40,7 @@ struct FanModeSettingsPanel: View {
                             Text("\(settings.standardChance)%").monospacedDigit()
                         }.font(.system(size: 11, weight: .bold, design: .monospaced)).foregroundStyle(SpyTheme.green)
                         Text(copy.text("All spies: nobody knows the word. No spies: everyone knows it. A wrong accusation or timeout in these rounds is a system win.", "Все шпионы: никто не знает слово. Шпионов нет: слово знают все. Ошибочное обвинение или конец времени в таком раунде — победа системы.", "Todos espías: nadie conoce la palabra. Sin espías: todos la conocen. Una acusación errónea o agotar el tiempo da la victoria al sistema.", "Усі шпигуни: ніхто не знає слово. Шпигунів немає: слово знають усі. Хибне звинувачення або кінець часу — перемога системи."))
-                            .font(.system(size: 11)).foregroundStyle(SpyTheme.dim).fixedSize(horizontal: false, vertical: true)
+                            .font(.system(size: 11, design: .monospaced)).foregroundStyle(SpyTheme.dim).fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
@@ -154,7 +155,7 @@ struct FanVoteMenu: View {
                         .minimumScaleFactor(0.85)
                     if selected, let subtitle {
                         Text(subtitle)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
                             .lineLimit(1)
                     }
                 }
@@ -197,7 +198,7 @@ struct FanPlayerBallotSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text(copy.choosePlayer)
-                    .font(SpyTheme.brandFont(size: 26))
+                    .font(.system(size: 24, weight: .bold, design: .monospaced))
                     .foregroundStyle(.white)
                 Spacer(minLength: 8)
                 Button { dismiss() } label: {
@@ -212,7 +213,7 @@ struct FanPlayerBallotSheet: View {
                 .accessibilityIdentifier("fanMode.vote.players.close")
             }
             Text(copy.playerVoteHint)
-                .font(.system(size: 13))
+                .font(.system(size: 13, design: .monospaced))
                 .foregroundStyle(Color.white.opacity(0.64))
                 .fixedSize(horizontal: false, vertical: true)
             ScrollView(.vertical, showsIndicators: true) {
@@ -228,7 +229,7 @@ struct FanPlayerBallotSheet: View {
                                     .font(.system(size: 28))
                                     .frame(width: 42, height: 42)
                                 Text(player.name)
-                                    .font(SpyTheme.brandFont(size: 19))
+                                    .font(.system(size: 19, weight: .bold, design: .monospaced))
                                     .lineLimit(2)
                                 Spacer(minLength: 8)
                                 Image(systemName: "chevron.right")

@@ -1,0 +1,40 @@
+{
+  "build": 213,
+  "runtime": "iOS 26.5",
+  "passed": 4,
+  "failed": 0,
+  "rosters_per_device": [
+    3,
+    4,
+    8,
+    12
+  ],
+  "runs": [
+    {
+      "device": "iPhone SE 3rd generation",
+      "xcresult": "test_sim_2026-11-05T22-33-39-374Z_pid58230_72409134.xcresult"
+    },
+    {
+      "device": "iPhone 17",
+      "xcresult": "test_sim_2026-11-05T22-34-56-058Z_pid58230_d497d915.xcresult"
+    }
+  ],
+  "screenshots": [
+    {
+      "file": "iphone-se-fan-12-players-list-top.png",
+      "sha256": "6feb338e197f29a3212f3807f2f2baf93a76b9dc97349b01b0a858ac4b51e4f9"
+    },
+    {
+      "file": "iphone-se-fan-12-players-three-choices.png",
+      "sha256": "bd7fa7d3b9e141cbeae69254c0b227674875c30bc70ddf3424eaad92a62fda93"
+    },
+    {
+      "file": "iphone17-fan-12-players-list-top.png",
+      "sha256": "4e3805b4ddb81884f42c0862d9b040e09ce61ae4334c11ee1edc83d727d6698b"
+    },
+    {
+      "file": "iphone17-fan-12-players-three-choices.png",
+      "sha256": "2370aac75fbc5400bc7e06eeb0e0536d78ccb924a2895f19d29a11355a19350c"
+    }
+  ]
+}
