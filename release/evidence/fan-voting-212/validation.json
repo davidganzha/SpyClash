@@ -1,0 +1,78 @@
+{
+  "build": 212,
+  "marketing_version": "1.0.3",
+  "configuration": "SupabaseDebug",
+  "simulator_runtime": "iOS 26.5",
+  "devices": [
+    {
+      "model": "iPhone 17",
+      "points": [
+        402,
+        874
+      ],
+      "tests_passed": 2,
+      "tests_failed": 0,
+      "roster_counts": [
+        3,
+        4,
+        8,
+        12
+      ],
+      "result_bundle": "test_sim_2026-11-05T22-25-06-419Z_pid58230_5cf528d6.xcresult"
+    },
+    {
+      "model": "iPhone SE (3rd generation)",
+      "points": [
+        375,
+        667
+      ],
+      "tests_passed": 2,
+      "tests_failed": 0,
+      "roster_counts": [
+        3,
+        4,
+        8,
+        12
+      ],
+      "result_bundle": "test_sim_2026-11-05T22-26-26-902Z_pid58230_fd2cf253.xcresult"
+    }
+  ],
+  "screenshots": [
+    {
+      "file": "iphone17-fan-3-players-three-choices.png",
+      "sha256": "d34fadf4a183511a7d8e1b8a5b442f778cd46a93ce38db5446b7e5e605a0f243",
+      "bytes": 1283924
+    },
+    {
+      "file": "iphone17-fan-4-players-three-choices.png",
+      "sha256": "da6f5cdf4dfbfc0fa51f5e18666ea6200ef88ba9af7eee825daf9bff1add628a",
+      "bytes": 1287701
+    },
+    {
+      "file": "iphone17-fan-8-players-three-choices.png",
+      "sha256": "fa48552b2c4776955ff7e509a1be9bd31647d7790c7291f4a7f98a87ab29c844",
+      "bytes": 1277525
+    },
+    {
+      "file": "iphone17-fan-12-players-three-choices.png",
+      "sha256": "a51a4226c3207de3ebc2d8786575d465974cccceb58850efa9a2da17ab6dcd01",
+      "bytes": 1268892
+    },
+    {
+      "file": "iphone17-fan-12-players-list-top.png",
+      "sha256": "11f3663587b49b73e07856150feaa9b35d30c6fa2a995ad3e583bc6d6fe351cb",
+      "bytes": 182862
+    },
+    {
+      "file": "iphone-se-fan-12-players-three-choices.png",
+      "sha256": "a2c35b9e4933ece059d59af989a201f40a2b83138a6b7a70a04b92bc08a8653e",
+      "bytes": 461606
+    },
+    {
+      "file": "iphone-se-fan-12-players-list-last-candidate.png",
+      "sha256": "34fb8f12d20b8ab9d84ed51d22cc1e4aa248ce5216eac8d60bcf67b5674ae884",
+      "bytes": 86033
+    }
+  ],
+  "scope": "Local native Simulator UI previews; no client upload or new production mutation."
+}

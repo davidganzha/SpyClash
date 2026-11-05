@@ -1290,6 +1290,9 @@ enum OnlineVoteCandidateFeedback: Equatable {
 }
 
 struct OnlineActiveGameScene: View {
+    private struct PlayerBallot: Identifiable {
+        let id: String
+    }
     let room: GameRoom
     let language: AppLanguage
     let role: MissionRoleCardContent
@@ -1320,6 +1323,7 @@ struct OnlineActiveGameScene: View {
     let onLeave: () -> Void
 
     @State private var isConfirmingLeave = false
+    @State private var playerBallot: PlayerBallot?
     @State private var handledCountdownEventID: String?
     @State private var handledAssociationSpinEventID: String?
 
@@ -1386,6 +1390,7 @@ struct OnlineActiveGameScene: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { timeline in
             GeometryReader { proxy in
+                let compactFanVote = room.isVotingActive && room.fanSettings.isEnabled && proxy.size.height < 680
                 ZStack {
                     SpyCinematicBackdrop(intensity: room.isVotingActive ? 1.02 : 0.84)
 
@@ -1400,12 +1405,14 @@ struct OnlineActiveGameScene: View {
 
                         ZStack(alignment: .top) {
                             VStack(spacing: 0) {
-                                timerHeader(at: timeline.date)
+                                timerHeader(at: timeline.date, compact: compactFanVote)
                                     .padding(.horizontal, 22)
-                                    .padding(.top, 14)
+                                    .padding(.top, compactFanVote ? 8 : 14)
 
-                                operativeRail
-                                    .padding(.top, 4)
+                                if !compactFanVote {
+                                    operativeRail
+                                        .padding(.top, 4)
+                                }
 
                                 centralStage(
                                     maxCardWidth: min(205, max(164, (proxy.size.height - 480) * 0.76)),
@@ -1440,6 +1447,20 @@ struct OnlineActiveGameScene: View {
         .animation(.spring(response: 0.54, dampingFraction: 0.82), value: room.currentAskerEmail)
         .animation(.spring(response: 0.54, dampingFraction: 0.82), value: room.currentAnswererEmail)
         .animation(.spring(response: 0.44, dampingFraction: 0.84), value: room.questionPhase)
+        .sheet(item: $playerBallot) { ballot in
+            FanPlayerBallotSheet(language: language, candidates: votingCandidates, disabled: !canSubmitBallot) { email in
+                guard ballot.id == playerBallotScope, canSubmitBallot,
+                      votingCandidates.contains(where: { OnlineVoteIdentityPolicy.matches($0.email, email) }) else { return }
+                castVote(email)
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(Color.black)
+        }
+        .onChange(of: playerBallotScope) { _, _ in playerBallot = nil }
+        .onChange(of: canSubmitBallot) { _, canSubmit in
+            if !canSubmit { playerBallot = nil }
+        }
         .confirmationDialog(
             isHost ? copy.closeGame : copy.leaveGame,
             isPresented: $isConfirmingLeave,
@@ -1456,7 +1477,7 @@ struct OnlineActiveGameScene: View {
         }
     }
 
-    private func timerHeader(at date: Date) -> some View {
+    private func timerHeader(at date: Date, compact: Bool = false) -> some View {
         let timer = OnlineTimerSnapshot(room: room, now: date)
 
         return VStack(spacing: 6) {
@@ -1470,7 +1491,7 @@ struct OnlineActiveGameScene: View {
                 .foregroundStyle(timer.isExpired ? SpyTheme.red : SpyTheme.dim)
 
             Text(timer.formatted)
-                .font(SpyTheme.brandFont(size: 58))
+                .font(SpyTheme.brandFont(size: compact ? 38 : 58))
                 .tracking(1.4)
                 .monospacedDigit()
                 .foregroundStyle(timer.isCritical ? SpyTheme.red : .white)
@@ -1680,48 +1701,53 @@ struct OnlineActiveGameScene: View {
         .accessibilityIdentifier("onlineExperience.players")
     }
 
+    @ViewBuilder
     private func centralStage(maxCardWidth: CGFloat, maxVotingHeight: CGFloat) -> some View {
-        ZStack {
-            VStack(spacing: 12) {
-                if room.onlineRoundPhase != .results {
-                    VStack(spacing: 7) {
-                        Button(action: onToggleRole) {
-                            MissionRoleCard(
-                                role: role,
-                                category: room.category,
-                                theme: cardTheme,
-                                accent: cardAccent,
-                                language: language,
-                                isRevealed: isRoleRevealed,
-                                size: .compact
-                            )
-                            .frame(width: maxCardWidth)
-                        }
-                        .buttonStyle(SpyWebPressStyle(pressedScale: 0.98))
-                        .accessibilityIdentifier("onlineExperience.compactRoleCard")
+        if room.isVotingActive && room.fanSettings.isEnabled {
+            fanVotingStage
+        } else {
+            ZStack {
+                VStack(spacing: 12) {
+                    if room.onlineRoundPhase != .results {
+                        VStack(spacing: 7) {
+                            Button(action: onToggleRole) {
+                                MissionRoleCard(
+                                    role: role,
+                                    category: room.category,
+                                    theme: cardTheme,
+                                    accent: cardAccent,
+                                    language: language,
+                                    isRevealed: isRoleRevealed,
+                                    size: .compact
+                                )
+                                .frame(width: maxCardWidth)
+                            }
+                            .buttonStyle(SpyWebPressStyle(pressedScale: 0.98))
+                            .accessibilityIdentifier("onlineExperience.compactRoleCard")
 
-                        if isRoleRevealed, !revealedSpyTeammates.isEmpty {
-                            SpyRoleCardTeammateStrip(
-                                teammates: revealedSpyTeammates.map {
-                                    SpyRoleCardIdentity(id: $0.id, name: $0.name, avatar: $0.avatar)
-                                },
-                                language: language,
-                                compact: true
-                            )
-                            .transition(.opacity)
+                            if isRoleRevealed, !revealedSpyTeammates.isEmpty {
+                                SpyRoleCardTeammateStrip(
+                                    teammates: revealedSpyTeammates.map {
+                                        SpyRoleCardIdentity(id: $0.id, name: $0.name, avatar: $0.avatar)
+                                    },
+                                    language: language,
+                                    compact: true
+                                )
+                                .transition(.opacity)
+                            }
                         }
                     }
-                }
 
-                if !room.isVotingActive {
-                    roundStage(maxHeight: maxVotingHeight)
+                    if !room.isVotingActive {
+                        roundStage(maxHeight: maxVotingHeight)
+                    }
                 }
-            }
-            .opacity(room.isVotingActive ? 0 : 1)
+                .opacity(room.isVotingActive ? 0 : 1)
 
-            if room.isVotingActive {
-                votingStage(maxHeight: maxVotingHeight)
-                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                if room.isVotingActive {
+                    votingStage(maxHeight: maxVotingHeight)
+                        .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                }
             }
         }
     }
@@ -1927,6 +1953,38 @@ struct OnlineActiveGameScene: View {
         }
     }
 
+    private var fanVotingStage: some View {
+        let fanCopy = FanModeCopy(language: language)
+        let selectedTarget = myVote?.votedForEmail ?? pendingVoteTargetEmail
+        return VStack(spacing: 12) {
+            Text(fanCopy.ballotTitle)
+                .font(SpyTheme.brandFont(size: 24))
+                .foregroundStyle(.white)
+            Text(fanCopy.ballotRequirement(playerVotes: room.exclusionVoteThreshold, total: room.activePlayers.count))
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.64))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            FanVoteMenu(language: language, selectedTarget: selectedTarget,
+                        selectedPlayerName: player(email: selectedTarget)?.name,
+                        isPending: myVote == nil && pendingVoteTargetEmail != nil,
+                        disabled: !canSubmitBallot,
+                        onChoosePlayer: {
+                            guard canSubmitBallot else { return }
+                            HapticManager.shared.fire(.navigation)
+                            playerBallot = PlayerBallot(id: playerBallotScope)
+                        },
+                        onChooseConcept: { castVote($0.voteTarget) })
+            Text(voteSubmissionStatus)
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(myVote == nil ? SpyTheme.dim : SpyTheme.green)
+                .multilineTextAlignment(.center)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("onlineExperience.votingCandidates")
+    }
+
     private func votingStage(maxHeight: CGFloat) -> some View {
         VStack(spacing: 12) {
             Text(copy.chooseSuspect)
@@ -2013,14 +2071,6 @@ struct OnlineActiveGameScene: View {
                     .disabled(!canCastVote || myVote != nil || pendingVoteTargetEmail != nil)
                     .accessibilityIdentifier("onlineExperience.vote.\(accessibilityKey(candidate.email))")
                     .accessibilityValue(candidateAccessibilityValue(feedback))
-                    }
-                }
-                if room.fanSettings.isEnabled {
-                    FanConceptBallot(language: language,
-                        selected: (myVote?.votedForEmail ?? pendingVoteTargetEmail).flatMap(FanScenario.init(voteTarget:)),
-                        isPending: myVote == nil && pendingVoteTargetEmail != nil,
-                        disabled: !canCastVote || myVote != nil || pendingVoteTargetEmail != nil) {
-                        castVote($0.voteTarget)
                     }
                 }
                 }
@@ -2243,9 +2293,18 @@ struct OnlineActiveGameScene: View {
     }
 
     private func castVote(_ email: String) {
-        guard canCastVote, myVote == nil else { return }
+        guard canSubmitBallot else { return }
         HapticManager.shared.fire(.milestone)
         onCastVote(email)
+    }
+
+    private var canSubmitBallot: Bool {
+        canCastVote && room.isVotingActive && !room.isGamePaused &&
+            myVote == nil && pendingVoteTargetEmail == nil
+    }
+
+    private var playerBallotScope: String {
+        [room.id, room.matchID ?? "", room.detectiveVoteRoundID ?? "", currentUserEmail ?? ""].joined(separator: "|")
     }
 
     private func spyGuess() {

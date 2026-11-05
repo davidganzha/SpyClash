@@ -112,6 +112,19 @@ struct FanModeCopy {
              "Система може підмінити ролі. Звинуватьте гравця або одностайно оберіть версію. Правильна версія — перемога всіх, хибна — системи. Без згоди раунд триває. Вгадування слова й розкриття союзників вимкнено.")
     }
     var unanimity: String { text("CONCEPTS REQUIRE EVERY VOTE", "ДЛЯ ВЕРСИИ НУЖНЫ ВСЕ ГОЛОСА", "LOS CONCEPTOS REQUIEREN UNANIMIDAD", "ДЛЯ ВЕРСІЇ ПОТРІБНІ ВСІ ГОЛОСИ") }
+    var ballotTitle: String { text("Choose your vote", "Выберите вариант", "Elige tu voto", "Оберіть варіант") }
+    var voteForPlayer: String { text("Vote for a player", "Голосовать за игрока", "Votar por un jugador", "Голосувати за гравця") }
+    var voteNoSpies: String { text("No spies", "Шпионов нет", "No hay espías", "Шпигунів немає") }
+    var voteAllSpies: String { text("Everyone is a spy", "Все шпионы", "Todos son espías", "Усі шпигуни") }
+    var choosePlayer: String { text("Choose a player", "Выберите игрока", "Elige un jugador", "Оберіть гравця") }
+    var playerVoteHint: String { text("Tap a player to send your vote. You cannot change it afterwards.", "Нажмите на игрока, чтобы отправить голос. После этого изменить его нельзя.", "Toca a un jugador para enviar tu voto. Después no podrás cambiarlo.", "Натисніть на гравця, щоб надіслати голос. Після цього змінити його не можна.") }
+    var close: String { text("Close", "Закрыть", "Cerrar", "Закрити") }
+    func ballotRequirement(playerVotes: Int, total: Int) -> String {
+        text("Player: \(playerVotes) of \(total) votes. Other answers: everyone.",
+             "За игрока: \(playerVotes) из \(total) голосов. За версию — все.",
+             "Jugador: \(playerVotes) de \(total) votos. Otras respuestas: todos.",
+             "За гравця: \(playerVotes) з \(total) голосів. За версію — усі.")
+    }
     func result(won: Bool) -> String {
         won ? text("SYSTEM OUTSMARTED", "СИСТЕМА РАЗГАДАНА", "SISTEMA DESCIFRADO", "СИСТЕМУ РОЗГАДАНО")
             : text("SYSTEM WINS", "СИСТЕМА ПОБЕДИЛА", "GANA EL SISTEMA", "СИСТЕМА ПЕРЕМОГЛА")

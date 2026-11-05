@@ -249,3 +249,132 @@ final class LobbyFeedbackUITests: XCTestCase {
         add(attachment)
     }
 }
+
+/// Exercises the actual FAN menu and player sheet with synthetic rooms only.
+/// Run on both a compact iPhone and a current full-size iPhone.
+@MainActor
+final class FanVotingUITests: XCTestCase {
+    private var app: XCUIApplication!
+    private let choiceIDs = ["player", "no_spies", "all_spies"]
+    private let choiceLabels = ["Голосовать за игрока", "Шпионов нет", "Все шпионы"]
+    private let rowPrefix = "fanMode.vote.players."
+    private let selfEmail = "operative.preview@spyclash.local"
+
+    override func setUp() async throws {
+        continueAfterFailure = false
+        app = XCUIApplication(bundleIdentifier: "com.spyclash.ios")
+    }
+
+    override func tearDown() async throws {
+        app.terminate()
+    }
+
+    func testThreeChoicesStayVisibleAndPlayerListIsSeparateForEveryRosterSize() {
+        for playerCount in [3, 4, 8, 12] {
+            launchBallot(playerCount: playerCount)
+            assertMenuIsVisibleAndUnsubmitted()
+            attachScreenshot("fan-\(playerCount)-players-three-choices")
+
+            app.buttons["fanMode.vote.player"].tap()
+            let close = app.buttons["fanMode.vote.players.close"]
+            XCTAssertTrue(close.waitForExistence(timeout: 5))
+            let list = app.scrollViews["fanMode.vote.players.list"]
+            XCTAssertTrue(list.waitForExistence(timeout: 5))
+            attachScreenshot("fan-\(playerCount)-players-list-top")
+            let hierarchy = XCTAttachment(string: app.debugDescription)
+            hierarchy.name = "fan-\(playerCount)-players-list-hierarchy"
+            hierarchy.lifetime = .keepAlways
+            add(hierarchy)
+
+            let expectedEmails = candidateEmails(playerCount: playerCount)
+            let lastCandidate = app.buttons[rowPrefix + expectedEmails.last!]
+            var seenEmails = Set<String>()
+            for attempt in 0..<12 {
+                let rows = app.buttons.matching(NSPredicate(
+                    format: "identifier BEGINSWITH %@ AND identifier CONTAINS '@'", rowPrefix
+                )).allElementsBoundByIndex
+                seenEmails.formUnion(rows.map { String($0.identifier.dropFirst(rowPrefix.count)) })
+                XCTAssertFalse(app.buttons[rowPrefix + selfEmail].exists, "The current player must never be a candidate")
+                if lastCandidate.exists, lastCandidate.isHittable,
+                   // SwiftUI includes the half-point border in the accessibility frame.
+                   list.frame.insetBy(dx: -1, dy: -1).contains(lastCandidate.frame) {
+                    break
+                }
+                XCTAssertLessThan(attempt, 11, "The final candidate must be reachable in the player list")
+                list.swipeUp()
+            }
+            XCTAssertEqual(seenEmails, Set(expectedEmails), "The list must contain exactly the other active players")
+            XCTAssertEqual(seenEmails.count, playerCount - 1)
+            XCTAssertTrue(lastCandidate.isEnabled, "Opening the list must not submit a vote")
+            assertFullyVisible(lastCandidate)
+            attachScreenshot("fan-\(playerCount)-players-list-last-candidate")
+
+            close.tap()
+            let dismissed = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "exists == false"), object: close
+            )
+            XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 5), .completed)
+            assertMenuIsVisibleAndUnsubmitted()
+        }
+    }
+
+    func testRecordedPlayerAndConceptVotesLockAllThreeChoices() {
+        for selected in choiceIDs {
+            launchBallot(playerCount: 4, recordedVote: selected)
+            for id in choiceIDs {
+                let choice = app.buttons["fanMode.vote.\(id)"]
+                XCTAssertTrue(choice.exists)
+                XCTAssertFalse(choice.isEnabled, "A recorded vote must lock every answer")
+                XCTAssertEqual(choice.isSelected, id == selected)
+                assertFullyVisible(choice)
+            }
+            XCTAssertFalse(app.buttons["fanMode.vote.players.close"].exists)
+            attachScreenshot("fan-recorded-\(selected)-all-choices-locked")
+        }
+    }
+
+    private func launchBallot(playerCount: Int, recordedVote: String? = nil) {
+        app.terminate()
+        app.launchArguments = [
+            "--spyclash-ui-preview", "--spyclash-preview-tab=game",
+            "--spyclash-preview-room=voting", "--spyclash-preview-lang=ru",
+            "--spyclash-preview-player-count=\(playerCount)", "--spyclash-preview-fan-mode"
+        ]
+        if let recordedVote {
+            app.launchArguments.append("--spyclash-preview-fan-vote=\(recordedVote)")
+        }
+        app.launch()
+        XCTAssertTrue(app.buttons["fanMode.vote.player"].waitForExistence(timeout: 10))
+    }
+
+    private func assertMenuIsVisibleAndUnsubmitted() {
+        for (id, label) in zip(choiceIDs, choiceLabels) {
+            let choice = app.buttons["fanMode.vote.\(id)"]
+            XCTAssertEqual(choice.label, label)
+            XCTAssertTrue(choice.isEnabled)
+            XCTAssertFalse(choice.isSelected)
+            assertFullyVisible(choice)
+            XCTAssertTrue(choice.isHittable, "All three choices must be usable without scrolling")
+        }
+        XCTAssertFalse(app.buttons["fanMode.vote.players.close"].exists)
+    }
+
+    private func assertFullyVisible(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+        let frame = element.frame
+        XCTAssertGreaterThan(frame.width, 0, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(frame.height, 44, file: file, line: line)
+        XCTAssertTrue(app.frame.contains(frame), "\(element.identifier) is clipped outside the screen: \(frame)", file: file, line: line)
+    }
+
+    private func candidateEmails(playerCount: Int) -> [String] {
+        ["cipher@spyclash.local", "ghost@spyclash.local"]
+            + (playerCount > 3 ? (4...playerCount).map { "operative\($0)@spyclash.local" } : [])
+    }
+
+    private func attachScreenshot(_ name: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+}

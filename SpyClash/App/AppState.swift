@@ -6246,6 +6246,34 @@ final class AppState: NSObject {
             if arguments.contains("--spyclash-preview-guest"), previewRoom.playersList.count > 1 {
                 previewRoom.hostEmail = previewRoom.playersList[1].email
             }
+            if arguments.contains("--spyclash-preview-fan-mode") {
+                previewRoom.fanModeEnabled = true
+                previewRoom.fanAllSpiesChance = 15
+                previewRoom.fanNoSpiesChance = 15
+                previewRoom.lobbySpyCount = 1
+                previewRoom.spiesKnowEachOther = false
+                previewRoom.players = previewRoom.playersList.map { player in
+                    var player = player
+                    player.clientCapabilities = ["multi_spy_v1", "fan_mode_v1"]
+                    return player
+                }
+                if previewRoom.isVotingActive, let voterEmail = user?.email {
+                    let target: String?
+                    switch previewArgumentValue(prefix: "--spyclash-preview-fan-vote=", in: arguments) {
+                    case "all_spies":
+                        target = FanScenario.allSpies.voteTarget
+                    case "no_spies":
+                        target = FanScenario.noSpies.voteTarget
+                    case "player":
+                        target = previewRoom.activePlayers.first { $0.email != voterEmail }?.email
+                    default:
+                        target = nil
+                    }
+                    if let target {
+                        previewRoom.detectiveVotes = [VoteRecord(voterEmail: voterEmail, votedForEmail: target)]
+                    }
+                }
+            }
             activeRoom = previewRoom
         }
         if var previewRoom = activeRoom,
