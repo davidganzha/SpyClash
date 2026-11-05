@@ -944,6 +944,74 @@ struct SpyInput: View {
     }
 }
 
+private struct AIThemeIdea: Identifiable {
+    let id, systemImage, en, ru, es, uk: String
+
+    func title(in language: AppLanguage) -> String {
+        switch language {
+        case .en: en
+        case .ru: ru
+        case .es: es
+        case .uk: uk
+        }
+    }
+}
+
+private enum AIThemeIdeaCatalog {
+    static let all: [AIThemeIdea] = [
+        AIThemeIdea(id: "animals", systemImage: "pawprint.fill", en: "Animals", ru: "Животные", es: "Animales", uk: "Тварини"),
+        AIThemeIdea(id: "world-food", systemImage: "fork.knife", en: "World cuisine", ru: "Мировая кухня", es: "Cocina del mundo", uk: "Кухні світу"),
+        AIThemeIdea(id: "professions", systemImage: "briefcase.fill", en: "Professions", ru: "Профессии", es: "Profesiones", uk: "Професії"),
+        AIThemeIdea(id: "movie-characters", systemImage: "film.fill", en: "Movie characters", ru: "Персонажи фильмов", es: "Personajes de películas", uk: "Персонажі фільмів"),
+        AIThemeIdea(id: "video-games", systemImage: "gamecontroller.fill", en: "Video games", ru: "Видеоигры", es: "Videojuegos", uk: "Відеоігри"),
+        AIThemeIdea(id: "everyday-objects", systemImage: "house.fill", en: "Everyday objects", ru: "Бытовые предметы", es: "Objetos cotidianos", uk: "Побутові предмети"),
+        AIThemeIdea(id: "world-cities", systemImage: "building.2.fill", en: "World cities", ru: "Города мира", es: "Ciudades del mundo", uk: "Міста світу"),
+        AIThemeIdea(id: "world-countries", systemImage: "globe.europe.africa.fill", en: "Countries of the world", ru: "Страны мира", es: "Países del mundo", uk: "Країни світу"),
+        AIThemeIdea(id: "landmarks", systemImage: "mappin.and.ellipse", en: "Famous landmarks", ru: "Достопримечательности мира", es: "Lugares emblemáticos", uk: "Визначні пам’ятки світу"),
+        AIThemeIdea(id: "sports", systemImage: "sportscourt.fill", en: "Sports", ru: "Виды спорта", es: "Deportes", uk: "Види спорту"),
+        AIThemeIdea(id: "vehicles", systemImage: "car.fill", en: "Vehicles", ru: "Транспорт", es: "Medios de transporte", uk: "Транспортні засоби"),
+        AIThemeIdea(id: "clothes-accessories", systemImage: "tshirt.fill", en: "Clothes and accessories", ru: "Одежда и аксессуары", es: "Ropa y accesorios", uk: "Одяг та аксесуари"),
+        AIThemeIdea(id: "gadgets", systemImage: "desktopcomputer", en: "Gadgets and electronics", ru: "Гаджеты и электроника", es: "Aparatos electrónicos", uk: "Ґаджети та електроніка"),
+        AIThemeIdea(id: "tools", systemImage: "wrench.and.screwdriver.fill", en: "Tools", ru: "Рабочие инструменты", es: "Herramientas", uk: "Робочі інструменти"),
+        AIThemeIdea(id: "kitchenware", systemImage: "frying.pan.fill", en: "Kitchen utensils", ru: "Кухонные принадлежности", es: "Utensilios de cocina", uk: "Кухонне приладдя"),
+        AIThemeIdea(id: "fruit-vegetables", systemImage: "carrot.fill", en: "Fruit and vegetables", ru: "Фрукты и овощи", es: "Frutas y verduras", uk: "Фрукти та овочі"),
+        AIThemeIdea(id: "desserts", systemImage: "birthday.cake.fill", en: "Desserts and sweets", ru: "Десерты и сладости", es: "Postres y dulces", uk: "Десерти та солодощі"),
+        AIThemeIdea(id: "nonalcoholic-drinks", systemImage: "cup.and.saucer.fill", en: "Nonalcoholic drinks", ru: "Безалкогольные напитки", es: "Bebidas sin alcohol", uk: "Безалкогольні напої"),
+        AIThemeIdea(id: "plants", systemImage: "leaf.fill", en: "Plants", ru: "Растения", es: "Plantas", uk: "Рослини"),
+        AIThemeIdea(id: "marine-animals", systemImage: "fish.fill", en: "Marine animals", ru: "Морские животные", es: "Animales marinos", uk: "Морські тварини"),
+        AIThemeIdea(id: "dinosaurs", systemImage: "pawprint.fill", en: "Dinosaurs", ru: "Динозавры", es: "Dinosaurios", uk: "Динозаври"),
+        AIThemeIdea(id: "hobbies", systemImage: "paintpalette.fill", en: "Hobbies", ru: "Хобби и увлечения", es: "Aficiones", uk: "Хобі та захоплення"),
+        AIThemeIdea(id: "city-places", systemImage: "map.fill", en: "Places in a city", ru: "Места в городе", es: "Lugares de una ciudad", uk: "Місця в місті"),
+        AIThemeIdea(id: "travel-items", systemImage: "suitcase.fill", en: "Travel essentials", ru: "Вещи для путешествия", es: "Objetos para viajar", uk: "Речі для подорожі"),
+        AIThemeIdea(id: "school-supplies", systemImage: "pencil.and.ruler.fill", en: "School supplies", ru: "Школьные принадлежности", es: "Material escolar", uk: "Шкільне приладдя"),
+        AIThemeIdea(id: "musical-instruments", systemImage: "music.note", en: "Musical instruments", ru: "Музыкальные инструменты", es: "Instrumentos musicales", uk: "Музичні інструменти"),
+        AIThemeIdea(id: "inventions", systemImage: "lightbulb.fill", en: "Famous inventions", ru: "Известные изобретения", es: "Inventos famosos", uk: "Відомі винаходи"),
+        AIThemeIdea(id: "natural-wonders", systemImage: "mountain.2.fill", en: "Natural wonders", ru: "Чудеса природы", es: "Maravillas naturales", uk: "Дива природи"),
+        AIThemeIdea(id: "board-games", systemImage: "dice.fill", en: "Board games", ru: "Настольные игры", es: "Juegos de mesa", uk: "Настільні ігри"),
+        AIThemeIdea(id: "books", systemImage: "books.vertical.fill", en: "Famous books", ru: "Известные книги", es: "Libros famosos", uk: "Відомі книги"),
+        AIThemeIdea(id: "movies", systemImage: "film.fill", en: "Movies", ru: "Фильмы", es: "Películas", uk: "Фільми"),
+        AIThemeIdea(id: "tv-series", systemImage: "tv.fill", en: "TV series", ru: "Сериалы", es: "Series de televisión", uk: "Серіали"),
+        AIThemeIdea(id: "cartoon-characters", systemImage: "face.smiling.fill", en: "Cartoon characters", ru: "Персонажи мультфильмов", es: "Personajes de dibujos animados", uk: "Персонажі мультфільмів"),
+        AIThemeIdea(id: "fairy-tale-characters", systemImage: "book.fill", en: "Fairy-tale characters", ru: "Сказочные персонажи", es: "Personajes de cuentos", uk: "Казкові персонажі"),
+        AIThemeIdea(id: "mythical-creatures", systemImage: "sparkles", en: "Mythical creatures", ru: "Мифические существа", es: "Criaturas mitológicas", uk: "Міфічні істоти"),
+        AIThemeIdea(id: "superheroes", systemImage: "shield.fill", en: "Superheroes", ru: "Супергерои", es: "Superhéroes", uk: "Супергерої"),
+        AIThemeIdea(id: "harry-potter-characters", systemImage: "wand.and.stars", en: "Harry Potter characters", ru: "Персонажи Гарри Поттера", es: "Personajes de Harry Potter", uk: "Персонажі Гаррі Поттера"),
+        AIThemeIdea(id: "star-wars-characters", systemImage: "star.fill", en: "Star Wars characters", ru: "Персонажи Звёздных войн", es: "Personajes de Star Wars", uk: "Персонажі Зоряних війн"),
+        AIThemeIdea(id: "disney-characters", systemImage: "sparkles", en: "Disney characters", ru: "Персонажи Disney", es: "Personajes de Disney", uk: "Персонажі Disney"),
+        AIThemeIdea(id: "marvel-characters", systemImage: "shield.fill", en: "Marvel characters", ru: "Персонажи Marvel", es: "Personajes de Marvel", uk: "Персонажі Marvel"),
+        AIThemeIdea(id: "dc-characters", systemImage: "bolt.fill", en: "DC characters", ru: "Персонажи DC", es: "Personajes de DC", uk: "Персонажі DC"),
+        AIThemeIdea(id: "pokemon-species", systemImage: "bolt.circle.fill", en: "Pokémon species", ru: "Виды покемонов", es: "Especies de Pokémon", uk: "Види покемонів"),
+        AIThemeIdea(id: "minecraft-items", systemImage: "cube.fill", en: "Minecraft blocks and items", ru: "Блоки и предметы Minecraft", es: "Bloques y objetos de Minecraft", uk: "Блоки та предмети Minecraft"),
+        AIThemeIdea(id: "anime-characters", systemImage: "sparkles", en: "Anime characters", ru: "Персонажи аниме", es: "Personajes de anime", uk: "Персонажі аніме"),
+        AIThemeIdea(id: "game-characters", systemImage: "gamecontroller.fill", en: "Video game characters", ru: "Персонажи видеоигр", es: "Personajes de videojuegos", uk: "Персонажі відеоігор"),
+        AIThemeIdea(id: "singers-bands", systemImage: "mic.fill", en: "Singers and bands", ru: "Певцы и группы", es: "Cantantes y bandas", uk: "Співаки та гурти"),
+        AIThemeIdea(id: "actors", systemImage: "theatermasks.fill", en: "Actors and actresses", ru: "Актёры и актрисы", es: "Actores y actrices", uk: "Актори та акторки"),
+        AIThemeIdea(id: "footballers", systemImage: "soccerball", en: "Football players", ru: "Футболисты", es: "Futbolistas", uk: "Футболісти"),
+        AIThemeIdea(id: "athletes", systemImage: "medal.fill", en: "Famous athletes", ru: "Известные спортсмены", es: "Deportistas famosos", uk: "Відомі спортсмени"),
+        AIThemeIdea(id: "brands", systemImage: "tag.fill", en: "Famous brands", ru: "Известные бренды", es: "Marcas famosas", uk: "Відомі бренди")
+    ]
+}
+
 struct AIThemeSuggestionStrip: View {
     enum Layout {
         case horizontal
@@ -954,32 +1022,40 @@ struct AIThemeSuggestionStrip: View {
     let selectedTheme: String
     let accessibilityIdentifier: String
     var layout: Layout = .horizontal
-    var suggestionLimit: Int? = nil
+    var suggestionLimit: Int? = 6
     let onSelect: (String) -> Void
 
-    private struct Suggestion: Identifiable {
-        let id: String
-        let title: String
-        let systemImage: String
-    }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var showsAllIdeas = false
+    @State private var searchText = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
                 Text("// \(title)")
+                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .tracking(0.08)
                     .foregroundStyle(SpyTheme.dim)
+                    .accessibilityHidden(true)
 
                 Spacer(minLength: 8)
 
-                Text(actionHint)
-                    .foregroundStyle(SpyTheme.faint)
-                    .multilineTextAlignment(.trailing)
+                Button {
+                    searchText = ""
+                    showsAllIdeas = true
+                } label: {
+                    HStack(spacing: 5) {
+                        Text(allIdeasTitle)
+                        Image(systemName: "chevron.right")
+                            .accessibilityHidden(true)
+                    }
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(SpyTheme.red)
+                    .spyHitTarget()
+                }
+                .buttonStyle(SpyWebPressStyle())
+                .accessibilityIdentifier("\(accessibilityIdentifier).all")
             }
-            .font(.system(size: 8, weight: .black, design: .monospaced))
-            .tracking(0.08)
-            .lineLimit(1)
-            .minimumScaleFactor(0.66)
-            .accessibilityHidden(true)
 
             if layout == .grid {
                 LazyVGrid(
@@ -1001,147 +1077,194 @@ struct AIThemeSuggestionStrip: View {
                 }
                 .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             }
-
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(title)
         .accessibilityIdentifier(accessibilityIdentifier)
+        .sheet(isPresented: $showsAllIdeas) {
+            ideasSheet
+        }
     }
 
-    private func suggestionButton(_ suggestion: Suggestion) -> some View {
+    private var ideasSheet: some View {
+        ZStack {
+            SpyBackground()
+
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 12) {
+                    Text(catalogTitle)
+                        .font(.system(size: 22, weight: .black))
+                        .foregroundStyle(.white)
+                        .accessibilityAddTraits(.isHeader)
+
+                    Spacer(minLength: 8)
+
+                    Button {
+                        showsAllIdeas = false
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(SpyTheme.red)
+                            .frame(width: 44, height: 44)
+                            .background(SpyTheme.panel, in: CutCornerShape(cut: 8))
+                    }
+                    .buttonStyle(SpyWebPressStyle())
+                    .accessibilityLabel(localized(en: "Close theme ideas", ru: "Закрыть список тем", es: "Cerrar ideas de tema", uk: "Закрити список тем"))
+                    .accessibilityIdentifier("\(accessibilityIdentifier).close")
+                }
+
+                Text(selectionHint)
+                    .font(.subheadline)
+                    .foregroundStyle(SpyTheme.bodyText)
+
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(SpyTheme.muted)
+                        .accessibilityHidden(true)
+                    TextField(searchPlaceholder, text: $searchText)
+                        .font(.body)
+                        .foregroundStyle(.white)
+                        .tint(SpyTheme.red)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.search)
+                        .accessibilityLabel(searchPlaceholder)
+                        .accessibilityIdentifier("\(accessibilityIdentifier).search")
+                }
+                .padding(14)
+                .background(SpyTheme.panel, in: CutCornerShape(cut: 9))
+                .overlay(CutCornerShape(cut: 9).stroke(SpyTheme.strokeStrong, lineWidth: 1))
+
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(filteredSuggestions) { suggestion in
+                            suggestionButton(suggestion, expanded: true)
+                        }
+                        if filteredSuggestions.isEmpty {
+                            Text(noResultsTitle)
+                                .font(.body)
+                                .foregroundStyle(SpyTheme.bodyText)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 28)
+                        }
+                    }
+                    .padding(.bottom, 20)
+                }
+                .scrollDismissesKeyboard(.interactively)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 24)
+        }
+        .preferredColorScheme(.dark)
+        .presentationDragIndicator(.visible)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("\(accessibilityIdentifier).catalog")
+    }
+
+    private func suggestionButton(_ suggestion: AIThemeIdea, expanded: Bool = false) -> some View {
+        let suggestionTitle = suggestion.title(in: language)
         let isSelected = selectedTheme
             .trimmingCharacters(in: .whitespacesAndNewlines)
-            .localizedCaseInsensitiveCompare(suggestion.title) == .orderedSame
+            .localizedCaseInsensitiveCompare(suggestionTitle) == .orderedSame
+        let fillsWidth = expanded || layout == .grid
 
         return Button {
             HapticManager.shared.fire(.tabSelection)
-            withAnimation(.smooth(duration: 0.18)) {
-                onSelect(suggestion.title)
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.18)) {
+                onSelect(suggestionTitle)
             }
+            showsAllIdeas = false
         } label: {
             HStack(spacing: 7) {
                 Image(systemName: suggestion.systemImage)
-                    .font(.system(size: 11, weight: .black))
+                    .font(.system(size: expanded ? 16 : 11, weight: .black))
                     .foregroundStyle(isSelected ? SpyTheme.red : SpyTheme.dim)
+                    .frame(width: expanded ? 24 : nil)
                     .accessibilityHidden(true)
 
-                Text(suggestion.title.uppercased())
-                    .font(.system(size: 10, weight: .black, design: .monospaced))
-                    .tracking(0.04)
-                    .foregroundStyle(isSelected ? .white : SpyTheme.muted)
-                    .lineLimit(layout == .grid ? 2 : 1)
+                Text(expanded ? suggestionTitle : suggestionTitle.uppercased())
+                    .font(.system(size: expanded ? 15 : 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(isSelected ? .white : expanded ? SpyTheme.bodyText : SpyTheme.muted)
+                    .lineLimit(expanded ? nil : layout == .grid ? 2 : 1)
                     .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if expanded {
+                    Spacer(minLength: 8)
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .foregroundStyle(SpyTheme.red)
+                            .accessibilityHidden(true)
+                    }
+                }
             }
             .padding(.horizontal, 11)
-            .frame(maxWidth: layout == .grid ? .infinity : nil, minHeight: layout == .grid ? 52 : 40)
+            .padding(.vertical, expanded ? 12 : 0)
+            .frame(maxWidth: fillsWidth ? .infinity : nil, minHeight: fillsWidth ? 52 : 40, alignment: .leading)
             .background(
                 isSelected ? SpyTheme.red.opacity(0.10) : SpyTheme.control,
                 in: CutCornerShape(cut: 7)
             )
             .overlay(
                 CutCornerShape(cut: 7)
-                    .stroke(
-                        isSelected ? SpyTheme.red.opacity(0.62) : SpyTheme.strokeStrong,
-                        lineWidth: 1
-                    )
+                    .stroke(isSelected ? SpyTheme.red.opacity(0.62) : SpyTheme.strokeStrong, lineWidth: 1)
             )
             .contentShape(CutCornerShape(cut: 7))
         }
-        .buttonStyle(SpyWebPressStyle(pressedScale: 0.94))
+        .buttonStyle(SpyWebPressStyle(pressedScale: 0.97))
         .spyHitTarget()
-        .accessibilityLabel(suggestion.title)
+        .accessibilityLabel(suggestionTitle)
         .accessibilityHint(selectionHint)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .accessibilityIdentifier("\(accessibilityIdentifier).\(suggestion.id)")
+        .accessibilityIdentifier("\(accessibilityIdentifier)\(expanded ? ".catalog" : "").\(suggestion.id)")
     }
 
     private var title: String {
-        switch language {
-        case .ru: "ИДЕИ ДЛЯ ТЕМЫ"
-        case .es: "IDEAS DE TEMA"
-        case .en: "THEME IDEAS"
-        case .uk: "ІДЕЇ ДЛЯ ТЕМИ"
-        }
+        localized(en: "THEME IDEAS", ru: "ИДЕИ ДЛЯ ТЕМЫ", es: "IDEAS DE TEMA", uk: "ІДЕЇ ДЛЯ ТЕМИ")
     }
 
-    private var actionHint: String {
-        switch language {
-        case .ru: "НАЖМИ, ЧТОБЫ ВСТАВИТЬ"
-        case .es: "TOCA PARA USAR"
-        case .en: "TAP TO USE"
-        case .uk: "НАТИСНИ, ЩОБ ВИКОРИСТАТИ"
-        }
+    private var allIdeasTitle: String {
+        let count = AIThemeIdeaCatalog.all.count
+        return localized(en: "All \(count)", ru: "Все \(count)", es: "Ver \(count)", uk: "Усі \(count)")
+    }
+
+    private var catalogTitle: String {
+        let count = AIThemeIdeaCatalog.all.count
+        return localized(en: "\(count) theme ideas", ru: "\(count) идей для игры", es: "\(count) ideas de tema", uk: "\(count) ідей для гри")
     }
 
     private var selectionHint: String {
+        localized(en: "Tap a theme to fill in the field", ru: "Нажми на тему, чтобы подставить её в поле", es: "Toca un tema para rellenar el campo", uk: "Натисни на тему, щоб підставити її в поле")
+    }
+
+    private var searchPlaceholder: String {
+        localized(en: "Find a theme", ru: "Найти тему", es: "Buscar un tema", uk: "Знайти тему")
+    }
+
+    private var noResultsTitle: String {
+        localized(en: "No themes found. Try another word.", ru: "Темы не найдены. Попробуй другое слово.", es: "No se encontraron temas. Prueba otra palabra.", uk: "Теми не знайдено. Спробуй інше слово.")
+    }
+
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
         switch language {
-        case .ru: "Подставить эту тему в поле"
-        case .es: "Usar este tema en el campo"
-        case .en: "Use this theme in the field"
-        case .uk: "Використати цю тему"
+        case .en: en
+        case .ru: ru
+        case .es: es
+        case .uk: uk
         }
     }
 
-    private var suggestions: [Suggestion] {
-        switch language {
-        case .ru:
-            [
-                Suggestion(id: "hero-archetypes", title: "Архетипы героев", systemImage: "shield.fill"),
-                Suggestion(id: "magic-academy", title: "Академия магии", systemImage: "sparkles"),
-                Suggestion(id: "europe", title: "Страны Европы", systemImage: "globe.europe.africa.fill"),
-                Suggestion(id: "musical-instruments", title: "Музыкальные инструменты", systemImage: "music.note"),
-                Suggestion(id: "football-terms", title: "Футбольные термины", systemImage: "soccerball"),
-                Suggestion(id: "natural-wonders", title: "Чудеса природы", systemImage: "leaf.fill"),
-                Suggestion(id: "world-food", title: "Мировая кухня", systemImage: "fork.knife"),
-                Suggestion(id: "game-genres", title: "Жанры игр", systemImage: "gamecontroller.fill"),
-                Suggestion(id: "mythology", title: "Греческая мифология", systemImage: "building.columns.fill"),
-                Suggestion(id: "everyday-objects", title: "Бытовые предметы", systemImage: "house.fill")
-            ]
-        case .uk:
-            [
-                Suggestion(id: "hero-archetypes", title: "Архетипи героїв", systemImage: "shield.fill"),
-                Suggestion(id: "magic-academy", title: "Академія магії", systemImage: "sparkles"),
-                Suggestion(id: "europe", title: "Країни Європи", systemImage: "globe.europe.africa.fill"),
-                Suggestion(id: "musical-instruments", title: "Музичні інструменти", systemImage: "music.note"),
-                Suggestion(id: "football-terms", title: "Футбольні терміни", systemImage: "soccerball"),
-                Suggestion(id: "natural-wonders", title: "Дива природи", systemImage: "leaf.fill"),
-                Suggestion(id: "world-food", title: "Кухні світу", systemImage: "fork.knife"),
-                Suggestion(id: "game-genres", title: "Жанри ігор", systemImage: "gamecontroller.fill"),
-                Suggestion(id: "mythology", title: "Грецька міфологія", systemImage: "building.columns.fill"),
-                Suggestion(id: "everyday-objects", title: "Побутові предмети", systemImage: "house.fill")
-            ]
-        case .es:
-            [
-                Suggestion(id: "hero-archetypes", title: "Arquetipos heroicos", systemImage: "shield.fill"),
-                Suggestion(id: "magic-academy", title: "Academia de magia", systemImage: "sparkles"),
-                Suggestion(id: "europe", title: "Países de Europa", systemImage: "globe.europe.africa.fill"),
-                Suggestion(id: "musical-instruments", title: "Instrumentos musicales", systemImage: "music.note"),
-                Suggestion(id: "football-terms", title: "Términos de fútbol", systemImage: "soccerball"),
-                Suggestion(id: "natural-wonders", title: "Maravillas naturales", systemImage: "leaf.fill"),
-                Suggestion(id: "world-food", title: "Cocina del mundo", systemImage: "fork.knife"),
-                Suggestion(id: "game-genres", title: "Géneros de juegos", systemImage: "gamecontroller.fill"),
-                Suggestion(id: "mythology", title: "Mitología griega", systemImage: "building.columns.fill"),
-                Suggestion(id: "everyday-objects", title: "Objetos cotidianos", systemImage: "house.fill")
-            ]
-        case .en:
-            [
-                Suggestion(id: "hero-archetypes", title: "Hero archetypes", systemImage: "shield.fill"),
-                Suggestion(id: "magic-academy", title: "Magic academy", systemImage: "sparkles"),
-                Suggestion(id: "europe", title: "European countries", systemImage: "globe.europe.africa.fill"),
-                Suggestion(id: "musical-instruments", title: "Musical instruments", systemImage: "music.note"),
-                Suggestion(id: "football-terms", title: "Football terms", systemImage: "soccerball"),
-                Suggestion(id: "natural-wonders", title: "Natural wonders", systemImage: "leaf.fill"),
-                Suggestion(id: "world-food", title: "World cuisine", systemImage: "fork.knife"),
-                Suggestion(id: "game-genres", title: "Game genres", systemImage: "gamecontroller.fill"),
-                Suggestion(id: "mythology", title: "Greek mythology", systemImage: "building.columns.fill"),
-                Suggestion(id: "everyday-objects", title: "Everyday objects", systemImage: "house.fill")
-            ]
-        }
+    private var visibleSuggestions: [AIThemeIdea] {
+        guard let suggestionLimit else { return AIThemeIdeaCatalog.all }
+        return Array(AIThemeIdeaCatalog.all.prefix(max(0, suggestionLimit)))
     }
 
-    private var visibleSuggestions: [Suggestion] {
-        guard let suggestionLimit else { return suggestions }
-        return Array(suggestions.prefix(max(0, suggestionLimit)))
+    private var filteredSuggestions: [AIThemeIdea] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return AIThemeIdeaCatalog.all }
+        return AIThemeIdeaCatalog.all.filter {
+            $0.title(in: language).localizedStandardContains(query)
+        }
     }
 }
 
