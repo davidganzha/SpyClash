@@ -1,0 +1,74 @@
+{
+  "project": "bbkfsgnordtdiblgdzkg",
+  "functionVersion": 13,
+  "readOnlyVerification": true,
+  "rooms": [
+    {
+      "id": "02bb8775-58ac-4f6f-b16f-f7ee120e2bf6",
+      "closed": true,
+      "status": "ended",
+      "scenario": "standard",
+      "winner": "system",
+      "history_rows": 4,
+      "ranked_history_rows": 0,
+      "finished_events": 1
+    },
+    {
+      "id": "37e1c316-3b13-4196-84ab-683b316d0d7b",
+      "closed": true,
+      "status": "ended",
+      "scenario": "all_spies",
+      "winner": "",
+      "history_rows": 0,
+      "ranked_history_rows": 0,
+      "finished_events": 0
+    },
+    {
+      "id": "a15972ee-15b1-47a7-ac27-86f1ef0d57c3",
+      "closed": true,
+      "status": "ended",
+      "scenario": "all_spies",
+      "winner": "all",
+      "history_rows": 4,
+      "ranked_history_rows": 0,
+      "finished_events": 1
+    },
+    {
+      "id": "b5f177b3-88ec-42f1-a031-12d19e1771a1",
+      "closed": true,
+      "status": "ended",
+      "scenario": "no_spies",
+      "winner": "all",
+      "history_rows": 4,
+      "ranked_history_rows": 0,
+      "finished_events": 1
+    },
+    {
+      "id": "c8f8440c-9499-49ff-928a-5a6ab8751322",
+      "closed": true,
+      "status": "ended",
+      "scenario": "standard",
+      "winner": "detectives",
+      "history_rows": 4,
+      "ranked_history_rows": 0,
+      "finished_events": 1
+    },
+    {
+      "id": "ee5d9f99-0370-444a-b428-cea2dbfb611c",
+      "closed": true,
+      "status": "ended",
+      "scenario": "all_spies",
+      "winner": "system",
+      "history_rows": 4,
+      "ranked_history_rows": 0,
+      "finished_events": 1
+    }
+  ],
+  "totals": {
+    "closedRooms": 6,
+    "historyRows": 20,
+    "finishedEvents": 5,
+    "rankedHistoryRows": 0
+  },
+  "status": "passed"
+}

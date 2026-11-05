@@ -1,0 +1,14 @@
+{
+  "id": "f9124f9f-fe82-42fe-adfd-ae9585972768",
+  "slug": "full-game-core",
+  "name": "full-game-core",
+  "status": "ACTIVE",
+  "version": 13,
+  "created_at": 1791842470608,
+  "updated_at": 1793913126816,
+  "verify_jwt": true,
+  "import_map": true,
+  "entrypoint_path": "file:///tmp/user_fn_bbkfsgnordtdiblgdzkg_f9124f9f-fe82-42fe-adfd-ae9585972768_13/source/full-game-core/index.ts",
+  "import_map_path": "file:///tmp/user_fn_bbkfsgnordtdiblgdzkg_f9124f9f-fe82-42fe-adfd-ae9585972768_13/source/full-game-core/deno.json",
+  "ezbr_sha256": "246743a6237f8ea06bc6515977c3270d581b4d827556a0391c9d64248a1c0f6e"
+}

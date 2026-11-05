@@ -1,0 +1,137 @@
+{
+  "projectRef": "bbkfsgnordtdiblgdzkg",
+  "endpoint": "https://bbkfsgnordtdiblgdzkg.supabase.co/functions/v1/full-game-core",
+  "startedAt": "2026-11-05T21:12:19.330Z",
+  "tests": [
+    {
+      "name": "all_spies_correct_unanimous_vote",
+      "status": "passed",
+      "durationMs": 30137,
+      "metrics": {
+        "roomID": "a15972ee-15b1-47a7-ac27-86f1ef0d57c3",
+        "matchID": "b75c4d42-e6d0-4597-99c8-c55abbc1b11a",
+        "scenario": "all_spies",
+        "winner": "all",
+        "reason": "correct_concept",
+        "historyRows": 4,
+        "ranked": false,
+        "attempts": 1,
+        "finalVoteRetry": true
+      }
+    },
+    {
+      "name": "no_spies_correct_unanimous_vote",
+      "status": "passed",
+      "durationMs": 29520,
+      "metrics": {
+        "roomID": "b5f177b3-88ec-42f1-a031-12d19e1771a1",
+        "matchID": "4e636418-f9d9-4f57-99c3-2635ad27a2ca",
+        "scenario": "no_spies",
+        "winner": "all",
+        "reason": "correct_concept",
+        "historyRows": 4,
+        "ranked": false,
+        "attempts": 1,
+        "finalVoteRetry": true
+      }
+    },
+    {
+      "name": "standard_fan_correct_player_accusation",
+      "status": "passed",
+      "durationMs": 26028,
+      "metrics": {
+        "roomID": "c8f8440c-9499-49ff-928a-5a6ab8751322",
+        "matchID": "69d36bc3-b60f-474f-8e57-00268800d15e",
+        "scenario": "standard",
+        "winner": "detectives",
+        "reason": "",
+        "historyRows": 4,
+        "ranked": false
+      }
+    },
+    {
+      "name": "wrong_unanimous_concept_system_wins",
+      "status": "passed",
+      "durationMs": 26836,
+      "metrics": {
+        "roomID": "02bb8775-58ac-4f6f-b16f-f7ee120e2bf6",
+        "matchID": "311b580d-8efe-4942-b9ce-64cec2962c62",
+        "scenario": "standard",
+        "winner": "system",
+        "reason": "wrong_concept",
+        "historyRows": 4,
+        "ranked": false
+      }
+    },
+    {
+      "name": "anomalous_player_accusation_system_wins",
+      "status": "passed",
+      "durationMs": 26056,
+      "metrics": {
+        "roomID": "ee5d9f99-0370-444a-b428-cea2dbfb611c",
+        "matchID": "197b735d-e79c-49e9-953a-7db84182ded1",
+        "scenario": "all_spies",
+        "winner": "system",
+        "reason": "wrong_accusation",
+        "historyRows": 4,
+        "ranked": false
+      }
+    },
+    {
+      "name": "split_votes_continue_and_duplicate_ballot_rejected",
+      "status": "passed",
+      "durationMs": 28317,
+      "metrics": {
+        "roomID": "37e1c316-3b13-4196-84ab-683b316d0d7b",
+        "matchID": "361f8824-811b-4203-a60b-797cde29817a",
+        "status": "playing",
+        "historyRows": 0,
+        "duplicateRejected": true
+      }
+    }
+  ],
+  "ownedRooms": [
+    {
+      "id": "a15972ee-15b1-47a7-ac27-86f1ef0d57c3",
+      "closed": true,
+      "matchID": "b75c4d42-e6d0-4597-99c8-c55abbc1b11a",
+      "scenario": "all_spies"
+    },
+    {
+      "id": "b5f177b3-88ec-42f1-a031-12d19e1771a1",
+      "closed": true,
+      "matchID": "4e636418-f9d9-4f57-99c3-2635ad27a2ca",
+      "scenario": "no_spies"
+    },
+    {
+      "id": "c8f8440c-9499-49ff-928a-5a6ab8751322",
+      "closed": true,
+      "matchID": "69d36bc3-b60f-474f-8e57-00268800d15e",
+      "scenario": "standard"
+    },
+    {
+      "id": "02bb8775-58ac-4f6f-b16f-f7ee120e2bf6",
+      "closed": true,
+      "matchID": "311b580d-8efe-4942-b9ce-64cec2962c62",
+      "scenario": "standard"
+    },
+    {
+      "id": "ee5d9f99-0370-444a-b428-cea2dbfb611c",
+      "closed": true,
+      "matchID": "197b735d-e79c-49e9-953a-7db84182ded1",
+      "scenario": "all_spies"
+    },
+    {
+      "id": "37e1c316-3b13-4196-84ab-683b316d0d7b",
+      "closed": true,
+      "matchID": "361f8824-811b-4203-a60b-797cde29817a",
+      "scenario": "all_spies"
+    }
+  ],
+  "cleanupErrors": [],
+  "credentialsPersisted": false,
+  "durationMs": 174401,
+  "passed": 6,
+  "failed": 0,
+  "status": "passed"
+}
