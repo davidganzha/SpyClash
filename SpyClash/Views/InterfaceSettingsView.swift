@@ -32,6 +32,7 @@ struct InterfaceSettingsView: View {
                         readabilityPanel
                         hapticsPanel
                         languagePanel
+                        invitationsPanel
                         radarPanel
                         resetControls
                     }
@@ -307,8 +308,14 @@ struct InterfaceSettingsView: View {
         }
     }
 
+    private var invitationsPanel: some View {
+        settingsPanel("07", title: t("GAME INVITATIONS", "ПРИГЛАШЕНИЯ В ИГРУ", "INVITACIONES", "ЗАПРОШЕННЯ ДО ГРИ")) {
+            GameInvitationSettingsView()
+        }
+    }
+
     private var radarPanel: some View {
-        settingsPanel("07", title: appState.radarNearby.localNetworkPermissions.localNetworkStatus == .denied
+        settingsPanel("08", title: appState.radarNearby.localNetworkPermissions.localNetworkStatus == .denied
             ? t("RADAR BLOCKED", "РАДАР ЗАБЛОКИРОВАН", "RADAR BLOQUEADO", "РАДАР ЗАБЛОКОВАНО")
             : t("RADAR ACCESS", "ДОСТУП ПО РАДАРУ", "ACCESO POR RADAR", "ДОСТУП ЧЕРЕЗ РАДАР")) {
             RadarPolicySettingsView()

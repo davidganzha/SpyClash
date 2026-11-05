@@ -1131,6 +1131,8 @@ struct CommunityView: View {
             CommunitySpyCard(profile: detail.profile, language: appState.language)
                 .spyWebEntrance(delay: 0, duration: 0.30, y: 8, scale: 0.992)
 
+            SpyAchievementsView(progress: detail.profile.achievementProgress, language: appState.language)
+
             if isProfileLoading {
                 HStack(spacing: 10) {
                     SpySpinner(size: 18, accent: SpyTheme.red)
@@ -2090,7 +2092,7 @@ struct CommunityView: View {
     }
 
     private func inviteRoom(for detail: CommunityProfileDetail) -> GameRoom? {
-        guard resolvedRelationship(for: detail)?.status.lowercased() == "accepted" else { return nil }
+        guard !detail.isSelf, resolvedRelationship(for: detail)?.status.lowercased() != "blocked" else { return nil }
         guard let room = appState.activeRoom, room.normalizedStatus == "waiting" else { return nil }
         return room
     }

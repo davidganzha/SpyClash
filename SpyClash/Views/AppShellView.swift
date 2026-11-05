@@ -968,7 +968,12 @@ struct AppShellView: View {
     private var sharedCommunityNetworkState: CommunityState? {
 #if DEBUG
         if appState.shouldUsePreviewData {
-            return CommunityState.previewState(reusing: communityNetworkState)
+            let state = CommunityState.previewState(reusing: communityNetworkState)
+            if ProcessInfo.processInfo.arguments.contains("--spyclash-preview-stranger-invite") {
+                return CommunityState(me: state.me, friends: [], incoming: state.incoming, outgoing: state.outgoing,
+                    blocked: state.blocked, incomingRoomInvites: state.incomingRoomInvites)
+            }
+            return state
         }
 #endif
         return communityNetworkState
@@ -1005,10 +1010,11 @@ struct AppShellView: View {
               !pendingSocialItemIDs.contains(request.id),
               action == request.primaryAction || action == .decline else { return }
         if action == .join {
-            guard inboxRoomJoinID == nil else { return }
+            guard inboxRoomJoinID == nil, !appState.isRadarInvitationJoinInProgress else { return }
             inboxRoomJoinID = request.id
         }
         pendingSocialItemIDs.insert(request.id)
+        if request.primaryAction == .join { appState.gameInvitations.busyInviteID = request.sourceID }
         communityAttentionRequestID = nil
         let generation = inboxSocialGeneration
         HapticManager.shared.fire(.buttonPress)
@@ -1038,6 +1044,7 @@ struct AppShellView: View {
         defer {
             if appState.user?.id == userID, inboxSocialGeneration == generation {
                 pendingSocialItemIDs.remove(request.id)
+                if appState.gameInvitations.busyInviteID == request.sourceID { appState.gameInvitations.busyInviteID = nil }
                 if inboxRoomJoinID == request.id { inboxRoomJoinID = nil }
                 if pendingSocialItemIDs.isEmpty, !appState.shouldUsePreviewData {
                     Task { @MainActor in
@@ -1300,9 +1307,16 @@ struct AppShellView: View {
         }
 
         guard state.me.id == resolvedUserID else { return }
+        appState.gameInvitations.onDecision = { inviteID, accept in
+            guard let request = inboxPendingRequests.first(where: { $0.sourceID == inviteID && $0.primaryAction == .join }) else { return }
+            beginInboxSocialAction(request, accept ? .join : .decline)
+        }
 #if DEBUG
         if appState.shouldUsePreviewData {
             communityNetworkState = state
+            if ProcessInfo.processInfo.arguments.contains("--spyclash-preview-social-invite") || ProcessInfo.processInfo.arguments.contains("--spyclash-preview-stranger-invite") {
+                appState.gameInvitations.install(state)
+            }
             communityAttention = CommunityAttentionSnapshot(state: state)
             return
         }
@@ -1317,6 +1331,7 @@ struct AppShellView: View {
 
         communityAttention = next
         communityNetworkState = visibleState
+        appState.gameInvitations.install(visibleState)
         guard !newIDs.isEmpty else { return }
 
         storeCommunityAttentionIDs(seenIDs.union(next.allIDs), for: resolvedUserID)

@@ -1,3 +1,4 @@
+import { assertFanCapableRoster } from "./fan-mode-policy.ts";
 import { requireSafeCommunityText } from "./content-safety.ts";
 import {
   hasAuthoritativeLobbyState,
@@ -184,8 +185,11 @@ export function replayAutoStartPatch(
     // A replay preserves settings, never the previous match's identities.
     spy_email: "",
     spy_emails: [],
+    fan_scenario: "",
+    fan_result_reason: "",
   };
   assertMultiSpyCapableRoster(replayRoom);
+  assertFanCapableRoster(replayRoom);
 
   const randomIndex = options.randomIndex ?? secureRandomIndex;
   const order = shuffled(replayPlayers, randomIndex);
@@ -231,6 +235,8 @@ export function replayAutoStartPatch(
     ...membershipClamp,
     status: "roulette",
     replay_source_match_id: sourceMatchID,
+    fan_scenario: assignment.fan_scenario || "",
+    fan_result_reason: "",
     spy_email: assignment.spy_email,
     spy_emails: assignment.spy_emails,
     secret_word: secretWord,

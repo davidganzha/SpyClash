@@ -1,3 +1,4 @@
+import { canReceiveGameInvitation } from './policies/invitation-permissions.ts';
 import { AppServiceError, type AppContext, requireUUID } from './contracts.ts';
 import { activeProfile, clean, dispatchProfile, ensureProfile, projectedProfiles, signalProfile, signalUsers } from './profile.ts';
 import { normalizeSpyID, profileMatchesCommunityQuery, sanitizeProfileComment } from './policies/community.ts';
@@ -40,10 +41,14 @@ async function targetProfile(ctx:AppContext,body:any):Promise<any> {
 }
 async function visibleInviteRows(ctx:AppContext):Promise<any[]> {
   return await ctx.tx`select i.* from app_private.room_invites i
-    join app_private.friendships f on f.pair_low=least(i.sender_user_id,i.recipient_user_id) and f.pair_high=greatest(i.sender_user_id,i.recipient_user_id) and f.status='accepted'
+    left join app_private.friendships f on f.pair_low=least(i.sender_user_id,i.recipient_user_id) and f.pair_high=greatest(i.sender_user_id,i.recipient_user_id)
+    join app_private.profiles recipient on recipient.user_id=i.recipient_user_id and recipient.state='active'
     join full_game_private.rooms r on r.id=i.room_id and not r.closed and r.state->>'status'='waiting'
     join full_game_private.members m on m.room_id=r.id and m.user_id=i.sender_user_id
     where i.recipient_user_id=${ctx.actor.id} and i.status in ('pending','accepted')
+    and f.status is distinct from 'blocked'
+    and (case when f.status='accepted' then recipient.data->'friend_invitations_allowed' is distinct from 'false'::jsonb
+      else recipient.data->'stranger_invitations_allowed'='true'::jsonb end)
     and not exists(select 1 from full_game_private.members already where already.room_id=r.id and already.user_id=i.recipient_user_id)
     order by i.created_at desc,i.id`;
 }
@@ -116,7 +121,7 @@ async function dispatchCommunityAction(ctx:AppContext,body:any):Promise<any> {
   const me=await ensureProfile(ctx);
   if(action==='state') return await communityState(ctx,me);
   if(action==='directory') return await directory(ctx,body);
-  if(action==='update_profile'||action==='set_radar_invite_policy') return await dispatchProfile(ctx,body);
+  if(['update_profile','set_radar_invite_policy','set_invitation_permissions'].includes(action)) return await dispatchProfile(ctx,body);
   if(action==='search'||action==='profile') {
     const target=await targetProfile(ctx,body);
     if(action==='profile') return await detail(ctx,target);
@@ -160,10 +165,16 @@ async function dispatchCommunityAction(ctx:AppContext,body:any):Promise<any> {
       await ctx.tx`insert into app_private.profile_comments(target_user_id,author_user_id,body,created_at,updated_at) values(${targetID},${id},${comment},${ctx.now},${ctx.now})`;
       await signalProfile(ctx,targetID); return await detail(ctx,target);
     }
-    if(rel?.status!=='accepted') throw new AppServiceError('friends_required','Only accepted friends can be invited.',403);
+    const recipient=await activeProfile(ctx,targetID);
+    if(!canReceiveGameInvitation(recipient.data,rel?.status??null)) throw new AppServiceError('invitation_not_allowed','This operative is not accepting invitations from this source.',403);
     const room=await validateInviteRoom(ctx,body.room_id,body.room_code,id,targetID);
     const [existing]=await ctx.tx`select * from app_private.room_invites where sender_user_id=${id} and recipient_user_id=${targetID} and room_id=${room.id}`;
     if(!existing||existing.status!=='pending') {
+      if(rel?.status!=='accepted') {
+        await ctx.tx`select pg_advisory_xact_lock(hashtextextended(${'app:community-invites:'+id},0))`;
+        const recent=await ctx.tx`select created_at from app_private.notification_events where actor_id=${id} and event_type='room_invite' and created_at>${new Date(ctx.now.getTime()-3600000)} order by created_at desc limit 30`;
+        if(recent.length>=30||(recent[0]&&ctx.now.getTime()-new Date(recent[0].created_at).getTime()<5000)) throw new AppServiceError('invitation_cooldown','Wait before sending another community invitation.',429);
+      }
       if(existing) await hidePersonalNotifications(ctx,{ids:[existing.notification_event_id]});
       const eventID=crypto.randomUUID(); let invite;
       if(existing) [invite]=await ctx.tx`update app_private.room_invites set status='pending',notification_event_id=${eventID},room_code=${room.code},created_at=${ctx.now},updated_at=${ctx.now} where id=${existing.id} returning *`;
@@ -219,7 +230,8 @@ async function dispatchCommunityAction(ctx:AppContext,body:any):Promise<any> {
     let roomCode=null;
     if(action==='accept_room_invite') {
       const rel=await relationship(ctx,id,invite.sender_user_id);
-      if(rel?.status!=='accepted') throw new AppServiceError('friends_required','Only accepted friends can accept room invites.',403);
+      const recipient=await activeProfile(ctx,id);
+      if(!canReceiveGameInvitation(recipient.data,rel?.status??null)) throw new AppServiceError('invitation_not_allowed','Invitations from this source are disabled.',403);
       const disposition=roomInviteAcceptanceDisposition(invite,id);
       if(!['apply','already_applied'].includes(disposition)) throw new AppServiceError('invite_unavailable','Invite cannot be accepted.',409);
       if(disposition==='apply') {

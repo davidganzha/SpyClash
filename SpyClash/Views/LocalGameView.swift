@@ -212,6 +212,7 @@ struct LocalGameView: View {
     @State private var duration = 10.0
     @State private var spyCount = 1.0
     @State private var spiesKnowEachOther = false
+    @State private var fanSettings = FanModeSettings()
     @State private var wordCount = 25.0
     @State private var mode = LocalMode.questions
     @State private var selectedPackID = ""
@@ -406,6 +407,7 @@ struct LocalGameView: View {
             .onChange(of: avatars) { _, _ in persistLocalSettings() }
             .onChange(of: duration) { _, _ in persistLocalSettings() }
             .onChange(of: spyCount) { _, _ in persistLocalSettings() }
+            .onChange(of: fanSettings) { _, _ in persistLocalSettings() }
             .onChange(of: spiesKnowEachOther) { _, _ in persistLocalSettings() }
             .onChange(of: wordCount) { _, _ in persistLocalSettings() }
             .onChange(of: mode) { _, _ in persistLocalSettings() }
@@ -719,7 +721,8 @@ struct LocalGameView: View {
                             y: 14
                         )
                 }
-                if GameRoom.canChooseSpyCount(forPlayerCount: players.count) {
+                FanModeSettingsPanel(settings: $fanSettings, language: appState.language)
+                if !fanSettings.isEnabled && GameRoom.canChooseSpyCount(forPlayerCount: players.count) {
                     localSetupSlot(.roles) {
                         localSpySettingsPanel
                             .spyWebEntrance(
@@ -2603,6 +2606,7 @@ struct LocalGameView: View {
                 .buttonStyle(SpyCinematicButtonStyle(variant: .secondary))
                 .accessibilityIdentifier("localGame.action.vote")
 
+                if !session.fanEnabled {
                 Button(action: startLocalSpyGuess) {
                     HStack(spacing: 7) {
                         Image(systemName: "scope")
@@ -2611,6 +2615,7 @@ struct LocalGameView: View {
                 }
                 .buttonStyle(SpyCinematicButtonStyle(variant: .secondary))
                 .accessibilityIdentifier("localGame.action.spyGuess")
+                }
             }
         }
         .accessibilityElement(children: .contain)
@@ -3428,6 +3433,7 @@ struct LocalGameView: View {
                         stage: localVoteStage,
                         selectedTargetIndex: pendingLocalVoteTargetIndex,
                         language: appState.language,
+                        fanEnabled: session.fanEnabled,
                         onConfirmHandoff: confirmLocalVoteHandoff,
                         onSelectTarget: selectLocalVoteTarget,
                         onConfirmVote: { confirmLocalVote(in: session) }
@@ -3474,6 +3480,11 @@ struct LocalGameView: View {
                         .minimumScaleFactor(0.52)
                         .spyWebEntrance(delay: 0.10, duration: 0.52, y: 18)
 
+                    if session.fanEnabled {
+                        Text(session.fanScenario.title(appState.language))
+                            .font(SpyTheme.micro).foregroundStyle(SpyTheme.amber)
+                            .accessibilityIdentifier("fanMode.result.scenario")
+                    }
                     localResultWordPanel(session)
                         .spyWebEntrance(delay: 0.16, duration: 0.50, y: 16)
 
@@ -3722,7 +3733,7 @@ struct LocalGameView: View {
                 HStack(spacing: 10) {
                     localConfigTile(title: copy.categoryLabel, value: session.category.uppercased())
                     localConfigTile(title: localized(en: "OPERATIVES", ru: "ИГРОКИ", es: "AGENTES", uk: "ОПЕРАТИВНИКИ"), value: "\(session.players.count)")
-                    localConfigTile(title: localized(en: "SPIES", ru: "ШПИОНЫ", es: "ESPIAS", uk: "ШПИГУНИ"), value: "\(session.spyPlayers.count)")
+                    localConfigTile(title: localized(en: "SPIES", ru: "ШПИОНЫ", es: "ESPIAS", uk: "ШПИГУНИ"), value: session.fanEnabled && !revealRoles ? "?" : "\(session.spyPlayers.count)")
                 }
 
                 if revealRoles {
@@ -4155,10 +4166,17 @@ struct LocalGameView: View {
             max(Int(spyCount.rounded()), 1),
             GameRoom.maximumSpyCount(forPlayerCount: names.count)
         )
-        let spyIndices = LocalSpyAssignmentPolicy.randomSpyIndices(
-            playerCount: names.count,
-            requestedSpyCount: selectedSpyCount
-        )
+        let scenario = fanSettings.scenario(roll: Int.random(in: 0..<100))
+        let spyIndices: [Int]
+        switch scenario {
+        case .allSpies: spyIndices = Array(names.indices)
+        case .noSpies: spyIndices = []
+        case .standard:
+            spyIndices = LocalSpyAssignmentPolicy.randomSpyIndices(
+                playerCount: names.count,
+                requestedSpyCount: fanSettings.isEnabled ? 1 : selectedSpyCount
+            )
+        }
         let spyIndexSet = Set(spyIndices)
         let localPlayers = names.enumerated().map { index, name in
             LocalPlayer(name: name, avatar: avatars[safe: index] ?? "🕵️", isSpy: spyIndexSet.contains(index))
@@ -4172,7 +4190,9 @@ struct LocalGameView: View {
             pool: word.pool,
             players: localPlayers,
             mode: mode,
-            spiesKnowEachOther: spiesKnowEachOther
+            spiesKnowEachOther: fanSettings.isEnabled ? false : spiesKnowEachOther,
+            fanEnabled: fanSettings.isEnabled,
+            fanScenario: scenario
         )
         surveyGameID = UUID()
         surveyAccountID = appState.user?.id
@@ -4363,7 +4383,7 @@ struct LocalGameView: View {
     }
 
     private func localVoteThreshold(in session: LocalSession) -> Int {
-        LocalPrivateVotePolicy.threshold(
+        session.fanEnabled ? max(1, localVoteVoterOrder.count - 1) : LocalPrivateVotePolicy.threshold(
             activeIndices: localVoteVoterOrder,
             activeSpyIndices: Set(localVoteVoterOrder.filter { session.players[safe: $0]?.isSpy == true })
         )
@@ -4385,7 +4405,7 @@ struct LocalGameView: View {
               localVoteStage == .ballot,
               let voterIndex = localVoteVoterOrder[safe: localVoteVoterCursor],
               voterIndex != targetIndex,
-              localVoteVoterOrder.contains(targetIndex) else { return }
+              (localVoteVoterOrder.contains(targetIndex) || (session?.fanEnabled == true && FanScenario(localTarget: targetIndex) != nil)) else { return }
         pendingLocalVoteTargetIndex = targetIndex
         HapticManager.shared.fire(.tabSelection)
     }
@@ -4394,13 +4414,16 @@ struct LocalGameView: View {
         guard phase == .voting,
               localVoteStage == .ballot,
               let voterIndex = localVoteVoterOrder[safe: localVoteVoterCursor],
-              let targetIndex = pendingLocalVoteTargetIndex,
-              let nextVotes = LocalPrivateVotePolicy.appendingImmutableVote(
+              let targetIndex = pendingLocalVoteTargetIndex else { return }
+        let appended = session.fanEnabled
+            ? FanVotePolicy.appending(voter: voterIndex, target: targetIndex, active: localVoteVoterOrder, votes: localPrivateVotes)
+            : LocalPrivateVotePolicy.appendingImmutableVote(
                 voterIndex: voterIndex,
                 targetIndex: targetIndex,
                 activeIndices: localVoteVoterOrder,
                 existingVotes: localPrivateVotes
-              ) else {
+              )
+        guard let nextVotes = appended else {
             HapticManager.shared.fire(.notification(.warning))
             return
         }
@@ -4408,11 +4431,26 @@ struct LocalGameView: View {
         localPrivateVotes = nextVotes
         pendingLocalVoteTargetIndex = nil
 
-        let decision = LocalPrivateVotePolicy.decision(
-            activeIndices: localVoteVoterOrder,
-            activeSpyIndices: Set(localVoteVoterOrder.filter { session.players[safe: $0]?.isSpy == true }),
-            votes: nextVotes
-        )
+        let decision: LocalPrivateVoteDecision
+        if session.fanEnabled {
+            switch FanVotePolicy.decision(active: localVoteVoterOrder, votes: nextVotes) {
+            case let .concept(concept):
+                clearLocalVoteRound()
+                winner = concept == session.fanScenario ? .all : .system
+                setLocalPhase(.results)
+                HapticManager.shared.fire(.notification(winner == .all ? .success : .warning))
+                return
+            case let .player(index): decision = .eject(index: index, threshold: localVoteThreshold(in: session))
+            case .cancelled: decision = .cancel(threshold: localVoteThreshold(in: session))
+            case .pending: decision = .continueVoting(threshold: localVoteThreshold(in: session), viableCandidateIndices: localVoteVoterOrder)
+            }
+        } else {
+            decision = LocalPrivateVotePolicy.decision(
+                activeIndices: localVoteVoterOrder,
+                activeSpyIndices: Set(localVoteVoterOrder.filter { session.players[safe: $0]?.isSpy == true }),
+                votes: nextVotes
+            )
+        }
 
         switch decision {
         case let .eject(index, _):
@@ -4491,6 +4529,7 @@ struct LocalGameView: View {
     }
 
     private func startLocalSpyGuess() {
+        guard session?.fanEnabled != true else { return }
         guard phase == .playing else { return }
         timerTask?.cancel()
         timerTask = nil
@@ -4606,7 +4645,7 @@ struct LocalGameView: View {
         clearLocalVoteRound()
         accusedIndex = nil
         spyGuess = nil
-        winner = .spy
+        winner = session?.fanEnabled == true && session?.fanScenario != .standard ? .system : .spy
         setLocalPhase(.results)
         HapticManager.shared.fire(.notification(.warning))
     }
@@ -4759,6 +4798,14 @@ struct LocalGameView: View {
     }
 
     private func resolveAccusation(_ index: Int, session: LocalSession) {
+        if session.fanEnabled && session.fanScenario != .standard {
+            accusedIndex = index
+            winner = .system
+            timerTask?.cancel()
+            setLocalPhase(.results)
+            HapticManager.shared.fire(.notification(.warning))
+            return
+        }
         accusedIndex = index
         spyGuess = nil
         let outcome = LocalGameAccusationPolicy.outcome(
@@ -4938,6 +4985,7 @@ struct LocalGameView: View {
     }
 
     private func localWinnerTitle(_ winner: LocalWinner, session: LocalSession) -> String {
+        if winner == .all || winner == .system { return FanModeCopy(language: appState.language).result(won: winner == .all) }
         guard winner == .spy, session.spyPlayers.count > 1 else {
             return winner.title(copy)
         }
@@ -4975,7 +5023,8 @@ struct LocalGameView: View {
             generatedPack: generatedPack,
             localWordCountMode: localWordCountMode.rawValue,
             localCustomWordCount: localCustomWordCount,
-            sourceBeforeCustomTheme: localSourceBeforeCustomTheme
+            sourceBeforeCustomTheme: localSourceBeforeCustomTheme,
+            fanSettings: fanSettings
         )
 
         guard let data = try? JSONEncoder().encode(settings) else { return }
@@ -4999,6 +5048,7 @@ struct LocalGameView: View {
             )
         )
         spiesKnowEachOther = settings.spiesKnowEachOther ?? false
+        fanSettings = (settings.fanSettings ?? FanModeSettings()).normalized
         wordCount = LocalWordPool.restoredCount(
             settings.wordCount,
             hasCustomTheme: !settings.customTheme.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -5955,11 +6005,14 @@ private enum LocalPhase: Hashable {
 private enum LocalWinner {
     case spy
     case detectives
+    case all
+    case system
 
     func title(_ copy: LocalGameCopy) -> String {
         switch self {
         case .spy: copy.spyWins
-        case .detectives: copy.detectivesWin
+        case .detectives, .all: copy.detectivesWin
+        case .system: "SYSTEM WINS"
         }
     }
 }
@@ -5991,6 +6044,8 @@ private struct LocalSession: Equatable {
     let players: [LocalPlayer]
     let mode: LocalMode
     let spiesKnowEachOther: Bool
+    var fanEnabled = false
+    var fanScenario = FanScenario.standard
 
     var spyPlayers: [LocalPlayer] {
         players.filter(\.isSpy)
@@ -6069,6 +6124,7 @@ private struct LocalGameSettings: Codable {
     let localWordCountMode: String?
     let localCustomWordCount: Double?
     let sourceBeforeCustomTheme: String?
+    var fanSettings: FanModeSettings? = nil
 }
 
 private let localAvatars = ["🕵️", "👤", "🤖", "🎭", "🧠", "💀", "🎯", "🔥", "👻", "🦅"]

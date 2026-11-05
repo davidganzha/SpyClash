@@ -43,8 +43,25 @@ export async function drainPushOutbox(db:any,config:Config,options:{limit?:numbe
         const [announcement]=await db`select status,revision,expires_at from app_private.notification_announcements where id::text=${String(job.payload.announcement_id)}`;
         if(!announcement||announcement.status!=='published'||announcement.revision!==job.payload.announcement_revision||new Date(announcement.expires_at).getTime()<=Date.now())cancellation='announcement_not_visible';
       }else{
-        const [event]=await db`select visible from app_private.notification_events where id::text=${job.event_key} and recipient_id=${job.user_id}`;
+        const [event]=await db`select visible,event_type from app_private.notification_events where id::text=${job.event_key} and recipient_id=${job.user_id}`;
         if(!event?.visible)cancellation='source_not_visible';
+        else if(event.event_type==='room_invite') {
+          // Recipient preferences may change while delivery is queued. Recheck
+          // the same live source as the inbox before sending a stale invitation.
+          const [invite]=await db`select i.id from app_private.room_invites i
+            join app_private.notification_events e on e.id=i.notification_event_id and e.source_id=i.id and e.actor_id=i.sender_user_id and e.recipient_id=i.recipient_user_id
+            join app_private.profiles recipient on recipient.user_id=i.recipient_user_id and recipient.state='active'
+            join app_private.profiles sender on sender.user_id=i.sender_user_id and sender.state='active'
+            left join app_private.friendships f on f.pair_low=least(i.sender_user_id,i.recipient_user_id) and f.pair_high=greatest(i.sender_user_id,i.recipient_user_id)
+            join full_game_private.rooms r on r.id=i.room_id and not r.closed and r.state->>'status'='waiting'
+            join full_game_private.members m on m.room_id=i.room_id and m.user_id=i.sender_user_id
+            where i.notification_event_id::text=${job.event_key} and i.recipient_user_id=${job.user_id}
+            and i.status in ('pending','accepted') and f.status is distinct from 'blocked'
+            and (case when f.status='accepted' then recipient.data->'friend_invitations_allowed' is distinct from 'false'::jsonb
+              else recipient.data->'stranger_invitations_allowed'='true'::jsonb end)
+            and not exists(select 1 from full_game_private.members already where already.room_id=i.room_id and already.user_id=i.recipient_user_id)`;
+          if(!invite)cancellation='invitation_not_available';
+        }
       }
     }else {
       const end=job.payload?.aps?.event==='end';

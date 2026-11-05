@@ -55,6 +55,9 @@ struct ProfileView: View {
     @State private var selectedCardTheme: SpyCardThemeID = .field
     @State private var selectedCardAccent: SpyCardAccentID = .signalRed
     @State private var selectedCardBadge: SpyCardBadgeID = .operative
+    @State private var achievements: [SpyAchievementProgress]?
+    @State private var isAchievementsLoading = true
+    @State private var achievementRequestID = 0
     @State private var history: [GameHistory] = []
     @State private var historyLoadState: ProfileHistoryLoadState = .idle
     @State private var historyRequestID = 0
@@ -86,6 +89,7 @@ struct ProfileView: View {
         PageChrome(eyebrow: copy.eyebrow, status: "") {
             VStack(alignment: .leading, spacing: 16) {
                 synchronizedSpyCard
+                achievementCollection
                 profileCard
                 if appState.membership.snapshot?.isUniversal != true {
                     LimitlessEntry()
@@ -113,6 +117,9 @@ struct ProfileView: View {
         }
         .task(id: historyTaskID) {
             await loadHistory(requestID: historyTaskID)
+        }
+        .task(id: "\(appState.user?.id ?? "")-\(achievementRequestID)") {
+            await loadAchievements()
         }
         .overlay {
             if showDeleteConfirmation {
@@ -354,6 +361,62 @@ struct ProfileView: View {
         }
         .aspectRatio(1.50, contentMode: .fit)
         .spyWebEntrance(delay: 0, duration: 0.50, y: 18, scale: 0.98)
+    }
+
+    @ViewBuilder
+    private var achievementCollection: some View {
+        if let achievements {
+            SpyAchievementsView(progress: achievements, language: appState.language)
+        } else {
+            HStack(spacing: 12) {
+                if isAchievementsLoading {
+                    SpySpinner(size: 20, accent: SpyTheme.amber)
+                } else {
+                    Image(systemName: "seal").foregroundStyle(SpyTheme.amber)
+                }
+                Text(isAchievementsLoading
+                     ? localized(en: "Loading achievements…", ru: "Загружаем достижения…", es: "Cargando logros…", uk: "Завантажуємо досягнення…")
+                     : localized(en: "Achievements could not be loaded", ru: "Не удалось загрузить достижения", es: "No se pudieron cargar los logros", uk: "Не вдалося завантажити досягнення"))
+                    .font(.footnote)
+                    .foregroundStyle(SpyTheme.bodyText)
+                Spacer(minLength: 0)
+                if !isAchievementsLoading {
+                    Button { achievementRequestID += 1 } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .frame(width: 44, height: 44)
+                    }
+                    .foregroundStyle(SpyTheme.amber)
+                    .accessibilityLabel(localized(en: "Retry achievements", ru: "Загрузить достижения повторно", es: "Reintentar logros", uk: "Завантажити досягнення знову"))
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: 80)
+            .background(SpyTheme.card)
+            .overlay(CutCornerShape(cut: 10).stroke(SpyTheme.stroke, lineWidth: 1))
+        }
+    }
+
+    private func loadAchievements() async {
+        achievements = nil
+        isAchievementsLoading = true
+        guard let userID = appState.user?.id else {
+            isAchievementsLoading = false
+            return
+        }
+        if appState.shouldUsePreviewData {
+            achievements = SpyAchievementCatalog.progress(games: 19, wins: 10, spyWins: 4, detectiveWins: 6)
+            isAchievementsLoading = false
+            return
+        }
+        do {
+            let profile = try await appState.client.communityProfile(userID: userID)
+            guard !Task.isCancelled, appState.user?.id == userID else { return }
+            achievements = profile.profile.achievementProgress
+            isAchievementsLoading = false
+        } catch {
+            guard !Task.isCancelled, appState.user?.id == userID else { return }
+            isAchievementsLoading = false
+        }
     }
 
     private var synchronizedSpyCard: some View {

@@ -652,6 +652,7 @@ struct OnlineGameIntroScene: View {
                 SpyGameIntroParticipant(id: $0.id, name: $0.name, avatar: $0.avatar)
             },
             spyCount: room.lobbySpyCountValue,
+            fanEnabled: room.fanSettings.isEnabled,
             language: language,
             startedAt: OnlineExperienceClock.date(from: room.introStartedAt) ?? .distantFuture,
             duration: Self.totalDuration,
@@ -1461,7 +1462,7 @@ struct OnlineActiveGameScene: View {
         return VStack(spacing: 6) {
             Text(
                 timer.isExpired
-                    ? copy.spyWinsAtDeadline(spyCount: room.lobbySpyCountValue)
+                    ? (room.fanSettings.isEnabled ? FanModeCopy(language: language).text("TIME EXPIRED", "ВРЕМЯ ВЫШЛО", "TIEMPO AGOTADO", "ЧАС ВИЙШОВ") : copy.spyWinsAtDeadline(spyCount: room.lobbySpyCountValue))
                     : copy.playingRound(max(room.roundNumber ?? 1, 1))
             )
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
@@ -1952,6 +1953,7 @@ struct OnlineActiveGameScene: View {
             .minimumScaleFactor(0.64)
 
             ScrollView(.vertical, showsIndicators: votingCandidates.count > 6) {
+                VStack(spacing: 12) {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                     ForEach(votingCandidates) { candidate in
                     let feedback = OnlineVoteCandidateFeedback.resolve(
@@ -2012,6 +2014,15 @@ struct OnlineActiveGameScene: View {
                     .accessibilityIdentifier("onlineExperience.vote.\(accessibilityKey(candidate.email))")
                     .accessibilityValue(candidateAccessibilityValue(feedback))
                     }
+                }
+                if room.fanSettings.isEnabled {
+                    FanConceptBallot(language: language,
+                        selected: (myVote?.votedForEmail ?? pendingVoteTargetEmail).flatMap(FanScenario.init(voteTarget:)),
+                        isPending: myVote == nil && pendingVoteTargetEmail != nil,
+                        disabled: !canCastVote || myVote != nil || pendingVoteTargetEmail != nil) {
+                        castVote($0.voteTarget)
+                    }
+                }
                 }
             }
             .frame(maxHeight: maxHeight)

@@ -1,3 +1,4 @@
+import { fanSettings, isFanMode } from "./fan-mode-policy.ts";
 import {
   classifyObjectionableMaterial,
   safeCommunityAvatar,
@@ -78,6 +79,7 @@ function projectedLobbyState(
   const viewerIsHost = Boolean(normalizedEmail(viewer?.email)) &&
     normalizedEmail(viewer?.email) === normalizedEmail(room?.host_email);
   const common = {
+    ...fanSettings(room),
     lobby_schema_version: Math.max(
       LOBBY_SCHEMA_VERSION,
       Math.floor(Number(room?.lobby_schema_version) || 0),
@@ -292,7 +294,7 @@ export function projectRoomForClient(
     revealed_spy_emails:
       clean(room?.status || "waiting").toLowerCase() === "finished"
         ? canonicalSpyEmails(room)
-        : canonicalSpyEmails(room).filter((email) =>
+        : isFanMode(room) ? [] : canonicalSpyEmails(room).filter((email) =>
           safeEmailList(room.eliminated_emails).some((eliminated) =>
             normalizedEmail(eliminated) === normalizedEmail(email)
           )
@@ -322,6 +324,7 @@ export function projectRoomForClient(
         : "",
     terminal_reconciliation_pending: terminalReconciliationPending(room),
     winner: clean(room.winner),
+    ...(roomStatus === "finished" && isFanMode(room) ? { fan_scenario: clean(room.fan_scenario), fan_result_reason: clean(room.fan_result_reason) } : {}),
     round_number: Number(room.round_number || 1),
     current_asker_email: clean(room.current_asker_email),
     current_answerer_email: clean(room.current_answerer_email),

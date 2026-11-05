@@ -1728,7 +1728,7 @@ struct DetectiveVoteCastScope: Equatable {
               !voteRoundID.isEmpty,
               actor != target,
               activePlayers.contains(actor),
-              activePlayers.contains(target) else { return nil }
+              (activePlayers.contains(target) || (room.fanSettings.isEnabled && FanScenario(voteTarget: target) != nil)) else { return nil }
         self.room = roomScope
         self.actorEmail = actorEmail.trimmingCharacters(in: .whitespacesAndNewlines)
         self.targetEmail = targetEmail.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1870,7 +1870,7 @@ enum DetectiveVoteConflictRecoveryPolicy {
               !authoritative.isGamePaused,
               authoritative.isVotingActive,
               authoritativeActive.contains(cast.actorKey),
-              authoritativeActive.contains(cast.targetKey),
+              (authoritativeActive.contains(cast.targetKey) || (authoritative.fanSettings.isEnabled && FanScenario(voteTarget: cast.targetKey) != nil)),
               actorVotes.isEmpty else { return .reject }
         return .retry
     }
@@ -2128,6 +2128,7 @@ struct GameView: View {
     @State private var selectedGameMode = SpyGameMode.questions
     @State private var selectedDurationMinutes = 15.0
     @State private var selectedSpyCount = 1.0
+    @State private var selectedFanSettings = FanModeSettings()
     @State private var selectedSpiesKnowEachOther = false
     @State private var roomWordSource = RoomWordSource.none
     @State private var lobbyWordPacks: [WordPack] = []
@@ -2225,6 +2226,7 @@ struct GameView: View {
             gameDurationSeconds: max(60, min(room.gameDurationSeconds ?? 900, 900)),
             spyCount: room.lobbySpyCountValue,
             spiesKnowEachOther: room.spiesKnowEachOther ?? false,
+            fanSettings: room.fanSettings,
             lobbyWordSource: .none,
             lobbySourcePackID: nil,
             lobbySourceName: nil,
@@ -2876,6 +2878,7 @@ struct GameView: View {
     }
 
     private func canCurrentUserGuess(_ room: GameRoom) -> Bool {
+        !room.fanSettings.isEnabled &&
         detectiveVoteCancellationPresentation == nil &&
             !room.isGamePaused &&
             !isSubmittingSpyGuess &&
@@ -2919,7 +2922,15 @@ struct GameView: View {
                             )
                     )
                 )
-                if room.canChooseLobbySpyCount {
+                #if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
+                FanModeSettingsPanel(settings: Binding(
+                    get: { isHost(room) ? selectedFanSettings : room.fanSettings },
+                    set: { selectedFanSettings = $0 }
+                ), language: appState.language, editable: isHost(room)) {
+                    scheduleLobbyStateSync(debounce: .milliseconds(300))
+                }
+                #endif
+                if !(isHost(room) ? selectedFanSettings.isEnabled : room.fanSettings.isEnabled) && room.canChooseLobbySpyCount {
                     onlineSetupSlot(
                         .roles,
                         content: AnyView(
@@ -6209,7 +6220,7 @@ struct GameView: View {
 
     private func legacyPlayingControls(_ room: GameRoom) -> some View {
         VStack(spacing: 10) {
-            if currentUserIsSpy(room), !room.enabledWordPool.isEmpty, !isTimeExpired(room) {
+            if !room.fanSettings.isEnabled, currentUserIsSpy(room), !room.enabledWordPool.isEmpty, !isTimeExpired(room) {
                 Button {
                     HapticManager.shared.fire(.buttonPress)
                     showSpyGuess = true
@@ -6464,18 +6475,21 @@ struct GameView: View {
 
     private func finishedRoom(_ room: GameRoom) -> some View {
         VStack(alignment: .leading, spacing: 18) {
-            SpyPanel(accent: room.winner == "spy" ? SpyTheme.red : SpyTheme.green) {
+            SpyPanel(accent: (room.winner == "spy" || room.winner == "system") ? SpyTheme.red : SpyTheme.green) {
                 VStack(alignment: .leading, spacing: 16) {
                     Text(copy.result)
                         .font(SpyTheme.micro)
                         .tracking(0.12)
                         .foregroundStyle(SpyTheme.dim)
                         .spyKicker()
-                    Text(room.winner == "spy" ? spyVictoryTitle(room) : copy.detectivesWin)
+                    Text((room.winner == "all" || room.winner == "system") ? FanModeCopy(language: appState.language).result(won: room.winner == "all") : (room.winner == "spy" ? spyVictoryTitle(room) : copy.detectivesWin))
                         .font(.system(size: 34, weight: .black, design: .default))
                         .tracking(0.04)
-                        .foregroundStyle(room.winner == "spy" ? SpyTheme.red : SpyTheme.green)
+                        .foregroundStyle((room.winner == "spy" || room.winner == "system") ? SpyTheme.red : SpyTheme.green)
                         .spyFitted(lines: 2, scale: 0.54)
+                    if room.fanSettings.isEnabled, let scenario = FanScenario(rawValue: room.fanScenario ?? "") {
+                        Text(scenario.title(appState.language)).font(SpyTheme.micro).foregroundStyle(SpyTheme.amber)
+                    }
                     Text(copy.wordResult(room.displayWord))
                         .font(SpyTheme.micro)
                         .tracking(0.12)
@@ -8238,7 +8252,7 @@ struct GameView: View {
 
     private func playingControls(_ room: GameRoom) -> some View {
         VStack(spacing: 12) {
-            if currentUserIsSpy(room), !room.enabledWordPool.isEmpty, !isTimeExpired(room) {
+            if !room.fanSettings.isEnabled, currentUserIsSpy(room), !room.enabledWordPool.isEmpty, !isTimeExpired(room) {
                 Button {
                     HapticManager.shared.fire(.buttonPress)
                     showSpyGuess = true
@@ -9775,6 +9789,7 @@ struct GameView: View {
         selectedDurationMinutes = Double(max(1, min((room.gameDurationSeconds ?? 900) / 60, 15)))
         selectedSpyCount = Double(min(room.lobbySpyCountValue, room.maximumLobbySpyCount))
         selectedSpiesKnowEachOther = room.spiesKnowEachOther ?? false
+        selectedFanSettings = room.fanSettings
 
         guard let authoritativeState else {
             appliedLobbyRevision = max(appliedLobbyRevision, revision)
@@ -9947,6 +9962,7 @@ struct GameView: View {
             gameDurationSeconds: max(60, min(Int(selectedDurationMinutes.rounded()) * 60, 900)),
             spyCount: min(max(Int(selectedSpyCount.rounded()), 1), room.maximumLobbySpyCount),
             spiesKnowEachOther: selectedSpiesKnowEachOther,
+            fanSettings: selectedFanSettings,
             lobbyWordSource: source,
             lobbySourcePackID: sourcePackID,
             lobbySourceName: sourceName,
@@ -9980,6 +9996,7 @@ struct GameView: View {
             selectedDurationMinutes = Double(max((room.gameDurationSeconds ?? 900) / 60, 1))
             selectedSpyCount = Double(min(room.lobbySpyCountValue, room.maximumLobbySpyCount))
             selectedSpiesKnowEachOther = room.spiesKnowEachOther ?? false
+            selectedFanSettings = room.fanSettings
             roomAccessPage = RoomAccessPagePolicy.roomCode
             roomFriendsDirectory.deactivate()
             roomFriendsLoadAttempt = 0

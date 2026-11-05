@@ -10,6 +10,18 @@ final class SupabaseGameAdapterTests: XCTestCase {
     private let matchID = "30000000-0000-0000-0000-000000000001"
     private let membershipID = "40000000-0000-0000-0000-000000000001"
 
+    func testFanCapabilityTravelsWithReadsAndDurableCommands() async throws {
+        let (transport, store) = makeStore()
+        try store.adopt(.object(fixture()))
+        transport.handler = { request in self.response(request: request, room: .object(self.fixture(revision: 13)), revision: 13) }
+        _ = try await store.refreshRoom(id: roomID)
+        _ = try await store.command(["action": .string("toggle_ready"), "room_id": .string(roomID)])
+        XCTAssertEqual(transport.requests.count, 2)
+        for request in transport.requests {
+            XCTAssertEqual(request["client_capabilities"], .array([.string("multi_spy_v1"), .string("fan_mode_v1")]))
+        }
+    }
+
     func testProjectionUsesOriginalRoomIdentityRulesAndAuthorizedFields() throws {
         let (_, store) = makeStore()
         var value = fixture()

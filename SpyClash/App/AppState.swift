@@ -1240,6 +1240,9 @@ extension LobbyStatePayload {
             gameDurationSeconds == other.gameDurationSeconds &&
             spyCount == other.spyCount &&
             spiesKnowEachOther == other.spiesKnowEachOther &&
+            fanModeEnabled == other.fanModeEnabled &&
+            fanAllSpiesChance == other.fanAllSpiesChance &&
+            fanNoSpiesChance == other.fanNoSpiesChance &&
             lobbyWordSource == other.lobbyWordSource &&
             canonicalLobbyText(lobbySourcePackID) == canonicalLobbyText(other.lobbySourcePackID) &&
             canonicalLobbyText(lobbySourceName) == canonicalLobbyText(other.lobbySourceName) &&
@@ -1403,11 +1406,13 @@ final class AppState: NSObject {
     let notificationInbox: NotificationInboxStore
     let gameRoomRealtime: GameRoomRealtimeService
     let radarNearby: RadarNearbyService
+    let gameInvitations = GameInvitationCenter()
     var user: SpyUser? {
         didSet {
             let previousUserID = oldValue?.id
             let accountChanged = previousUserID != user?.id
             if accountChanged { appleHandoffFailure = nil }
+            gameInvitations.bind(user: user)
             bindMembershipAccount()
             if SupabaseTestEnvironment.isEnabled { return }
             if accountChanged {
@@ -2151,6 +2156,7 @@ final class AppState: NSObject {
             gameDurationSeconds: max(60, min(room.gameDurationSeconds ?? 900, 900)),
             spyCount: room.lobbySpyCountValue,
             spiesKnowEachOther: room.spiesKnowEachOther ?? false,
+            fanSettings: room.fanSettings,
             lobbyWordSource: LobbyWordSource(rawValue: room.lobbyWordSource ?? "none") ?? .none,
             lobbySourcePackID: room.lobbySourcePackID?.nilIfBlank,
             lobbySourceName: room.lobbySourceName?.nilIfBlank,
@@ -2778,6 +2784,9 @@ final class AppState: NSObject {
         room.gameDurationSeconds = payload.gameDurationSeconds
         room.lobbySpyCount = payload.spyCount
         room.spiesKnowEachOther = payload.spiesKnowEachOther
+        room.fanModeEnabled = payload.fanModeEnabled
+        room.fanAllSpiesChance = payload.fanAllSpiesChance
+        room.fanNoSpiesChance = payload.fanNoSpiesChance
         room.lobbySchemaVersion = 2
         room.lobbyRevision = revision
         room.lobbyWordSource = payload.lobbyWordSource.rawValue
@@ -5105,6 +5114,7 @@ final class AppState: NSObject {
 
     @discardableResult
     func acceptRadarInvitation(_ invitation: RadarIncomingInvitation) async -> Bool {
+        guard gameInvitations.busyInviteID == nil else { return false }
         guard let runID = radarInvitationJoinGate.begin() else { return false }
         defer { finishRadarInvitationJoin(runID) }
         return await joinRadarInvitation(invitation)
@@ -5143,6 +5153,10 @@ final class AppState: NSObject {
 
     private func handleAutomaticRadarInvitation(_ invitation: RadarIncomingInvitation) {
         guard !requiresOnboarding else { return }
+        guard gameInvitations.busyInviteID == nil else {
+            radarNearby.presentForConfirmation(invitation)
+            return
+        }
 
         if let activeRoom,
            activeRoom.code.caseInsensitiveCompare(invitation.roomCode) != .orderedSame {
@@ -6260,6 +6274,10 @@ final class AppState: NSObject {
             shellRoute = .notifications
         default:
             presentedSheet = nil
+        }
+
+        if arguments.contains("--spyclash-preview-stranger-invite") {
+            user?.strangerInvitationsAllowed = true
         }
 
         if arguments.contains("--spyclash-preview-radar-invite") {

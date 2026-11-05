@@ -1716,15 +1716,25 @@ extension View {
 
 private struct GlobalRadarInvitationLayer: View {
     @Environment(AppState.self) private var appState
+    @SpyReduceMotion private var reduceMotion
 
     var body: some View {
-        if appState.authHomeRevealPhase == .idle,
-           !appState.requiresOnboarding,
-           let invitation = appState.radarNearby.incomingInvitation {
-            RadarIncomingInvitationOverlay(invitation: invitation)
-                .id(invitation.id)
-                .accessibilityAddTraits(.isModal)
+        ZStack {
+            if appState.authHomeRevealPhase == .idle, !appState.requiresOnboarding {
+                if appState.gameInvitations.busyInviteID != nil, let invitation = appState.gameInvitations.current {
+                    SocialGameInvitationOverlay(invitation: invitation)
+                        .id(invitation.id)
+                } else if let invitation = appState.radarNearby.incomingInvitation {
+                    RadarIncomingInvitationOverlay(invitation: invitation)
+                        .id(invitation.id)
+                } else if let invitation = appState.gameInvitations.current {
+                    SocialGameInvitationOverlay(invitation: invitation)
+                        .id(invitation.id)
+                }
+            }
         }
+        .animation(.easeOut(duration: reduceMotion ? 0.15 : 0.24), value: appState.gameInvitations.current?.id)
+        .animation(.easeOut(duration: reduceMotion ? 0.15 : 0.24), value: appState.radarNearby.incomingInvitation?.id)
     }
 }
 

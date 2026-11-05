@@ -220,6 +220,7 @@ export function publicProfile(user: Record<string, unknown>) {
     spy_card_accent: String(user.spy_card_accent || "signal_red"),
     spy_card_badge: String(user.spy_card_badge || "operative"),
     rating: Number(user.rating || 0),
+    achievements: Array.isArray(user.achievements) ? user.achievements : [],
     games_played: gamesPlayed,
     games_won: gamesWon,
     win_rate: roundedWinRate(gamesPlayed, gamesWon),

@@ -6,6 +6,8 @@ import {dispatchProfile,ensureProfile} from '../../supabase/functions/app-servic
 import {dispatchCommunity} from '../../supabase/functions/app-services/community.ts';
 import {dispatchInbox} from '../../supabase/functions/app-services/inbox.ts';
 import {AppServiceError} from '../../supabase/functions/app-services/contracts.ts';
+import {dispatchPush, TEST_PUSH_BUNDLE} from '../../supabase/functions/app-services/push.ts';
+import {drainPushOutbox} from '../../supabase/functions/app-services/worker.ts';
 
 const databaseURL=process.env.DATABASE_URL;
 assert.ok(databaseURL,'DATABASE_URL is required; tests never choose a cloud endpoint');
@@ -272,4 +274,92 @@ test('copied content and notification policy failures are definitive application
   await assert.rejects(call(a,'community',{action:'add_comment',target_user_id:b.id,comment:'fuck you'}),error=>error instanceof AppServiceError&&error.status===422&&error.code==='objectionable_content');
   await assert.rejects(call(a,'notifications',{action:'list',scope:'global',cursor:'not-a-cursor'}),error=>error instanceof AppServiceError&&error.status===422);
   await assert.rejects(call(a,'notifications',{action:'publish_global',request_id:randomUUID(),title:'<script>',body:'unsafe'},{config:{APP_ADMIN_USER_IDS:a.id}}),error=>error instanceof AppServiceError&&error.status===422);
+});
+
+test('independent invitation permissions allow opted-in strangers and revoke pending access',async()=>{
+  const host=await actor('Invitation host'),guest=await actor('Invitation guest'),other=await actor('Another guest'),lobby=await room(host);
+  const invite=()=>call(host,'community',{action:'invite_to_room',target_user_id:guest.id,room_id:lobby.id,room_code:lobby.code});
+  const initial=await call(guest,'profile',{action:'current'});
+  assert.equal(initial.friend_invitations_allowed,true);assert.equal(initial.stranger_invitations_allowed,false);
+  await expectFailure(invite(),403,'invitation_not_allowed');
+  await expectFailure(call(guest,'community',{action:'set_invitation_permissions',friend_invitations_allowed:'maybe',stranger_invitations_allowed:'true'}),422,'invalid_invitation_permissions');
+  const optedIn=await call(guest,'community',{action:'set_invitation_permissions',friend_invitations_allowed:'false',stranger_invitations_allowed:'true'});
+  assert.equal(optedIn.friend_invitations_allowed,false);assert.equal(optedIn.stranger_invitations_allowed,true);
+  await invite();
+  let state=await call(guest,'community',{action:'state'});
+  assert.equal(state.friends.length,0);assert.equal(state.incoming_room_invites.length,1);
+  const id=state.incoming_room_invites[0].id;
+  await call(guest,'community',{action:'set_invitation_permissions',friend_invitations_allowed:'false',stranger_invitations_allowed:'false'});
+  assert.equal((await call(guest,'community',{action:'state'})).incoming_room_invites.length,0);
+  await expectFailure(call(guest,'community',{action:'accept_room_invite',invite_id:id}),403,'invitation_not_allowed');
+  await call(guest,'community',{action:'set_invitation_permissions',friend_invitations_allowed:'false',stranger_invitations_allowed:'true'});
+  assert.equal((await call(guest,'community',{action:'accept_room_invite',invite_id:id})).room_code,lobby.code);
+  await call(guest,'community',{action:'consume_room_invite',invite_id:id});
+  await pair(host,guest);
+  await expectFailure(invite(),403,'invitation_not_allowed');
+  await call(guest,'community',{action:'set_invitation_permissions',friend_invitations_allowed:'true',stranger_invitations_allowed:'false'});
+  await invite();
+  assert.equal((await call(guest,'community',{action:'state'})).incoming_room_invites.length,1);
+  await call(guest,'community',{action:'block',target_user_id:host.id});
+  await expectFailure(invite(),403,'interaction_unavailable');
+  await call(other,'community',{action:'set_invitation_permissions',friend_invitations_allowed:'true',stranger_invitations_allowed:'true'});
+  await expectFailure(call(host,'community',{action:'invite_to_room',target_user_id:other.id,room_id:lobby.id,room_code:lobby.code}),429,'invitation_cooldown');
+});
+
+
+test('invitation visibility supports opted-in strangers across inbox, duplicate send and acceptance',async()=>{
+  const sender=await actor('Community sender'),recipient=await actor('Community recipient'),outsider=await actor('Unrelated agent');
+  const lobby=await room(sender);
+  await call(recipient,'profile',{action:'set_invitation_permissions',friend_invitations_allowed:true,stranger_invitations_allowed:true});
+  const send={action:'invite_to_room',target_user_id:recipient.id,room_id:lobby.id,room_code:lobby.code};
+  await call(sender,'community',send);await call(sender,'community',send);
+  const state=await call(recipient,'community',{action:'state'});
+  const invite=state.incoming_room_invites.find(i=>i.sender.id===sender.id);assert.ok(invite);
+  const inbox=await call(recipient,'notifications',{action:'list',scope:'personal'});
+  assert.equal(inbox.items.filter(i=>i.kind==='room_invite').length,1);
+  assert.equal(inbox.unread.personal,1);
+  assert.equal((await db`select id from app_private.notification_events where actor_id=${sender.id} and recipient_id=${recipient.id} and event_type='room_invite'`).length,1);
+  await expectFailure(call(outsider,'community',{action:'accept_room_invite',invite_id:invite.id}),404,'invite_not_found');
+  const accepted=await call(recipient,'community',{action:'accept_room_invite',invite_id:invite.id});
+  const replay=await call(recipient,'community',{action:'accept_room_invite',invite_id:invite.id});
+  assert.equal(accepted.room_code,lobby.code);assert.equal(replay.room_code,lobby.code);
+  await call(recipient,'profile',{action:'set_invitation_permissions',friend_invitations_allowed:true,stranger_invitations_allowed:false});
+  assert.equal((await call(recipient,'notifications',{action:'summary'})).unread.personal,0);
+  assert.equal((await call(recipient,'community',{action:'state'})).incoming_room_invites.length,0);
+  await expectFailure(call(recipient,'community',{action:'accept_room_invite',invite_id:invite.id}),403,'invitation_not_allowed');
+});
+
+test('invitation visibility hides disabled friends and cancels queued delivery after opt-out',async()=>{
+  const sender=await actor('Friend sender'),recipient=await actor('Friend recipient');
+  await pair(sender,recipient);
+  const lobby=await room(sender);
+  const config={APP_PUSH_ENABLED:'true',APP_PUSH_DELIVERY_ENABLED:'true',APNS_TOPIC:TEST_PUSH_BUNDLE,PUSH_TOKEN_ENCRYPTION_KEY:'01'.repeat(32)};
+  await db.begin(tx=>dispatchPush({tx,actor:recipient,now:now(),config},{action:'register_device',installation_id:randomUUID(),apns_token:randomUUID().replaceAll('-','').repeat(2),environment:'sandbox',bundle_id:TEST_PUSH_BUNDLE,alert_authorized:true}));
+  await call(sender,'community',{action:'invite_to_room',target_user_id:recipient.id,room_id:lobby.id,room_code:lobby.code},{config});
+  assert.equal((await call(recipient,'notifications',{action:'list',scope:'personal'})).items.filter(i=>i.kind==='room_invite').length,1);
+  await call(recipient,'profile',{action:'set_invitation_permissions',friend_invitations_allowed:false,stranger_invitations_allowed:true});
+  assert.equal((await call(recipient,'notifications',{action:'list',scope:'personal'})).items.filter(i=>i.kind==='room_invite').length,0);
+  let sends=0;
+  await drainPushOutbox(db,config,{send:async()=>{sends++;return {delivered:true,retryable:false,reason:'delivered'};}});
+  assert.equal(sends,0);
+  const [job]=await db`select state,last_reason from app_private.push_outbox where user_id=${recipient.id}`;
+  assert.equal(job.state,'cancelled');assert.equal(job.last_reason,'invitation_not_available');
+});
+
+test('invitation visibility allows queued stranger push but cancels stale rooms before delivery',async()=>{
+  const sender=await actor('Push sender'),recipient=await actor('Push recipient');
+  const config={APP_PUSH_ENABLED:'true',APP_PUSH_DELIVERY_ENABLED:'true',APNS_TOPIC:TEST_PUSH_BUNDLE,PUSH_TOKEN_ENCRYPTION_KEY:'01'.repeat(32)};
+  await call(recipient,'profile',{action:'set_invitation_permissions',friend_invitations_allowed:true,stranger_invitations_allowed:true});
+  await db.begin(tx=>dispatchPush({tx,actor:recipient,now:now(),config},{action:'register_device',installation_id:randomUUID(),apns_token:randomUUID().replaceAll('-','').repeat(2),environment:'sandbox',bundle_id:TEST_PUSH_BUNDLE,alert_authorized:true}));
+  const first=await room(sender);
+  await call(sender,'community',{action:'invite_to_room',target_user_id:recipient.id,room_id:first.id,room_code:first.code},{config});
+  let sends=0;
+  const send=async()=>{sends++;return {delivered:true,retryable:false,reason:'delivered'};};
+  await drainPushOutbox(db,config,{send});assert.equal(sends,1);
+  const second=await room(sender);
+  await call(sender,'community',{action:'invite_to_room',target_user_id:recipient.id,room_id:second.id,room_code:second.code},{config,at:new Date(Date.now()+6000)});
+  await db`update full_game_private.rooms set closed=true where id=${second.id}`;
+  await drainPushOutbox(db,config,{send});assert.equal(sends,1);
+  const [job]=await db`select state,last_reason from app_private.push_outbox where user_id=${recipient.id} and room_id=${second.id}`;
+  assert.equal(job.state,'cancelled');assert.equal(job.last_reason,'invitation_not_available');
 });

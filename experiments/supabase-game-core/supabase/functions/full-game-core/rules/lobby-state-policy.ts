@@ -1,3 +1,4 @@
+import { fanSettings, type FanSettings } from "./fan-mode-policy.ts";
 import { requireSafeCommunityText } from "./content-safety.ts";
 
 export const LOBBY_SCHEMA_VERSION = 2;
@@ -13,7 +14,7 @@ export type LobbyWordPoolEntry = {
   enabled: boolean;
 };
 
-export type CanonicalLobbyState = {
+export type CanonicalLobbyState = FanSettings & {
   game_mode: LobbyGameMode;
   game_duration_seconds: number;
   lobby_spy_count: number;
@@ -255,9 +256,10 @@ export function canonicalizeLobbyState(
     game_duration_seconds: validatedGameDuration(
       state.game_duration_seconds,
     ),
-    lobby_spy_count: validatedSpyCount(state.lobby_spy_count),
+    ...fanSettings(state),
+    lobby_spy_count: state.fan_mode_enabled === true ? 1 : validatedSpyCount(state.lobby_spy_count),
     spies_know_each_other: validatedBoolean(
-      state.spies_know_each_other,
+      state.fan_mode_enabled === true ? false : state.spies_know_each_other,
       false,
     ),
     lobby_word_source: validatedWordSource(state.lobby_word_source),
@@ -299,6 +301,7 @@ export function lobbyStateFromRoom(
   room: Record<string, unknown>,
 ): CanonicalLobbyState {
   return canonicalizeLobbyState({
+    ...fanSettings(room),
     game_mode: room?.game_mode || "questions",
     game_duration_seconds: room?.game_duration_seconds || 900,
     lobby_spy_count: room?.lobby_spy_count ?? 1,
@@ -387,6 +390,7 @@ export function lobbyMutationPatch(
   return {
     lobby_schema_version: LOBBY_SCHEMA_VERSION,
     lobby_revision: currentRevision + 1,
+    ...fanSettings(mutation.state),
     game_mode: mutation.state.game_mode,
     game_duration_seconds: mutation.state.game_duration_seconds,
     lobby_spy_count: mutation.state.lobby_spy_count,

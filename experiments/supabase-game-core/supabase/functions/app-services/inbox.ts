@@ -50,9 +50,14 @@ async function visibleItems(ctx:AppContext,locale:string):Promise<any[]> {
     and ((e.event_type='friend_request' and exists(select 1 from app_private.friendships f where f.id=e.source_id and f.request_event_id=e.id and f.status='pending' and f.addressee_id=e.recipient_id))
       or (e.event_type='room_invite' and exists(select 1 from app_private.room_invites i
         join full_game_private.rooms r on r.id=i.room_id and not r.closed and r.state->>'status'='waiting'
-        join app_private.friendships f on f.pair_low=least(i.sender_user_id,i.recipient_user_id) and f.pair_high=greatest(i.sender_user_id,i.recipient_user_id) and f.status='accepted'
+        left join app_private.friendships f on f.pair_low=least(i.sender_user_id,i.recipient_user_id) and f.pair_high=greatest(i.sender_user_id,i.recipient_user_id)
+        join app_private.profiles recipient on recipient.user_id=i.recipient_user_id and recipient.state='active'
         join full_game_private.members m on m.room_id=i.room_id and m.user_id=i.sender_user_id
-        where i.id=e.source_id and i.notification_event_id=e.id and i.status in ('pending','accepted') and not exists(select 1 from full_game_private.members already where already.room_id=i.room_id and already.user_id=i.recipient_user_id))))
+        where i.id=e.source_id and i.notification_event_id=e.id and i.recipient_user_id=e.recipient_id and i.sender_user_id=e.actor_id
+        and i.status in ('pending','accepted') and f.status is distinct from 'blocked'
+        and (case when f.status='accepted' then recipient.data->'friend_invitations_allowed' is distinct from 'false'::jsonb
+          else recipient.data->'stranger_invitations_allowed'='true'::jsonb end)
+        and not exists(select 1 from full_game_private.members already where already.room_id=i.room_id and already.user_id=i.recipient_user_id))))
     order by e.created_at desc,e.id limit 500`;
   const items=[...globals.map((r:any)=>globalItem(r,locale)),...personals.map((r:any)=>personalItem(r,locale))];
   const keys=['__all__','__all__:global','__all__:personal',...items.map(i=>i.id)];

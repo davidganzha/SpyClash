@@ -1,5 +1,6 @@
 // @ts-nocheck -- Original game records have a validated dynamic wire format.
 import { reduceGame, projectGame } from './engine.ts';
+import { assertFanCapablePlayer } from './rules/fan-mode-policy.ts';
 import { readLeaderboard } from './leaderboard-service.ts';
 import { validateSharedWordPackContent } from './word-pack-content-safety.ts';
 import { accountGate } from '../app-services/account-gate.ts';
@@ -91,6 +92,7 @@ export async function executeGame(db, actor, body) {
           roomID = stored.id;
           if (action !== 'join_room' && !member(stored.state, actor)) throw new GameServiceError('not_member', 'You are no longer a member of this room.', 403);
           if (stored.closed) throw new GameServiceError('room_closed', 'This room has closed.', 410);
+          if (action !== 'leave_room') assertFanCapablePlayer(stored.state, { client_capabilities: body.client_capabilities });
           if (revisionActions.has(action) && Number(body.expected_revision) !== Number(stored.revision)) {
             throw new GameServiceError('room_revision_conflict', 'This turn has changed. Refresh the room before acting again.', 409);
           }
@@ -225,6 +227,7 @@ async function readGame(db, actor, body) {
     if (!stored) throw new GameServiceError('room_not_found', 'Room not found.', 404);
     if (!member(stored.state, actor)) throw new GameServiceError('not_member', 'You are no longer a member of this room.', 403);
   }
+  if (stored) assertFanCapablePlayer(stored.state, { client_capabilities: body.client_capabilities });
   return { status: 200, body: roomResponse(stored?.state, actor) };
 }
 async function mutatePack(tx, actor, body) {

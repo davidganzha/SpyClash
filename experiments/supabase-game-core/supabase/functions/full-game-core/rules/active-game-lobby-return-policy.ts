@@ -102,6 +102,8 @@ export function activeGameLobbyResetPatch(room: Room): Room {
     detective_vote_cancellation_present_at: "",
     detective_vote_cancellation_reason: "",
     winner: "",
+    fan_scenario: "",
+    fan_result_reason: "",
     cards_read: [],
     vote_requests: [],
     spectators: [],

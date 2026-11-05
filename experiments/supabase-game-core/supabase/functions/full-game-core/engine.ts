@@ -1,6 +1,7 @@
 // @ts-nocheck -- Original dynamic room documents retain their native JSON contract.
 // Rules are vendored from the original game; persistence and external side effects
 // are replaced by one atomic PostgreSQL transaction owned by the handler.
+import { fanSettings, isFanMode, isFanAnomaly, fanScenario, fanAssignmentCount, assertFanCapablePlayer, assertFanCapableRoster, fanVoteTransition } from "./rules/fan-mode-policy.ts";
 import { requireSafeCommunityText, safeCommunityAvatar, safeCommunityDisplayName } from "./rules/content-safety.ts";
 import { projectRoomForClient } from "./rules/room-projection.ts";
 import { assertAuthoritativeLobbyReady, hasAuthoritativeLobbyState, lobbyMutationPatch, validateLobbyMutation, lobbyStateFromRoom, selectedAuthoritativeLobbyWordPool } from "./rules/lobby-state-policy.ts";
@@ -188,8 +189,8 @@ function validatedStartPatch(room, payload, assignment) {
     });
   }
   if (
-    spyEmails.length !== lobbySpyCount(room) ||
-    spyEmail !== spyEmails[0] ||
+    spyEmails.length !== (isFanMode(room) ? fanAssignmentCount(room, assignment.fan_scenario, roomPlayers.length) : lobbySpyCount(room)) ||
+    spyEmail !== (spyEmails[0] || "") ||
     spyEmails.some((email) => !emails.has(email))
   ) {
     throw Object.assign(new Error("Every spy must be a unique room player"), {
@@ -226,6 +227,8 @@ function validatedStartPatch(room, payload, assignment) {
   }
 
   return {
+    fan_scenario: assignment.fan_scenario || "",
+    fan_result_reason: "",
     spy_email: spyEmail,
     spy_emails: spyEmails,
     secret_word: secretWord,
@@ -277,6 +280,8 @@ function replayResetPatch(room, user, body, requiresReplayVotes = true) {
     ...replayMembership,
     spy_email: "",
     spy_emails: [],
+    fan_scenario: "",
+    fan_result_reason: "",
     secret_word: "",
     word: "",
     category: "",
@@ -334,6 +339,7 @@ export function projectGame(room: GameRecord, actor: GameActor): GameRecord {
   if (room.closed || normalizedStatus(room) === "ended") failure("Room is closed", "room_closed", 404);
   requirePlayer(room, actor);
   if (roomHasDepartedPlayer(room, actor.email)) failure("This operative left the mission", "room_departed", 403);
+  assertFanCapablePlayer(room, players(room).find((p) => p.email === actor.email));
   return projectRoomForClient(room, actor);
 }
 
@@ -385,7 +391,7 @@ export function reduceGame(input: GameInput): GameTransition {
     const spies = canonicalSpyEmails(room);
     for (const player of players(room)) {
       const isSpy = spies.includes(player.email);
-      history.push({ match_id: intent.match_id, result_key: gameHistoryResultKey(intent.match_id, player.user_id), player_user_id: player.user_id, player_email: player.email, room_code: room.code, match_type: "online", ranked: spies.length === 1, role: isSpy ? "spy" : "detective", word: displayWord(room) || "CLASSIFIED", category: clean(room.category) || "CLASSIC", winner: room.winner, player_count: players(room).length, spy_count: spies.length, won: room.winner === "spy" ? isSpy : !isSpy });
+      history.push({ match_id: intent.match_id, result_key: gameHistoryResultKey(intent.match_id, player.user_id), player_user_id: player.user_id, player_email: player.email, room_code: room.code, match_type: "online", ranked: !isFanMode(room) && spies.length === 1, fan_mode_enabled: isFanMode(room), fan_scenario: fanScenario(room) || "", role: isSpy ? "spy" : "detective", word: displayWord(room) || "CLASSIFIED", category: clean(room.category) || "CLASSIC", winner: room.winner, player_count: players(room).length, spy_count: spies.length, won: room.winner === "all" ? true : room.winner === "system" ? false : room.winner === "spy" ? isSpy : !isSpy });
     }
     const recipients = terminalOutboxCommitRecipientUserIDs(room);
     emit("game_finished", room.game_finished_event_id, { winner: room.winner, recipient_user_ids: recipients });
@@ -406,7 +412,7 @@ export function reduceGame(input: GameInput): GameTransition {
     room = {
       id: input.roomID || uuid(), code: input.roomCode || Array.from({ length: 6 }, () => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[randomIndex(32)]).join(""),
       host_email: user.email, status: "waiting", closed: false, players: [player], participant_user_ids: [user.id],
-      game_mode: "questions", game_duration_seconds: 900, lobby_spy_count: 1, spies_know_each_other: false,
+      game_mode: "questions", game_duration_seconds: 900, lobby_spy_count: 1, spies_know_each_other: false, ...fanSettings({}), fan_scenario: "", fan_result_reason: "",
       spy_emails: [], spy_email: "", incompatible_player_emails: [], departed_player_emails: [],
       lobby_schema_version: 2, lobby_revision: 0, room_revision: 0,
       lobby_word_source: "none", lobby_source_pack_id: "", lobby_source_name: "", lobby_theme: "", lobby_category: "", lobby_word_count: 0, lobby_word_count_mode: "recommended", lobby_word_pool: [], lobby_last_mutation_id: "", lobby_last_mutation_fingerprint: "",
@@ -428,6 +434,7 @@ export function reduceGame(input: GameInput): GameTransition {
     requirePlayer(room, user);
     if (roomHasDepartedPlayer(room, user.email)) failure("This operative left the mission", "room_departed", 403);
     if (lobbySpyCount(room) > 1 && !playerSupportsMultiSpy(players(room).find((p) => p.email === user.email))) throw clientUpdateRequiredError();
+    if (action !== "leave_room") assertFanCapablePlayer(room, players(room).find((p) => p.email === user.email));
   }
   if (["get_room", "get_active_room"].includes(action)) return result();
   if (action === "record_finished_online_game") return rejectRetiredResultRecording();
@@ -443,6 +450,7 @@ export function reduceGame(input: GameInput): GameTransition {
   switch (action) {
     case "join_room": {
       const player = { ...playerFromUser(user, body), membership_id: validatedMembershipGeneration(body.join_membership_id, uuid) };
+      assertFanCapablePlayer(room, player);
       const existing = players(room).find((p) => p.email === user.email);
       if (lobbySpyCount(room) > 1 && !playerSupportsMultiSpy(player)) throw clientUpdateRequiredError();
       if (roomHasDepartedPlayer(room, user.email) && normalizedStatus(room) !== "waiting") failure("Operative left this mission", "room_departed");
@@ -460,7 +468,7 @@ export function reduceGame(input: GameInput): GameTransition {
       requireHost(room, user);
       if (normalizedStatus(room) !== "waiting") failure("Ready check requires lobby", "ready_check_inactive");
       if (players(room).length < 3) failure("Need at least 3 operatives", "not_enough_players", 400);
-      validatedLobbySpyCount(lobbySpyCount(room), players(room).length); assertMultiSpyCapableRoster(room); assertAuthoritativeLobbyReady(room);
+      validatedLobbySpyCount(lobbySpyCount(room), players(room).length); assertMultiSpyCapableRoster(room); assertFanCapableRoster(room); assertAuthoritativeLobbyReady(room);
       patch({ status: "ready_voting", ready_players: [] }); break;
     case "return_to_waiting":
       requireHost(room, user);
@@ -479,6 +487,7 @@ export function reduceGame(input: GameInput): GameTransition {
       assertLobbySettingsAccess(room, user, "lobby");
       const state = body.state && typeof body.state === "object" && !Array.isArray(body.state) ? body.state : {};
       const requested = validateLobbyMutation({ mutation_id: body.mutation_id, expected_revision: body.expected_revision, state: { ...state, lobby_spy_count: state.lobby_spy_count ?? lobbySpyCount(room), spies_know_each_other: state.spies_know_each_other ?? spiesKnowEachOther(room) } });
+      assertFanCapableRoster({ ...room, ...requested.state });
       const roster = compatibleRosterForSpyCount(room, requested.state.lobby_spy_count);
       const effective = roster.effectiveSpyCount === requested.state.lobby_spy_count ? requested : validateLobbyMutation({ mutation_id: body.mutation_id, expected_revision: body.expected_revision, state: { ...requested.state, lobby_spy_count: roster.effectiveSpyCount } });
       const removed = new Set(roster.removedEmails.map((e) => e.toLowerCase()));
@@ -496,10 +505,10 @@ export function reduceGame(input: GameInput): GameTransition {
     }
     case "arm_roulette": {
       requireHost(room, user);
-      if (normalizedStatus(room) === "roulette" && canonicalSpyEmails(room).length) { serverSpyAssignment(room, randomIndex); break; }
+      if (normalizedStatus(room) === "roulette" && (canonicalSpyEmails(room).length || fanScenario(room))) { serverSpyAssignment(room, randomIndex); break; }
       if (!["waiting", "ready_voting"].includes(normalizedStatus(room))) failure("Mission requires lobby", "game_start_inactive");
       if (players(room).length < 3) failure("Need at least 3 operatives", "not_enough_players", 400);
-      validatedLobbySpyCount(lobbySpyCount(room), players(room).length); assertMultiSpyCapableRoster(room); assertAuthoritativeLobbyReady(room);
+      validatedLobbySpyCount(lobbySpyCount(room), players(room).length); assertMultiSpyCapableRoster(room); assertFanCapableRoster(room); assertAuthoritativeLobbyReady(room);
       if (normalizedStatus(room) === "ready_voting" && !players(room).every((p) => readyPlayers(room).includes(p.email))) failure("All operatives must be ready", "players_not_ready");
       if (!Number.isInteger(body.expected_lobby_revision) || body.expected_lobby_revision !== Number(room.lobby_revision)) failure("Lobby settings changed", "lobby_revision_conflict");
       const state = lobbyStateFromRoom(room), pool = selectedAuthoritativeLobbyWordPool(room);
@@ -563,13 +572,13 @@ export function reduceGame(input: GameInput): GameTransition {
     }
     case "cast_detective_vote": {
       requireLive(); requireMatch();
-      if (hasGameTimerElapsed(room, input.now)) { patch({ detective_votes: [], vote_requests: [], detective_vote_round_id: "" }); finish(deriveExpiredGameWinner(room, input.now)); break; }
+      if (hasGameTimerElapsed(room, input.now)) { patch({ detective_votes: [], vote_requests: [], detective_vote_round_id: "" }); finish(deriveExpiredGameWinner(room, input.now), isFanAnomaly(room) ? { fan_result_reason: "timeout" } : {}); break; }
       if (shouldSpyWin(room)) { finish("spy"); break; }
       if (!detectiveVotingActive(room)) failure("Detective voting is no longer active", "detective_vote_inactive");
       const explicit = explicitExpectedVoteRoundID(body);
       const binding = bindDetectiveVoteRoundIdentity(detectiveVoteRoundID(room), explicit, detectiveVoteRoundID(room) || uuid(), true);
       const event = scheduledDetectiveVoteCancellationEvent({ eventID: uuid(), roundID: binding.roundID }, input.now);
-      const resolution = resolvedDetectiveVoteCastTransition(activePlayers(room).map((p) => p.email), voteRequests(room), detectiveVotes(room), user.email, clean(body.target_email), canonicalSpyEmails(room), spectators(room), room.eliminated_emails || [], event);
+      const resolution = isFanMode(room) ? fanVoteTransition(room, user.email, body.target_email, event) : resolvedDetectiveVoteCastTransition(activePlayers(room).map((p) => p.email), voteRequests(room), detectiveVotes(room), user.email, clean(body.target_email), canonicalSpyEmails(room), spectators(room), room.eliminated_emails || [], event);
       let next = { ...resolution.patch };
       if (resolution.decision.outcome === "eject" && !resolution.terminal_winner) {
         const changed = { ...room, ...next };
@@ -581,13 +590,14 @@ export function reduceGame(input: GameInput): GameTransition {
       if (resolution.terminal_winner) finish(resolution.terminal_winner, resolution.terminal_patch); break;
     }
     case "submit_spy_guess":
+      if (isFanMode(room)) failure("FAN mode is solved by voting", "fan_guess_disabled");
       requireLive(); requireMatch(); assertActiveSpyGuesser(room, user.email);
       { const guess = requireSafeCommunityText(clean(body.guess), "Spy guess"); finish(spyGuessWinner(displayWord(room), guess), { spy_guess: guess }); } break;
     case "finalize_expired_room":
     case "finish_room":
       if (action === "finish_room") requireHost(room, user);
       assertExpectedTimerFinalizationScope(room, body);
-      if (normalizedStatus(room) !== "finished") finish(deriveExpiredGameWinner(room, input.now)); break;
+      if (normalizedStatus(room) !== "finished") finish(deriveExpiredGameWinner(room, input.now), isFanAnomaly(room) ? { fan_result_reason: "timeout" } : {}); break;
     case "vote_return_to_lobby":
       requireHost(room, user); requireMatch(); patch(activeGameLobbyReturnTransition(room, user.email, body.return_to_lobby_vote).patch); break;
     case "vote_play_again": {
@@ -606,11 +616,12 @@ export function reduceGame(input: GameInput): GameTransition {
     case "leave_room": {
       assertExpectedMembershipGeneration({ room, user, expected: body.expected_membership_id, expectedRevision: body.expected_revision });
       if (!hostDepartureUsesMembershipTransition(room, user.email)) { close(); break; }
-      const votes = detectiveVoteLeavePatch(activePlayers(room).map((p) => p.email), voteRequests(room), detectiveVotes(room), user.email, detectiveVoteRoundID(room));
+      const votes = isFanMode(room) ? { detective_votes: [], vote_requests: [], detective_vote_round_id: "" } : detectiveVoteLeavePatch(activePlayers(room).map((p) => p.email), voteRequests(room), detectiveVotes(room), user.email, detectiveVoteRoundID(room));
       if (normalizedStatus(room) === "playing" && clean(room.game_started_at)) {
         const departure = activeDepartureTransition(room, user.email, { random, randomIndex });
         patch({ ...departure.patch, ...votes, player_feedback: (room.player_feedback || []).filter((p) => p.email !== user.email) });
-        if (departure.terminalWinner) finish(departure.terminalWinner);
+        if (isFanAnomaly(room) && activePlayers(room).length < 3) finish("system", { fan_result_reason: "insufficient_players" });
+        else if (departure.terminalWinner) finish(departure.terminalWinner);
       } else {
         const next = players(room).filter((p) => p.email !== user.email);
         const without = (values) => uniqueStrings(values).filter((e) => e.toLowerCase() !== user.email);

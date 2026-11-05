@@ -1,3 +1,4 @@
+import { isFanMode, isFanAnomaly, fanScenario, fanAssignmentCount } from "./fan-mode-policy.ts";
 import { gameActiveElapsedSeconds } from "./game-timer-policy.ts";
 import {
   canonicalSpyEmails,
@@ -15,9 +16,10 @@ export type RankedMatchIdentity = {
 
 export type TerminalIntent = {
   match_id: string;
-  winner: "spy" | "detectives";
+  winner: "spy" | "detectives" | "all" | "system";
   decided_at: string;
   spy_guess?: string;
+  fan_result_reason?: string;
   detective_votes?: unknown[];
 };
 
@@ -36,9 +38,9 @@ function invalidTerminal(message: string, statusCode = 409): Error {
   });
 }
 
-function normalizedWinner(value: unknown): "spy" | "detectives" {
+function normalizedWinner(value: unknown): "spy" | "detectives" | "all" | "system" {
   const winner = clean(value).toLocaleLowerCase();
-  if (winner !== "spy" && winner !== "detectives") {
+  if (winner !== "spy" && winner !== "detectives" && winner !== "all" && winner !== "system") {
     throw invalidTerminal("The ranked winner is invalid.", 400);
   }
   return winner;
@@ -170,8 +172,8 @@ function assertStartedRankedRoom(room: Room): {
 
   const spyEmails = canonicalSpyEmails(room).map(normalizedEmail);
   if (
-    spyEmails.length !== lobbySpyCount(room) ||
-    spyEmails.length > maximumSpyCount(participants.length) ||
+    spyEmails.length !== (isFanMode(room) && fanScenario(room) ? fanAssignmentCount(room, fanScenario(room)!, participants.length) : lobbySpyCount(room)) ||
+    (!isFanMode(room) && spyEmails.length > maximumSpyCount(participants.length)) ||
     new Set(spyEmails).size !== spyEmails.length ||
     spyEmails.some((email) => !emails.has(email))
   ) {
@@ -202,7 +204,8 @@ export function assertRankedTerminalRoom(
   room: Room,
   winnerValue: unknown,
 ): void {
-  normalizedWinner(winnerValue);
+  const winner = normalizedWinner(winnerValue);
+  if (!isFanMode(room) && ["all", "system"].includes(winner)) throw invalidTerminal("Collective results require FAN mode");
   if (status(room) !== "finished") {
     throw invalidTerminal("Only a finished room can be archived.");
   }
@@ -252,6 +255,7 @@ export function buildTerminalIntent(
     winner,
     decided_at: timestamp,
   };
+  if (Object.prototype.hasOwnProperty.call(terminalPatch, "fan_result_reason")) intent.fan_result_reason = clean(terminalPatch.fan_result_reason);
   if (Object.prototype.hasOwnProperty.call(terminalPatch, "spy_guess")) {
     intent.spy_guess = clean(terminalPatch.spy_guess);
   }
@@ -280,6 +284,7 @@ export function terminalIntentFromRoom(room: Room): TerminalIntent | null {
     winner,
     decided_at: decidedAt,
   };
+  if (Object.prototype.hasOwnProperty.call(value, "fan_result_reason")) intent.fan_result_reason = clean(value.fan_result_reason);
   if (Object.prototype.hasOwnProperty.call(value, "spy_guess")) {
     intent.spy_guess = clean(value.spy_guess);
   }
@@ -293,6 +298,7 @@ export function terminalIntentFromRoom(room: Room): TerminalIntent | null {
 
 export function terminalPatchFromIntent(intent: TerminalIntent): Room {
   const patch: Room = {};
+  if (Object.prototype.hasOwnProperty.call(intent, "fan_result_reason")) patch.fan_result_reason = intent.fan_result_reason;
   if (Object.prototype.hasOwnProperty.call(intent, "spy_guess")) {
     patch.spy_guess = intent.spy_guess ?? "";
   }
@@ -360,6 +366,8 @@ function abandonedPreTimerMatchPatch(): Room {
     status: "waiting",
     spy_email: "",
     spy_emails: [],
+    fan_scenario: "",
+    fan_result_reason: "",
     secret_word: "",
     word: "",
     category: "",
@@ -421,7 +429,7 @@ export function preTimerMembershipTransitionPatch(
 export function deriveExpiredGameWinner(
   room: Room,
   nowMilliseconds = Date.now(),
-): "spy" {
+): "spy" | "system" {
   const { durationSeconds } = assertStartedRankedRoom(room);
   const activeElapsedSeconds = gameActiveElapsedSeconds(room, nowMilliseconds);
   if (
@@ -430,7 +438,7 @@ export function deriveExpiredGameWinner(
   ) {
     throw invalidTerminal("The server game deadline has not elapsed.");
   }
-  return "spy";
+  return isFanAnomaly(room) ? "system" : "spy";
 }
 
 export function rejectRetiredResultRecording(): never {

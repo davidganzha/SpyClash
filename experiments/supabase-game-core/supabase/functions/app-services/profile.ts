@@ -1,8 +1,10 @@
+import { invitationPermissions, invitationPermissionPatch } from './policies/invitation-permissions.ts';
 import { AppServiceError, type AppContext, requireUUID } from './contracts.ts';
 import { stableSpyID, isReservedManualSpyID, publicProfile } from './policies/community.ts';
 import { safeCommunityAvatar, safeCommunityDisplayName } from './policies/community-safety.ts';
 import { requiresPremiumProfileChange } from './policies/profile-membership.ts';
 import { aggregateCompetitiveStats, aggregateCompetitiveRoleStats } from '../full-game-core/rules/competitive-stats.ts';
+import { aggregateAchievementStats, achievementProgress } from './policies/achievements.ts';
 
 export const clean = (value: unknown): string => String(value ?? '').trim();
 const languages = new Set(['en','ru','uk','es']);
@@ -15,7 +17,7 @@ export async function ensureProfile(ctx: AppContext): Promise<any> {
   const {tx,actor,now}=ctx;
   let [profile]=await tx`select * from app_private.profiles where user_id=${actor.id}`;
   if (!profile) {
-    const data={full_name:safeCommunityDisplayName(actor.full_name || 'Operative'),display_name:safeCommunityDisplayName(actor.full_name || 'Operative'),avatar:'🕵️',language:'en',spy_card_theme:'field',spy_card_accent:'signal_red',spy_card_badge:'operative',radar_invite_policy:'ask',onboarding_completed:false,onboarding_version:0};
+    const data={full_name:safeCommunityDisplayName(actor.full_name || 'Operative'),display_name:safeCommunityDisplayName(actor.full_name || 'Operative'),avatar:'🕵️',language:'en',spy_card_theme:'field',spy_card_accent:'signal_red',spy_card_badge:'operative',radar_invite_policy:'ask',friend_invitations_allowed:true,stranger_invitations_allowed:false,onboarding_completed:false,onboarding_version:0};
     await tx`insert into app_private.profiles(user_id,contact_email,data,created_at,updated_at) values(${actor.id},${actor.contactEmail},${tx.json(data)},${now},${now}) on conflict(user_id) do nothing`;
     [profile]=await tx`select * from app_private.profiles where user_id=${actor.id}`;
   }
@@ -63,16 +65,16 @@ export async function projectedProfiles(ctx:AppContext,profiles:any[]):Promise<a
   const ids=profiles.map(p=>p.user_id);
   const rows=await ctx.tx`select result from full_game_private.history where player_id=any(${ids}::uuid[])`;
   const records=rows.map((r:any)=>r.result);
-  const stats=aggregateCompetitiveStats(records), roles=aggregateCompetitiveRoleStats(records);
+  const stats=aggregateCompetitiveStats(records), roles=aggregateCompetitiveRoleStats(records), awards=aggregateAchievementStats(records);
   return profiles.map(p=>{
     const s=stats.get(p.user_id),r=roles.get(p.user_id);
-    return publicProfile({...p.data,id:p.user_id,spy_id:p.spy_id,rating:s?.rating||0,games_played:s?.games||0,games_won:s?.wins||0,spy_games_played:r?.spyGames||0,spy_games_won:r?.spyWins||0,detective_games_played:r?.detectiveGames||0,detective_games_won:r?.detectiveWins||0});
+    return publicProfile({...p.data,id:p.user_id,spy_id:p.spy_id,rating:s?.rating||0,games_played:s?.games||0,games_won:s?.wins||0,spy_games_played:r?.spyGames||0,spy_games_won:r?.spyWins||0,detective_games_played:r?.detectiveGames||0,detective_games_won:r?.detectiveWins||0,achievements:achievementProgress(awards.get(p.user_id))});
   });
 }
 export async function ownProfile(ctx:AppContext,profile:any):Promise<any> {
   const [publicData]=await projectedProfiles(ctx,[profile]);
   const data=profile.data||{};
-  return {...publicData,email:ctx.actor.email,contact_email:profile.contact_email,full_name:clean(data.full_name)||publicData.display_name,language:languages.has(data.language)?data.language:'en',role:isAppAdmin(ctx,profile)?'admin':'user',is_verified:true,onboarding_completed:data.onboarding_completed===true,onboarding_version:Number(data.onboarding_version)||0,onboarding_completed_at:data.onboarding_completed_at||null,acquisition_source:data.acquisition_source||null,radar_invite_policy:['ask','automatic','blocked'].includes(data.radar_invite_policy)?data.radar_invite_policy:'ask'};
+  return {...publicData,...invitationPermissions(data),email:ctx.actor.email,contact_email:profile.contact_email,full_name:clean(data.full_name)||publicData.display_name,language:languages.has(data.language)?data.language:'en',role:isAppAdmin(ctx,profile)?'admin':'user',is_verified:true,onboarding_completed:data.onboarding_completed===true,onboarding_version:Number(data.onboarding_version)||0,onboarding_completed_at:data.onboarding_completed_at||null,acquisition_source:data.acquisition_source||null,radar_invite_policy:['ask','automatic','blocked'].includes(data.radar_invite_policy)?data.radar_invite_policy:'ask'};
 }
 async function hasMembership(ctx:AppContext):Promise<boolean> {
   const rows=await ctx.tx`select 1 from app_private.entitlements where user_id=${ctx.actor.id} and active and (expires_at is null or expires_at>${ctx.now}) union all select 1 from app_private.membership_grants where user_id=${ctx.actor.id} and active and (expires_at is null or expires_at>${ctx.now}) limit 1`;
@@ -108,6 +110,10 @@ export async function dispatchProfile(ctx:AppContext,body:any):Promise<any> {
     patch.onboarding_completed_at=ctx.now.toISOString();
     if(body.acquisition_source!==undefined&&body.acquisition_source!==null) patch.acquisition_source=validatedAcquisition(body.acquisition_source);
   } else if(['save_acquisition_source','acquisition_source','acquisition'].includes(action)) patch.acquisition_source=validatedAcquisition(body.acquisition_source);
+  else if(action==='set_invitation_permissions') {
+    try { Object.assign(patch,invitationPermissionPatch(body)); }
+    catch { throw new AppServiceError('invalid_invitation_permissions','Invitation settings must be true or false.',422); }
+  }
   else if(action==='set_radar_invite_policy') {
     const policy=clean(body.radar_invite_policy);
     if(!['ask','automatic','blocked'].includes(policy)) throw new AppServiceError('invalid_radar_invite_policy','Invalid Radar invite policy.',422);

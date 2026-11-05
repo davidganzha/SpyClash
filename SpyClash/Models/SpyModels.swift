@@ -3052,6 +3052,8 @@ struct SpyUser: Codable, Identifiable, Equatable {
     let spyCardAccent: String?
     let spyCardBadge: String?
     let radarInvitePolicy: String?
+    var friendInvitationsAllowed: Bool? = nil
+    var strangerInvitationsAllowed: Bool? = nil
 
     var callSign: String {
         displayName?.nilIfBlank ?? fullName?.nilIfBlank ?? email.components(separatedBy: "@").first ?? "Operative"
@@ -3085,6 +3087,8 @@ struct SpyUser: Codable, Identifiable, Equatable {
         case spyCardAccent = "spy_card_accent"
         case spyCardBadge = "spy_card_badge"
         case radarInvitePolicy = "radar_invite_policy"
+        case friendInvitationsAllowed = "friend_invitations_allowed"
+        case strangerInvitationsAllowed = "stranger_invitations_allowed"
     }
 }
 
@@ -3297,6 +3301,7 @@ struct PublicSpyProfile: Codable, Identifiable, Equatable {
     let detectiveGamesPlayed: Int
     let detectiveGamesWon: Int
     let detectiveWinRate: Int
+    let achievements: [SpyAchievementProgress]?
 
     init(
         id: String,
@@ -3315,7 +3320,8 @@ struct PublicSpyProfile: Codable, Identifiable, Equatable {
         spyWinRate: Int = 0,
         detectiveGamesPlayed: Int = 0,
         detectiveGamesWon: Int = 0,
-        detectiveWinRate: Int = 0
+        detectiveWinRate: Int = 0,
+        achievements: [SpyAchievementProgress]? = nil
     ) {
         self.id = id
         self.spyID = spyID
@@ -3334,6 +3340,7 @@ struct PublicSpyProfile: Codable, Identifiable, Equatable {
         self.detectiveGamesPlayed = detectiveGamesPlayed
         self.detectiveGamesWon = detectiveGamesWon
         self.detectiveWinRate = detectiveWinRate
+        self.achievements = achievements
     }
 
     init(from decoder: Decoder) throws {
@@ -3355,10 +3362,12 @@ struct PublicSpyProfile: Codable, Identifiable, Equatable {
         detectiveGamesPlayed = try container.decodeIfPresent(Int.self, forKey: .detectiveGamesPlayed) ?? 0
         detectiveGamesWon = try container.decodeIfPresent(Int.self, forKey: .detectiveGamesWon) ?? 0
         detectiveWinRate = try container.decodeIfPresent(Int.self, forKey: .detectiveWinRate) ?? 0
+        achievements = try container.decodeIfPresent([SpyAchievementProgress].self, forKey: .achievements)
     }
 
     enum CodingKeys: String, CodingKey {
         case id
+        case achievements
         case spyID = "spy_id"
         case displayName = "display_name"
         case avatar
@@ -3701,6 +3710,9 @@ struct LobbyStatePayload: Codable, Hashable {
     var gameDurationSeconds: Int
     var spyCount: Int = 1
     var spiesKnowEachOther: Bool = false
+    var fanModeEnabled: Bool = false
+    var fanAllSpiesChance: Int = 15
+    var fanNoSpiesChance: Int = 15
     var lobbyWordSource: LobbyWordSource
     var lobbySourcePackID: String?
     var lobbySourceName: String?
@@ -3715,6 +3727,9 @@ struct LobbyStatePayload: Codable, Hashable {
         case gameDurationSeconds = "game_duration_seconds"
         case spyCount = "lobby_spy_count"
         case spiesKnowEachOther = "spies_know_each_other"
+        case fanModeEnabled = "fan_mode_enabled"
+        case fanAllSpiesChance = "fan_all_spies_chance"
+        case fanNoSpiesChance = "fan_no_spies_chance"
         case lobbyWordSource = "lobby_word_source"
         case lobbySourcePackID = "lobby_source_pack_id"
         case lobbySourceName = "lobby_source_name"
@@ -3730,6 +3745,7 @@ struct LobbyStatePayload: Codable, Hashable {
         gameDurationSeconds: Int,
         spyCount: Int = 1,
         spiesKnowEachOther: Bool = false,
+        fanSettings: FanModeSettings = FanModeSettings(),
         lobbyWordSource: LobbyWordSource,
         lobbySourcePackID: String?,
         lobbySourceName: String?,
@@ -3742,7 +3758,11 @@ struct LobbyStatePayload: Codable, Hashable {
         self.gameMode = gameMode
         self.gameDurationSeconds = gameDurationSeconds
         self.spyCount = min(max(spyCount, 1), 3)
-        self.spiesKnowEachOther = spiesKnowEachOther
+        self.spiesKnowEachOther = fanSettings.isEnabled ? false : spiesKnowEachOther
+        self.fanModeEnabled = fanSettings.isEnabled
+        self.fanAllSpiesChance = fanSettings.normalized.allSpiesChance
+        self.fanNoSpiesChance = fanSettings.normalized.noSpiesChance
+        if fanSettings.isEnabled { self.spyCount = 1 }
         self.lobbyWordSource = lobbyWordSource
         self.lobbySourcePackID = lobbySourcePackID
         self.lobbySourceName = lobbySourceName
@@ -3759,6 +3779,9 @@ struct LobbyStatePayload: Codable, Hashable {
         gameDurationSeconds = try container.decode(Int.self, forKey: .gameDurationSeconds)
         spyCount = min(max(try container.decodeIfPresent(Int.self, forKey: .spyCount) ?? 1, 1), 3)
         spiesKnowEachOther = try container.decodeIfPresent(Bool.self, forKey: .spiesKnowEachOther) ?? false
+        fanModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .fanModeEnabled) ?? false
+        fanAllSpiesChance = try container.decodeIfPresent(Int.self, forKey: .fanAllSpiesChance) ?? 15
+        fanNoSpiesChance = try container.decodeIfPresent(Int.self, forKey: .fanNoSpiesChance) ?? 15
         lobbyWordSource = try container.decode(LobbyWordSource.self, forKey: .lobbyWordSource)
         lobbySourcePackID = try container.decodeIfPresent(String.self, forKey: .lobbySourcePackID)
         lobbySourceName = try container.decodeIfPresent(String.self, forKey: .lobbySourceName)
@@ -3789,6 +3812,11 @@ struct GameRoom: Codable, Identifiable, Hashable {
     var revealedSpyEmails: [String]?
     var lobbySpyCount: Int?
     var spiesKnowEachOther: Bool?
+    var fanModeEnabled: Bool? = nil
+    var fanAllSpiesChance: Int? = nil
+    var fanNoSpiesChance: Int? = nil
+    var fanScenario: String? = nil
+    var fanResultReason: String? = nil
     var serverExclusionVoteThreshold: Int?
     var secretWord: String?
     var word: String?
@@ -4060,6 +4088,11 @@ struct GameRoom: Codable, Identifiable, Hashable {
         case revealedSpyEmails = "revealed_spy_emails"
         case lobbySpyCount = "lobby_spy_count"
         case spiesKnowEachOther = "spies_know_each_other"
+        case fanModeEnabled = "fan_mode_enabled"
+        case fanAllSpiesChance = "fan_all_spies_chance"
+        case fanNoSpiesChance = "fan_no_spies_chance"
+        case fanScenario = "fan_scenario"
+        case fanResultReason = "fan_result_reason"
         case serverExclusionVoteThreshold = "exclusion_vote_threshold"
         case secretWord = "secret_word"
         case word

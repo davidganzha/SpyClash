@@ -16,6 +16,7 @@ struct SpyGameIntroParticipant<ID: Hashable>: Identifiable {
 struct SpyGameIntroScene<ParticipantID: Hashable>: View {
     let participants: [SpyGameIntroParticipant<ParticipantID>]
     let spyCount: Int
+    let fanEnabled: Bool
     let language: AppLanguage
     let startedAt: Date
     let duration: TimeInterval
@@ -29,6 +30,7 @@ struct SpyGameIntroScene<ParticipantID: Hashable>: View {
     init(
         participants: [SpyGameIntroParticipant<ParticipantID>],
         spyCount: Int,
+        fanEnabled: Bool = false,
         language: AppLanguage,
         startedAt: Date,
         duration: TimeInterval = Base44Client.gameIntroDuration,
@@ -38,6 +40,7 @@ struct SpyGameIntroScene<ParticipantID: Hashable>: View {
     ) {
         self.participants = participants
         self.spyCount = spyCount
+        self.fanEnabled = fanEnabled
         self.language = language
         self.startedAt = startedAt
         self.duration = duration
@@ -59,7 +62,7 @@ struct SpyGameIntroScene<ParticipantID: Hashable>: View {
         .dynamicTypeSize(...DynamicTypeSize.large)
         .ignoresSafeArea()
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(copy.introAccessibility(spyCount: normalizedSpyCount))
+        .accessibilityLabel(fanEnabled ? "FAN MODE. " + FanModeCopy(language: language).rules : copy.introAccessibility(spyCount: normalizedSpyCount))
         .accessibilityIdentifier(accessibilityIdentifier)
         .task(id: startedAt) {
             await playIntroHaptics()
@@ -188,9 +191,9 @@ struct SpyGameIntroScene<ParticipantID: Hashable>: View {
                 .accessibilityHidden(true)
 
             VStack(spacing: 0) {
-                Text(copy.spyTeam(spyCount: normalizedSpyCount))
+                Text(fanEnabled ? "FAN MODE" : copy.spyTeam(spyCount: normalizedSpyCount))
                     .foregroundStyle(SpyTheme.red)
-                Text(copy.amongYou)
+                Text(fanEnabled ? FanModeCopy(language: language).text("TRUST NO ONE", "НЕ ВЕРЬ НИКОМУ", "NO CONFÍES EN NADIE", "НЕ ВІР НІКОМУ") : copy.amongYou)
                     .foregroundStyle(.white)
             }
             .font(SpyTheme.brandFont(size: min(48, size.width * 0.125)))

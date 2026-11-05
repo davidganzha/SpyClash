@@ -1,3 +1,4 @@
+import { isFanMode, isFanAnomaly, fanScenario, sampleFanScenario, fanAssignmentCount } from "./fan-mode-policy.ts";
 import { associationRosterChangePatch } from "./association-turn-order.ts";
 import { questionRosterChangePatch } from "./question-turn-order.ts";
 
@@ -152,6 +153,7 @@ export function validatedLobbySpyCount(
 }
 
 export function lobbySpyCount(room: Room): number {
+  if (isFanMode(room)) return 1;
   const persisted = Number(room?.lobby_spy_count);
   if (
     Number.isSafeInteger(persisted) && persisted >= 1 &&
@@ -173,7 +175,7 @@ export function clampedLobbySpyCount(
 }
 
 export function spiesKnowEachOther(room: Room): boolean {
-  return room?.spies_know_each_other === true;
+  return !isFanMode(room) && room?.spies_know_each_other === true;
 }
 
 export function canonicalSpyEmails(room: Room): string[] {
@@ -186,7 +188,7 @@ export function canonicalSpyEmails(room: Room): string[] {
   const raw = Array.isArray(room?.spy_emails) && room.spy_emails.length
     ? room.spy_emails
     : [room?.spy_email];
-  return uniqueEmails(raw).slice(0, MAX_SPY_COUNT).map((email) =>
+  return uniqueEmails(raw).slice(0, isFanMode(room) ? MAX_GAME_PLAYERS : MAX_SPY_COUNT).map((email) =>
     playerEmailByKey.get(normalizedEmail(email)) || email
   );
 }
@@ -227,6 +229,7 @@ export function spyTeamCounts(room: Room): {
 export function spyTeamTerminalWinner(
   room: Room,
 ): "spy" | "detectives" | null {
+  if (isFanAnomaly(room)) return null;
   if (!canonicalSpyEmails(room).length) return null;
   const counts = spyTeamCounts(room);
   if (counts.activeSpies === 0) return "detectives";
@@ -269,6 +272,7 @@ export function spyGuessWinner(
 
 export function exclusionVoteThreshold(room: Room): number {
   const activeCount = activePlayerEmails(room).length;
+  if (isFanMode(room)) return Math.max(1, activeCount - 1);
   const status = clean(room?.status || "waiting").toLocaleLowerCase();
   const activeSpies = ["roulette", "playing", "finished"].includes(status)
     ? activeSpyEmails(room).length
@@ -325,13 +329,26 @@ export function sampleUniqueSpyEmails(
 export function serverSpyAssignment(
   room: Room,
   randomIndex?: (exclusiveUpperBound: number) => number,
-): { spy_emails: string[]; spy_email: string } {
+): { spy_emails: string[]; spy_email: string; fan_scenario?: string } {
   const participantEmails = uniqueEmails(
     (Array.isArray(room?.players) ? room.players : []).map((player) =>
       player?.email
     ),
   );
   const participantKeys = new Set(participantEmails.map(normalizedEmail));
+  if (isFanMode(room)) {
+    const scenario = fanScenario(room) ?? sampleFanScenario(room, randomIndex ?? secureRandomIndex);
+    const count = fanAssignmentCount(room, scenario, participantEmails.length);
+    const existing = canonicalSpyEmails(room);
+    if (fanScenario(room)) {
+      if (existing.length !== count || existing.some((email) => !participantKeys.has(normalizedEmail(email))) || clean(room.spy_email) !== (existing[0] || "")) {
+        throw policyError("The frozen FAN assignment is invalid", "spy_assignment_invalid");
+      }
+      return { spy_emails: existing, spy_email: existing[0] || "", fan_scenario: scenario };
+    }
+    const assigned = count === 0 ? [] : count === participantEmails.length ? participantEmails : sampleUniqueSpyEmails(participantEmails, 1, randomIndex);
+    return { spy_emails: assigned, spy_email: assigned[0] || "", fan_scenario: scenario };
+  }
   const count = validatedLobbySpyCount(
     lobbySpyCount(room),
     participantEmails.length,

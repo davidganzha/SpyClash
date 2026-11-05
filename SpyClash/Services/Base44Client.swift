@@ -724,7 +724,7 @@ final class Base44Client {
             email: user.email,
             name: user.callSign,
             avatar: user.avatar ?? "🕵️",
-            clientCapabilities: [Self.multiSpyCapability]
+            clientCapabilities: [Self.multiSpyCapability, "fan_mode_v1"]
         )
     }
 
@@ -1554,6 +1554,13 @@ final class Base44Client {
         try await communityAction("state", retriesTransientReadFailures: true)
     }
 
+    func updateGameInvitationPermissions(friends: Bool, strangers: Bool) async throws -> SpyUser {
+        try await communityAction("set_invitation_permissions", fields: [
+            "friend_invitations_allowed": friends ? "true" : "false",
+            "stranger_invitations_allowed": strangers ? "true" : "false"
+        ])
+    }
+
     func updateRadarInvitePolicy(_ policy: RadarInvitePolicy) async throws -> RadarInvitePolicy {
         let response: RadarInvitePolicySyncResponse = try await communityAction(
             "set_radar_invite_policy",
@@ -2278,7 +2285,7 @@ final class Base44Client {
         let payload = GameRoomActionPayload(
             action: action,
             accessToken: "",
-            clientCapabilities: [Self.multiSpyCapability],
+            clientCapabilities: [Self.multiSpyCapability, "fan_mode_v1"],
             roomID: roomID,
             roomCode: roomCode,
             player: player,
@@ -2315,7 +2322,7 @@ final class Base44Client {
         let payload = GameRoomActionPayload(
             action: action,
             accessToken: token,
-            clientCapabilities: [Self.multiSpyCapability],
+            clientCapabilities: [Self.multiSpyCapability, "fan_mode_v1"],
             roomID: roomID,
             roomCode: roomCode,
             player: player,
@@ -3361,7 +3368,7 @@ private struct GameRoomActionPayload: Encodable {
     init(
         action: String,
         accessToken: String,
-        clientCapabilities: [String]? = ["multi_spy_v1"],
+        clientCapabilities: [String]? = ["multi_spy_v1", "fan_mode_v1"],
         roomID: String? = nil,
         roomCode: String? = nil,
         player: Player? = nil,
