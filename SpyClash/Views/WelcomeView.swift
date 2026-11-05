@@ -291,11 +291,7 @@ enum LegalSheetKind: String, Identifiable, Hashable {
     func lastUpdated(for language: AppLanguage) -> String {
         switch self {
         case .privacy:
-            if SupabaseAppRuntime.isEnabled {
-                localized(language, en: "Last updated: October 2026", es: "Última actualización: octubre de 2026", ru: "Последнее обновление: октябрь 2026 г.", uk: "Останнє оновлення: жовтень 2026 р.")
-            } else {
-                localized(language, en: "Last updated: August 2026", es: "Última actualización: agosto de 2026", ru: "Последнее обновление: август 2026 г.", uk: "Останнє оновлення: серпень 2026 р.")
-            }
+            localized(language, en: "Last updated: November 5, 2026", es: "Última actualización: 5 de noviembre de 2026", ru: "Последнее обновление: 5 ноября 2026 г.", uk: "Останнє оновлення: 5 листопада 2026 р.")
         case .terms:
             localized(language, en: "Last updated: August 2026", es: "Última actualización: agosto de 2026", ru: "Последнее обновление: август 2026 г.", uk: "Останнє оновлення: серпень 2026 р.")
         case .acknowledgements:
@@ -443,7 +439,7 @@ enum LegalSheetKind: String, Identifiable, Hashable {
                 ),
                 LegalSection(
                     title: "5. NATIVE APP METRICS AND WEBSITE SCOPE",
-                    text: "This in-app policy describes the native iOS app. The native app does not embed Google Analytics, an advertising SDK, or a cross-app tracking SDK. Its analytics and diagnostics are limited to the account-linked AI interaction fields and operational push-delivery fields described above. The public website may use local storage and hosting or application-platform telemetry; data collected on the website is governed by the privacy policy made available there."
+                    text: "The iOS app includes Google Mobile Ads and Google User Messaging Platform for optional rewarded ads. When advertising is available and you choose to watch, Google may process device identifiers, IP address, diagnostics, performance and ad-interaction data. We request non-personalized ads and do not request App Tracking Transparency permission. We send an opaque account identifier and a single-use reward identifier to verify one additional generation; we do not send your email, theme or words to the ad SDK. The server records reward confirmations and use of generation credits to prevent duplicate grants. Advertising privacy choices are available in Settings when required. Saved-word gameplay does not require watching ads. The app does not include Google Analytics. The public website has its own privacy policy."
                 ),
                 LegalSection(
                     title: "6. CHILDREN'S PRIVACY",
@@ -607,7 +603,7 @@ private extension LegalSheetKind {
                 ),
                 LegalSection(
                     title: "5. MÉTRICAS DE LA APLICACIÓN NATIVA Y ALCANCE DEL SITIO WEB",
-                    text: "Esta política dentro de la aplicación describe la aplicación nativa para iOS. La aplicación nativa no incorpora Google Analytics, un SDK de publicidad ni un SDK de seguimiento entre aplicaciones. Sus análisis y diagnósticos se limitan a los campos de interacción con IA vinculados a la cuenta y a los campos operativos de entrega push descritos anteriormente. El sitio web público puede utilizar almacenamiento local y telemetría de la plataforma de alojamiento o de la aplicación; los datos recopilados en el sitio web se rigen por la política de privacidad disponible allí."
+                    text: "La app iOS incluye Google Mobile Ads y Google User Messaging Platform para anuncios opcionales con recompensa. Si hay publicidad disponible y eliges verla, Google puede procesar identificadores del dispositivo, dirección IP, diagnósticos, rendimiento e interacciones con anuncios. Solicitamos anuncios no personalizados y no pedimos permiso de App Tracking Transparency. Enviamos un identificador opaco de cuenta y uno de recompensa de un solo uso para verificar una generación adicional; no enviamos tu correo, tema ni palabras al SDK publicitario. El servidor registra las recompensas y su uso para evitar duplicados. Las opciones de privacidad publicitaria aparecen en Ajustes cuando son necesarias. Jugar con palabras guardadas no exige ver anuncios. La app no incluye Google Analytics. El sitio web tiene su propia política de privacidad."
                 ),
                 LegalSection(
                     title: "6. PRIVACIDAD DE LOS MENORES",
@@ -700,7 +696,7 @@ private extension LegalSheetKind {
                 ),
                 LegalSection(
                     title: "5. МЕТРИКИ НАТИВНОГО ПРИЛОЖЕНИЯ И ОБЛАСТЬ ДЕЙСТВИЯ ВЕБ-САЙТА",
-                    text: "Эта политика внутри приложения описывает нативное приложение для iOS. Нативное приложение не содержит Google Analytics, рекламный SDK или SDK для межприложенческого отслеживания. Его аналитика и диагностика ограничены описанными выше полями взаимодействия с ИИ, связанными с учетной записью, и операционными полями доставки push-уведомлений. Публичный веб-сайт может использовать локальное хранилище и телеметрию хостинга или платформы приложения; данные, собираемые на веб-сайте, регулируются опубликованной там политикой конфиденциальности."
+                    text: "Приложение iOS включает Google Mobile Ads и Google User Messaging Platform для добровольной рекламы с наградой. Если реклама доступна и ты выбираешь просмотр, Google может обрабатывать идентификаторы устройства, IP-адрес, данные диагностики, производительности и взаимодействия с рекламой. Мы запрашиваем неперсонализированную рекламу и не запрашиваем разрешение App Tracking Transparency. Для подтверждения дополнительной генерации передаются непрямой идентификатор аккаунта и одноразовый идентификатор награды; твой email, тема и слова не передаются рекламному SDK. Сервер хранит подтверждения наград и использование генераций для защиты от повторного начисления. Настройки конфиденциальности рекламы доступны в Настройках, когда это требуется. Игра с готовыми словами не требует просмотра рекламы. Приложение не содержит Google Analytics. Для публичного сайта действует отдельная политика конфиденциальности."
                 ),
                 LegalSection(
                     title: "6. КОНФИДЕНЦИАЛЬНОСТЬ ДЕТЕЙ",
@@ -793,7 +789,7 @@ private extension LegalSheetKind {
                 ),
                 LegalSection(
                     title: "5. МЕТРИКИ НАТИВНОГО ЗАСТОСУНКУ ТА СФЕРА ДІЇ ВЕБСАЙТУ",
-                    text: "Ця політика всередині застосунку описує нативний застосунок для iOS. Нативний застосунок не містить Google Analytics, рекламного SDK або SDK для міжзастосункового відстеження. Його аналітика й діагностика обмежені описаними вище полями взаємодії із ШІ, пов’язаними з обліковим записом, та операційними полями доставлення push-сповіщень. Публічний вебсайт може використовувати локальне сховище й телеметрію хостингу або платформи застосунку; дані, зібрані на вебсайті, регулюються опублікованою там політикою конфіденційності."
+                    text: "Застосунок iOS містить Google Mobile Ads і Google User Messaging Platform для добровільної реклами з винагородою. Якщо реклама доступна й ти обираєш перегляд, Google може обробляти ідентифікатори пристрою, IP-адресу, дані діагностики, продуктивності та взаємодії з рекламою. Ми запитуємо неперсоналізовану рекламу й не запитуємо дозвіл App Tracking Transparency. Для підтвердження додаткової генерації передаються непрямий ідентифікатор акаунта й одноразовий ідентифікатор винагороди; твій email, тема та слова не передаються рекламному SDK. Сервер зберігає підтвердження винагород та використання генерацій для захисту від повторного нарахування. Налаштування конфіденційності реклами доступні в Налаштуваннях, коли це потрібно. Гра з готовими словами не вимагає перегляду реклами. Застосунок не містить Google Analytics. Для публічного сайту діє окрема політика конфіденційності."
                 ),
                 LegalSection(
                     title: "6. КОНФІДЕНЦІЙНІСТЬ ДІТЕЙ",

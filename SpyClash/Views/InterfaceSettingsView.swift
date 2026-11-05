@@ -34,6 +34,7 @@ struct InterfaceSettingsView: View {
                         languagePanel
                         invitationsPanel
                         radarPanel
+                        AdvertisingPrivacyButton()
                         resetControls
                     }
                     .frame(maxWidth: SpyLobbyVisualLanguage.maxWidth)

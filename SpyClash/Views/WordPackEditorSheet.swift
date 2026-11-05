@@ -342,12 +342,13 @@ struct WordPackEditorSheet: View {
     private var aiSetupContent: some View {
         VStack(alignment: .leading, spacing: 14) {
             introBlock(title: flowCopy.aiSetupTitle, body: flowCopy.aiSetupBody)
+            GenerationAllowanceView(isGenerating: isGenerating)
             if SupabaseTestEnvironment.isEnabled {
                 Text(appState.language == .ru
                      ? "AI-генератор остаётся на Base44 и требует входа в аккаунт Base44. Здесь можно создать набор вручную."
                      : "AI generation remains on Base44 and requires a Base44 account. You can create a manual pack here.")
                     .font(.footnote).foregroundStyle(SpyTheme.muted)
-            } else if appState.membership.snapshot?.isUniversal != true {
+            } else if appState.generationRewards.snapshot?.enabled != true && appState.membership.snapshot?.isUniversal != true {
                 let copy = LimitlessCopy(language: appState.language)
                 if let remaining = appState.membership.snapshot?.aiRemaining {
                     Text("\(copy.remaining): \(remaining)")
@@ -1117,7 +1118,7 @@ struct WordPackEditorSheet: View {
                     count: request.signature.count
                 )
             } else {
-                generated = try await appState.client.generateWordPack(
+                generated = try await appState.generateWordPack(
                     theme: request.signature.theme,
                     count: request.signature.count,
                     requestID: request.id,

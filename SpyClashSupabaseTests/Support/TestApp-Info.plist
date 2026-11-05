@@ -31,6 +31,10 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>GADApplicationIdentifier</key>
+	<string>$(SPYCLASH_ADMOB_APP_ID)</string>
+	<key>GADDelayAppMeasurementInit</key>
+	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
@@ -41,6 +45,10 @@
 	<string>Scan a test room QR code.</string>
 	<key>NSNearbyInteractionUsageDescription</key>
 	<string>Measure the distance to nearby SpyClash players so the radar can show precise proximity.</string>
+	<key>SpyClashAdsEnabled</key>
+	<string>$(SPYCLASH_ADS_ENABLED)</string>
+	<key>SpyClashRewardedAdUnitID</key>
+	<string>$(SPYCLASH_REWARDED_AD_UNIT_ID)</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Rajdhani-Bold.ttf</string>

@@ -7076,6 +7076,8 @@ struct GameView: View {
     }
 
     private var roomAnalyzeButton: some View {
+        VStack(spacing: 12) {
+        GenerationAllowanceView(isGenerating: isGeneratingRoomTheme)
         Button {
             dismissOnlineSetupCapture()
             Task {
@@ -7097,6 +7099,7 @@ struct GameView: View {
         .buttonStyle(SpyButtonStyle(variant: .ghost))
         .disabled(!roomHasCustomTheme || isGeneratingRoomTheme)
         .opacity(roomHasCustomTheme ? 1 : 0.42)
+        }
     }
 
     private var roomPackSelector: some View {
@@ -9518,7 +9521,7 @@ struct GameView: View {
                       isHost(currentRoom),
                       currentRoom.normalizedStatus == "waiting",
                       roomTheme.trimmingCharacters(in: .whitespacesAndNewlines) == theme else { return }
-                generated = try await appState.client.generateWordPack(
+                generated = try await appState.generateWordPack(
                     theme: theme,
                     count: max(targetCount, 5),
                     requestID: requestID,
@@ -9619,7 +9622,7 @@ struct GameView: View {
                       isHost(currentRoom),
                       currentRoom.normalizedStatus == "waiting",
                       roomTheme.trimmingCharacters(in: .whitespacesAndNewlines) == theme else { return }
-                generated = try await appState.client.generateWordPack(
+                generated = try await appState.generateWordPack(
                     theme: theme,
                     count: additionalCount,
                     requestID: requestID,

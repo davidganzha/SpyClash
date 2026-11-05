@@ -272,6 +272,7 @@ final class SupabaseAppSession {
         let actorID = userID
         let legacyToken = includeLegacyCredential ? try legacyAccessToken() : nil
         let permitsLegacyCredential = (service == "legacy" && ["link", "generate"].contains(action)) ||
+            (service == "generation_rewards" && ["status", "prepare", "claim_status"].contains(action)) ||
             (service == "membership" && ["check", "prepare", "sync_transaction"].contains(action)) ||
             (service == "profile" && action == "delete" && fields["deletion_scope"]?.string == "account")
         guard !includeLegacyCredential || permitsLegacyCredential else { throw Self.invalidSession }

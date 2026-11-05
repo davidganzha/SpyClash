@@ -21,6 +21,7 @@ before(async()=>{
   db=postgres(url.href,{max:8,onnotice:()=>{}});
   await db.unsafe(await readFile(new URL('../../supabase/migrations/20261026234309_native_game_center_ai_relay.sql',import.meta.url),'utf8'));
   await db.unsafe(await readFile(new URL('../../supabase/migrations/20261101130901_native_generation_failure_recovery.sql',import.meta.url),'utf8'));
+  await db.unsafe(await readFile(new URL('../../supabase/migrations/20261105224817_rewarded_generation_credits.sql',import.meta.url),'utf8'));
 });
 after(async()=>{
   if(!db)return;

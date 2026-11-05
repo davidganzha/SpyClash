@@ -132,6 +132,7 @@ export async function refreshNativeMembership(input:Preparation,dependencies:{db
   if (native.state !== 'ready') throw new AppServiceError('account_unavailable','This account is unavailable.',403);
   const config = nativeGameCenterConfiguration(input.config);
   const consumes = input.body.service === 'membership' && ['check','check_subscription','prepare','prepare_purchase'].includes(input.body.action)
+    || input.body.service === 'generation_rewards'
     || input.body.service === 'legacy' && ['generate','generate_word_pack'].includes(input.body.action)
     || input.body.service === 'profile' && ['update','update_profile'].includes(input.body.action)
       && ['avatar','spy_card_theme','spy_card_accent','spy_card_badge'].some(field=>input.body[field] !== undefined)

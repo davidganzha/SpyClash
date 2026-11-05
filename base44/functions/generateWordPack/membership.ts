@@ -1,4 +1,5 @@
 import { limitlessEnabled } from "./limitless-rollout.ts";
+import { rewardedGenerationEnabled, REWARDED_FREE_DAILY_LIMIT } from "./generation-rewards.ts";
 
 // CASADA is universal access; LIMITLESS resolves verified provider/admin access.
 export type MembershipTier = "free" | "limitless";
@@ -198,7 +199,7 @@ export function generationUsageMetadata(
   usedToday: number,
 ) {
   const limit = tier === "free"
-    ? LEGACY_FREE_BENEFITS.ai_generations_daily_limit
+    ? (rewardedGenerationEnabled() ? REWARDED_FREE_DAILY_LIMIT : LEGACY_FREE_BENEFITS.ai_generations_daily_limit)
     : null;
   return {
     ai_limit: limit,
@@ -209,5 +210,5 @@ export function generationUsageMetadata(
 }
 
 export function canGenerate(tier: MembershipTier, usedToday: number): boolean {
-  return tier === "limitless" || usedToday < 10;
+  return tier === "limitless" || usedToday < (rewardedGenerationEnabled() ? REWARDED_FREE_DAILY_LIMIT : 10);
 }

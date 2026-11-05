@@ -1300,6 +1300,32 @@ final class Base44Client {
         let _: EmptyResponse = try await wordPackAction("delete", packID: id)
     }
 
+    func generationRewardStatus() async throws -> GenerationRewardStatus {
+        try await generationRewardRequest(action: "status")
+    }
+
+    func prepareGenerationReward(requestID: UUID) async throws -> GenerationRewardAttempt {
+        try await generationRewardRequest(action: "prepare", fields: ["request_id": requestID.uuidString.lowercased()], write: true)
+    }
+
+    func generationRewardClaim(attemptID: UUID) async throws -> GenerationRewardClaim {
+        try await generationRewardRequest(action: "claim_status", fields: ["attempt_id": attemptID.uuidString.lowercased()])
+    }
+
+    private func generationRewardRequest<T: Decodable>(action: String, fields: [String: String] = [:], write: Bool = false) async throws -> T {
+#if SPYCLASH_SUPABASE
+        let session = SupabaseAppSession.shared
+        return try await session.service("generation_rewards", action: action,
+                                         fields: fields.mapValues(JSONValue.string), write: write,
+                                         includeLegacyCredential: !session.isNativeGameCenterSession)
+#elseif SPYCLASH_SUPABASE_TEST
+        throw Base44Error(message: "Rewarded generation is unavailable for synthetic accounts.", code: "rewarded_generation_unavailable")
+#else
+        var body = fields; body["action"] = action
+        return try await request("/apps/\(Self.appID)/functions/generationRewardAction", method: "POST", body: body)
+#endif
+    }
+
     func generateWordPack(
         theme: String,
         count: Int,

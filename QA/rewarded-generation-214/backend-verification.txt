@@ -1,0 +1,52 @@
+Rewarded generation: Supabase backend verification
+Date: 2026-11-05
+Scope: local source, isolated loopback PostgreSQL, in-process provider and Google-key fixtures.
+No production deployment, configuration change, secret change, live provider request or real advertisement was performed.
+
+Final results
+- 17/17 isolated PostgreSQL integration checks passed after the final native-direct persistence fix.
+- 41/41 existing native relay + Game Center regression tests passed.
+- Affected native relay subset rerun after relay settlement adjustment: 26/26 passed.
+- Deno type-check of app-services entry point and new integration test: passed.
+- git diff --check: passed.
+- Local Supabase security advisors: no issues found.
+- Base44 and Supabase copies of admob-ssv.ts: byte-identical.
+
+The new suite verifies private-table RLS/grants; disabled rollout/demo-unit rejection;
+real ECDSA signature validation using a fixture key; duplicate, forged, cross-user,
+wrong-unit/reward and replay rejection; late callback delivery; Base44 identity mapping;
+concurrent 3-free-then-bonus consumption; exact-once failure refunds; actual membership
+and expiry; UTC reset; unknown-outcome holds; success-write retry and lost-commit-ACK
+reconciliation; persistent success-write failure; interrupted HTTP 200 response body;
+late signed relay recovery; deletion tombstones; and stale ad-offer rejection.
+
+Reproduce from experiments/supabase-game-core (dependencies already installed)
+
+1. Type checking:
+node_modules/.bin/deno check --config supabase/functions/app-services/deno.json supabase/functions/app-services/index.ts tests/game-center/rewarded-generation-integration.ts
+
+2. Isolated reward suite (provide a local PostgreSQL connection with permission to create a temporary database; cloud hosts are rejected):
+REWARDED_TEST_DATABASE_URL='<loopback PostgreSQL connection>' node_modules/.bin/deno run --allow-env --allow-read --allow-net=127.0.0.1,localhost --config supabase/functions/app-services/deno.json tests/game-center/rewarded-generation-integration.ts
+The script creates its own randomly named database and removes it in finally. All external service calls are fixtures.
+
+3. Existing native relay and Game Center regression tests (requires the dedicated local Supabase stack):
+node --experimental-transform-types --test tests/app-services/native-ai-relay.test.mjs tests/game-center/assertion.test.mjs tests/game-center/auth-boundary.test.mjs tests/game-center/configuration.test.mjs
+The relay fixture applies the additive local migration and removes its own test actors.
+
+4. Local security advisors (point DOCKER_HOST at the dedicated local stack socket):
+node_modules/.bin/supabase db advisors --local --type security --level warn --fail-on error
+
+5. Shared verifier parity:
+cmp ../../base44/functions/generationRewardAction/admob-ssv.ts supabase/functions/app-services/admob-ssv.ts
+
+Release boundary
+Migration: supabase/migrations/20261105224817_rewarded_generation_credits.sql
+Feature gate: SPYCLASH_REWARDED_GENERATION_ENABLED, off unless exactly true.
+SSV-enabled real ad-unit configuration: ADMOB_REWARDED_AD_UNIT_ID; Google demo units cannot earn server credits.
+Native callback route: GET /functions/v1/app-services/rewarded-generation/ssv.
+Authenticated service: generation_rewards; actions status, prepare, claim_status.
+Prepare returns both user_id and ssv_user_id for the SDK's server-verification options.
+Unreceived provider results and persistent result-save outages remain held as unknown,
+never automatically refunded or rerun. Late signed relay outcomes can recover.
+Real AdMob account/unit setup, Google-to-backend callback delivery, device runtime,
+privacy/consent configuration, production activation and App Store delivery remain unverified.

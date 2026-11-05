@@ -76,6 +76,8 @@ import {
   type WordPackSelfAuditCandidate,
 } from "./word-pack-quality.ts";
 
+import { rewardedGenerationEnabled, availableRewardCredits, reserveGenerationReward, settleGenerationReward, type RewardRecord } from "./generation-rewards.ts";
+
 function errorMessage(error: unknown) {
   return error instanceof Error
     ? error.message
@@ -89,6 +91,7 @@ type QuotaReservation = {
   usedBefore: number;
   usedAfter: number;
   recordId?: string;
+  reward?: RewardRecord;
 };
 
 type AIInvocationState = {
@@ -431,6 +434,8 @@ Deno.serve(async (req) => {
     }
 
     const requestID = optionalRequestID(body?.request_id);
+    const rewardedEnabled = rewardedGenerationEnabled();
+    if (rewardedEnabled && !requestID) return Response.json({ error: "A stable generation request is required.", code: "invalid_request_id" }, { status: 400 });
     // Legacy clients do not send request_id. Keep their explicit Regenerate
     // behavior fresh instead of unexpectedly replaying a cached pack.
     const preferFresh = body?.prefer_fresh === true || requestID === null;
@@ -457,7 +462,7 @@ Deno.serve(async (req) => {
 
     let entitlements: EntitlementRecord[] = [];
     let entitlementReadError: unknown = null;
-    if (!CASADA_PROTOCOL_ENABLED) {
+    if (!CASADA_PROTOCOL_ENABLED || rewardedEnabled) {
       try {
         entitlements = await base44.asServiceRole.entities.Entitlement.filter(
           { user_id: user.id },
@@ -476,7 +481,7 @@ Deno.serve(async (req) => {
 
     let adminGrants: AdminGrantRecord[] = [];
     let adminGrantReadError: unknown = null;
-    if (!CASADA_PROTOCOL_ENABLED) {
+    if (!CASADA_PROTOCOL_ENABLED || rewardedEnabled) {
       try {
         adminGrants = await base44.asServiceRole.entities.MembershipGrant
           .filter(
@@ -499,7 +504,9 @@ Deno.serve(async (req) => {
         resolveGenerationMembership(entitlements),
         adminGrants,
       ),
+      CASADA_PROTOCOL_ENABLED && !rewardedEnabled,
     );
+    if (rewardedEnabled && membership.tier === "free") membership.benefits = { ...membership.benefits, ai_generations_daily_limit: 3 };
     if (!membership.active && (entitlementReadError || adminGrantReadError)) {
       return Response.json({
         error: "Membership could not be verified. Try again shortly.",
@@ -517,6 +524,13 @@ Deno.serve(async (req) => {
       action: async (untrackedGuard) => {
         const guard = retryTracker.trackWrites(untrackedGuard);
         const quotaStore = base44.asServiceRole.entities.AiGenerationUsage;
+        const rewardStore = base44.asServiceRole.entities.GenerationReward;
+        const settleReplayReward = async () => {
+          if (!rewardedEnabled || !requestID) return;
+          const rows = await rewardStore.filter({ user_id: user.id, state: "reserved", generation_request_id: requestID }, "created_date", 2, 0);
+          if (rows.length > 1) throw new Error("Ambiguous generation reward reservation.");
+          if (rows[0]) await settleGenerationReward({ store: rewardStore, guard, reward: rows[0] as RewardRecord, requestID, success: true });
+        };
         const cacheStore = base44.asServiceRole.entities.AiWordPackCacheVariant;
         const idempotencyStore =
           base44.asServiceRole.entities.AiWordPackRequestResult;
@@ -546,6 +560,7 @@ Deno.serve(async (req) => {
             // result, a failed journal read cannot authorize fresh effects.
             if (!replay && journalError) throw journalError;
             if (replay) {
+              await settleReplayReward();
               let generationCount = Math.max(
                 0,
                 Math.floor(Number(user.ai_generations_today) || 0),
@@ -613,6 +628,31 @@ Deno.serve(async (req) => {
           }
         }
 
+        // A quota denial has no provider effects and must not permanently mark
+        // the request's journal as failed. The same request may proceed after a
+        // verified ad earns a credit. This preflight runs under the generation
+        // coordinator, which also serializes callback grants and credit spends.
+        if (rewardedEnabled && membership.tier === "free") {
+          const priorOperations = idempotency
+            ? await base44.asServiceRole.entities.AiWordPackOperation.filter({ request_key: idempotency.requestKey }, "created_date", 2, 0)
+            : [];
+          // Preserve the journal's unknown-outcome response for requests that
+          // already started. A held bonus is not a new quota-denial event.
+          const mayHaveStarted = priorOperations.some((row: { state?: unknown }) => row.state !== "prepared");
+          const freeUsed = await currentGenerationCount(quotaStore, user.id);
+          if (!mayHaveStarted && !canGenerate(membership.tier, freeUsed) &&
+              await availableRewardCredits(rewardStore, user.id) === 0) {
+            return Response.json({
+              error: "Daily AI generation limit reached. Watch an ad for one additional generation or try again tomorrow.",
+              code: "daily_ai_limit_reached",
+              active: false, tier: "free", protocol: membership.protocol,
+              status: "inactive", providers: membership.providers,
+              benefits: membership.benefits,
+              ...generationUsageMetadata(membership.tier, freeUsed),
+            }, { status: 429 });
+          }
+        }
+
         const executeGeneration = async (): Promise<Response> => {
           // Legacy metering remains available if CASADA is ever disabled. An
           // exact request_id replay above still bypasses it because that replay
@@ -625,6 +665,10 @@ Deno.serve(async (req) => {
               membership.tier,
               guard,
             );
+            if (!reservation.allowed && rewardedEnabled && requestID) {
+              const reward = await reserveGenerationReward({ store: rewardStore, guard, userID: user.id, requestID });
+              if (reward) reservation = { ...reservation, allowed: true, reward };
+            }
           } catch (error) {
             if (error instanceof BillingIdentityLifecycleError) throw error;
             console.error(
@@ -667,6 +711,12 @@ Deno.serve(async (req) => {
             );
           }
 
+          const releaseReservation = async () => {
+            if (reservation.reward && requestID) {
+              await settleGenerationReward({ store: rewardStore, guard, reward: reservation.reward, requestID, success: false });
+            } else await releaseGenerationQuota(quotaStore, reservation, guard);
+          };
+          let resultPersistenceStarted = false;
           let words: string[] = [];
           let category = theme;
           let exhausted = false;
@@ -762,7 +812,7 @@ Deno.serve(async (req) => {
             }
 
             if (words.length < 2) {
-              await releaseGenerationQuota(quotaStore, reservation, guard);
+              await releaseReservation();
               return Response.json({
                 error: "AI did not return enough playable words.",
               }, { status: 502 });
@@ -791,6 +841,7 @@ Deno.serve(async (req) => {
             }
 
             if (idempotency) {
+              resultPersistenceStarted = true;
               try {
                 await guard.boundary(() =>
                   persistIdempotentWordPackResult({
@@ -850,8 +901,17 @@ Deno.serve(async (req) => {
               );
             }
           } catch (error) {
-            await releaseGenerationQuota(quotaStore, reservation, guard);
+            const ambiguous = resultPersistenceStarted || error instanceof WordPackOperationError ||
+              String((error as any)?.code || "") === "generation_outcome_unknown" ||
+              (!(error instanceof WordPackQualityGateError) && isTransientAIProviderError(error)) ||
+              ["AbortError", "TimeoutError"].includes(String((error as any)?.name || ""));
+            // A timeout or lost result write is not proof that paid work failed.
+            // Keep its reservation until the same durable request is reconciled.
+            if (!rewardedEnabled || !ambiguous) await releaseReservation();
             throw error;
+          }
+          if (reservation.reward && requestID) {
+            await settleGenerationReward({ store: rewardStore, guard, reward: reservation.reward, requestID, success: true });
           }
 
           const generationCount = reservation.usedAfter;
@@ -946,6 +1006,7 @@ Deno.serve(async (req) => {
           },
         });
         if (!operation.replayed) return operation.value;
+        await settleReplayReward();
         let generationCount = Math.max(
           0,
           Math.floor(Number(user.ai_generations_today) || 0),

@@ -345,6 +345,7 @@ private enum DebugPreviewDestination {
     case privacy
     case terms
     case acknowledgements
+    case generationRewards
 
     static var current: DebugPreviewDestination? {
         let arguments = ProcessInfo.processInfo.arguments
@@ -383,6 +384,8 @@ private enum DebugPreviewDestination {
             return .terms
         case "acknowledgements", "licenses", "third-party-licenses":
             return .acknowledgements
+        case "generation-rewards":
+            return .generationRewards
         default:
             return nil
         }
@@ -418,6 +421,8 @@ private enum DebugPreviewDestination {
             LegalDocumentSheet(kind: .terms)
         case .acknowledgements:
             LegalDocumentSheet(kind: .acknowledgements)
+        case .generationRewards:
+            GenerationRewardsPreview()
         }
     }
 }

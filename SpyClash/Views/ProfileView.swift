@@ -707,6 +707,7 @@ struct ProfileView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 legalButton(copy.privacy, kind: .privacy, icon: "hand.raised.fill")
+                AdvertisingPrivacyButton()
                 legalButton(copy.terms, kind: .terms, icon: "doc.text.fill")
                 legalButton(
                     localized(en: "THIRD-PARTY LICENSES", ru: "СТОРОННИЕ ЛИЦЕНЗИИ", es: "LICENCIAS DE TERCEROS", uk: "ЛІЦЕНЗІЇ ТРЕТІХ СТОРІН"),

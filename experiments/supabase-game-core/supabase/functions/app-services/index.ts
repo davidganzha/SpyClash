@@ -4,6 +4,7 @@ import { AppServiceError } from './contracts.ts';
 import { createMaintenanceHandler } from './maintenance-handler.ts';
 import { createNativeAIRelayHandler } from './native-ai-relay.ts';
 import { createAppRouter } from './router.ts';
+import { createGenerationRewardSSVHandler } from './generation-rewards.ts';
 
 const origin = Deno.env.get('SUPABASE_URL') || '';
 const url = new URL(origin);
@@ -31,4 +32,4 @@ const config = Deno.env.toObject();
 const app = createAppHandler({ db, authenticate, config });
 const maintenance = createMaintenanceHandler(db, config);
 const nativeAIRelay = createNativeAIRelayHandler(db, config);
-Deno.serve(createAppRouter({app, maintenance, nativeAIRelay}));
+Deno.serve(createAppRouter({app, maintenance, nativeAIRelay,generationRewardSSV:createGenerationRewardSSVHandler(db)}));

@@ -1401,6 +1401,7 @@ final class AppState: NSObject {
     @ObservationIgnored var webAuthenticationOverride: WebAuthenticationCoordinator?
     @ObservationIgnored var appleSessionCompletionOverride: WebAuthenticationCoordinator?
     let membership: MembershipStore
+    let generationRewards: GenerationRewardStore
     let storeKit: StoreKitManager
     let membershipRealtime: MembershipRealtimeService
     let notificationInbox: NotificationInboxStore
@@ -1700,6 +1701,7 @@ final class AppState: NSObject {
         self.webAuthenticationOverride = webAuthentication
         self.appleSessionCompletionOverride = appleSessionCompletion
         self.membership = MembershipStore(client: client)
+        self.generationRewards = GenerationRewardStore(client: client)
         self.storeKit = StoreKitManager(client: client)
         self.membershipRealtime = MembershipRealtimeService()
         self.notificationInbox = NotificationInboxStore(client: client)

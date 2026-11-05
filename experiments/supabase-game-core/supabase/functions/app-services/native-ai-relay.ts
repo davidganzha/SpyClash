@@ -2,6 +2,7 @@ import {AppServiceError} from './contracts.ts';
 import {accountGate} from './account-gate.ts';
 import {nativeGameCenterAccount} from './native-game-center.ts';
 import {RELAY_BASE44_URL,RELAY_PROMPT_VERSION,RelayProtocolError,readRelayRequest,relayHeaders,relayCanonical,relayDigest,relaySecretConfigured,validateRelayTicket,validateRelayResult,type RelayTicket,type RelayInput} from './native-ai-relay-protocol.ts';
+import {lockGenerationQuota,releaseRewardGeneration} from './generation-reward-ledger.ts';
 type Config=Record<string,string|undefined>;
 export const unknownNativeAIOutcome=()=>new AppServiceError('generation_outcome_unknown','The previous AI attempt was not confirmed. It was not repeated or charged again.',503,false);
 // 422 settles the installed app's durable write journal. An unrecoverable
@@ -41,6 +42,7 @@ export function createNativeAIRelayHandler(db:any,config:Config){
       const resultHash=result?await relayDigest(relayCanonical(result)):null;
       const reply=await db.begin(async(tx:any)=>{
         await account(tx,ticket.actor_id);
+        await lockGenerationQuota(tx,ticket.actor_id);
         const [generation]=await tx`select *,lease_until>clock_timestamp() as leased from game_center_private.generation_requests
           where user_id=${ticket.actor_id} and request_id=${ticket.request_id} for update`;
         if(!generation||generation.request_hash!==ticket.request_hash)throw stale();
@@ -60,7 +62,12 @@ export function createNativeAIRelayHandler(db:any,config:Config){
           }
           if(call.state!=='started')throw stale();
         }
-        if(generation.state!=='pending'||generation.lease_id!==ticket.lease_id||!generation.leased)throw stale();
+        // New metered attempts retain the provider claim across a worker lease
+        // expiry. Accept the same signed claim's late terminal outcome so its
+        // credit/result can recover without another advertisement/provider call.
+        const lateRewardOutcome=action!=='claim'&&generation.charge_source&&generation.charge_source!=='legacy'
+          &&call.state==='started'&&generation.state!=='complete';
+        if(!lateRewardOutcome&&(generation.state!=='pending'||generation.lease_id!==ticket.lease_id||!generation.leased))throw stale();
         if(action==='claim'){
           if(call.state==='complete')return {state:'complete'};
           if(call.state!=='prepared')throw unknownNativeAIOutcome();
@@ -72,6 +79,12 @@ export function createNativeAIRelayHandler(db:any,config:Config){
         if(action==='fail'){
           await tx`update game_center_private.generation_provider_calls set state='failed',error_code=${body.failure},updated_at=clock_timestamp()
             where user_id=${ticket.actor_id} and request_id=${ticket.request_id} and call_index=${ticket.call_index}`;
+          if(generation.charge_source&&generation.charge_source!=='legacy'){
+            await releaseRewardGeneration(tx,ticket.actor_id,ticket.request_id,generation);
+            await tx`update game_center_private.generation_requests set state='failed',lease_id=null,lease_until=null,
+              error_code=${body.failure==='quality_failed'?'generation_quality_failed':'generation_provider_failed'},updated_at=clock_timestamp()
+              where user_id=${ticket.actor_id} and request_id=${ticket.request_id}`;
+          }
           return {state:'failed'};
         }
         await tx`update game_center_private.generation_provider_calls set state='complete',result=${tx.json(result)},result_hash=${resultHash},updated_at=clock_timestamp()
@@ -128,8 +141,14 @@ export async function nativeRelayHasUnknownOutcome(tx:any,userID:string,requestI
 export async function settleNativeRelayFailure(db:any,userID:string,requestID:string,leaseID:string,qualityRejected=false){
   return await db.begin(async(tx:any)=>{
     await tx`select pg_advisory_xact_lock_shared(hashtextextended(${'spyclash-account:'+userID},0))`;
+    await lockGenerationQuota(tx,userID);
     const [row]=await tx`select * from game_center_private.generation_requests where user_id=${userID} and request_id=${requestID} and lease_id=${leaseID} and state='pending' for update`;
-    if(!row)return 'stale';
+    if(!row){
+      const [settled]=await tx`select error_code from game_center_private.generation_requests where user_id=${userID} and request_id=${requestID} and not charged and charge_source<>'legacy'`;
+      if(settled?.error_code==='generation_quality_failed')return 'quality';
+      if(settled?.error_code==='generation_provider_failed')return 'failed';
+      return 'stale';
+    }
     const calls=await tx`select state,error_code from game_center_private.generation_provider_calls where user_id=${userID} and request_id=${requestID}`;
     if(calls.some((call:any)=>call.state==='started'))return 'unknown';
     const failure=calls.find((call:any)=>call.state==='failed');
@@ -139,7 +158,9 @@ export async function settleNativeRelayFailure(db:any,userID:string,requestID:st
     // Release only our worker lease and replay cached output after DB outages.
     const outcome=quality?'quality':failure?'failed':spent?'replayable':'unspent';
     const errorCode=quality?'generation_quality_failed':failure?'generation_provider_failed':spent?'generation_persistence_retry':'generation_failed';
-    await tx`update game_center_private.generation_requests set state='failed',charged=${spent},lease_id=null,lease_until=null,
+    const refundable=row.charge_source&&row.charge_source!=='legacy'&&(quality||Boolean(failure)||!spent);
+    if(refundable)await releaseRewardGeneration(tx,userID,requestID,row);
+    await tx`update game_center_private.generation_requests set state='failed',charged=${spent&&!refundable},lease_id=null,lease_until=null,
       error_code=${errorCode},updated_at=clock_timestamp()
       where user_id=${userID} and request_id=${requestID} and lease_id=${leaseID} and state='pending'`;
     return outcome;

@@ -5,6 +5,7 @@ import { prepareMembershipExternal, refreshNativeMembership } from './membership
 import { prepareLegacyExternal } from './legacy.ts';
 import { processAccountDeletionJobs } from './lifecycle.ts';
 import { prepareMainAccountDeletion } from './main-account-deletion.ts';
+import { prepareGenerationRewards } from './generation-rewards.ts';
 
 export function createAppHandler({ db, authenticate, config = {}, fetch: fetcher = fetch }: {
   db: any; authenticate: (token: string) => Promise<any>;
@@ -39,6 +40,7 @@ export function createAppHandler({ db, authenticate, config = {}, fetch: fetcher
       let evidence;
       if (body.service === 'membership') evidence = await prepareMembershipExternal({ actor, body, config:accountConfig }, { db, fetch: fetcher });
       if (body.service === 'legacy') evidence = await prepareLegacyExternal({ actor, body, config:accountConfig }, { db, fetch: fetcher });
+      if (body.service === 'generation_rewards') evidence = await prepareGenerationRewards({actor,body,config:accountConfig},{db,fetch:fetcher});
       if (body.service === 'profile' && body.action === 'delete') evidence = await prepareMainAccountDeletion({ actor, body, config }, { db, fetch: fetcher });
       const result = await executeApp(db, actor, body, accountConfig, evidence);
       if (body.service === 'profile' && body.action === 'delete' && result.status === 200) {

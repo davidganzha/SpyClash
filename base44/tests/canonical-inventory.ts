@@ -1,6 +1,7 @@
 // Current source inventory is explicit: adding a resource requires a reviewed
 // contract update. Historical cutover inventories live in their pinned fixtures.
 export const canonicalEntityNames: readonly string[] = Object.freeze([
+  "AccountDeletionReceipt",
   "AiGenerationQuota",
   "AiGenerationUsage",
   "AiWordPackCacheVariant",
@@ -16,6 +17,7 @@ export const canonicalEntityNames: readonly string[] = Object.freeze([
   "GameHistory",
   "GameRoom",
   "GameRoomSignal",
+  "GenerationReward",
   "LiveActivityRegistration",
   "MembershipGrant",
   "MembershipSignal",
@@ -41,6 +43,7 @@ export const canonicalFunctionNames: readonly string[] = Object.freeze([
   "deleteAccount",
   "gameRoomAction",
   "generateWordPack",
+  "generationRewardAction",
   "googleAuthCallback",
   "mobileAuthCallback",
   "notificationAction",

@@ -9,6 +9,7 @@ import { dispatchPush } from './push.ts';
 import { dispatchLegacy } from './legacy.ts';
 import { deleteAccount } from './lifecycle.ts';
 import { commandHash } from '../full-game-core/service.ts';
+import { dispatchGenerationRewards } from './generation-rewards.ts';
 
 const readActions: Record<string, Set<string>> = {
   profile: new Set(['current']),
@@ -17,6 +18,7 @@ const readActions: Record<string, Set<string>> = {
   membership: new Set(['check', 'check_subscription']),
   push: new Set(),
   legacy: new Set(['status', 'legacy_status']),
+  generation_rewards: new Set(['status','claim_status']),
 };
 async function appCommandHash(body:any) {
   // Legacy bearer rotation does not change the logical command. Its immutable
@@ -57,6 +59,7 @@ async function dispatch(ctx: AppContext, body: any) {
     case 'membership': return await dispatchMembership(ctx, body);
     case 'push': return await dispatchPush(ctx, body);
     case 'legacy': return await dispatchLegacy(ctx, body);
+    case 'generation_rewards': return await dispatchGenerationRewards(ctx, body);
     default: throw new AppServiceError('invalid_service', 'Unknown application service.');
   }
 }

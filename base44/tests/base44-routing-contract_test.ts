@@ -6,6 +6,7 @@ import * as communityContext from "../functions/communityAction/base44-context.t
 import * as createCheckoutContext from "../functions/createCheckout/base44-context.ts";
 import * as deleteAccountContext from "../functions/deleteAccount/base44-context.ts";
 import * as generateWordPackContext from "../functions/generateWordPack/base44-context.ts";
+import * as generationRewardContext from "../functions/generationRewardAction/base44-context.ts";
 import * as notificationContext from "../functions/notificationAction/base44-context.ts";
 import * as pushContext from "../functions/pushNotificationAction/base44-context.ts";
 import * as stripeWebhookContext from "../functions/stripe-entitlement-webhook/base44-context.ts";
@@ -19,6 +20,7 @@ const routingContexts = [
   communityContext,
   createCheckoutContext,
   generateWordPackContext,
+  generationRewardContext,
   notificationContext,
   wordPackContext,
 ];

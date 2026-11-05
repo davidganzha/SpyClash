@@ -802,6 +802,10 @@ Deno.serve(async (req) => {
         base44.asServiceRole.entities.AiGenerationUsage,
         { user_id: user.id },
       );
+      await deleteAllMatching(
+        base44.asServiceRole.entities.GenerationReward,
+        { user_id: user.id },
+      );
       // Remove quota rows created by the retired pre-user_id implementation.
       // Base44 keeps the creator identity in its created_by_id system field.
       await deleteAllMatching(

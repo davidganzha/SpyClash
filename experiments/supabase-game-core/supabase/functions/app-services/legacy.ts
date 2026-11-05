@@ -47,7 +47,10 @@ export async function prepareLegacyExternal(input:Input,dependencies:{fetch?:typ
       if(typeof generated.category!=='string'||!Array.isArray(generated.words)||!generated.words.length||generated.words.length>200
         ||generated.words.some((w:unknown)=>typeof w!=='string'||!w.trim()||w.length>200))throw new AppServiceError('invalid_generated_pack','Base44 returned an invalid word pack.',502,true);
       evidence.result={name:String(generated.name||generated.category).slice(0,120),category:generated.category.slice(0,120),words:generated.words,
-        ...Object.fromEntries(['ai_limit','ai_generations_today','ai_remaining'].filter(k=>Number.isInteger(generated[k])&&generated[k]>=0).map(k=>[k,generated[k]]))};
+        ...Object.fromEntries(['ai_limit','ai_generations_today','ai_remaining','ai_free_remaining','ai_bonus_credits']
+          .filter(k=>generated[k]===null||(Number.isInteger(generated[k])&&generated[k]>=0)).map(k=>[k,generated[k]])),
+        ...(typeof generated.ai_unlimited==='boolean'?{ai_unlimited:generated.ai_unlimited}:{}),
+        ...(typeof generated.ai_resets_at==='string'&&Number.isFinite(Date.parse(generated.ai_resets_at))?{ai_resets_at:generated.ai_resets_at}:{})};
     }
     evidence.requestID=request.request_id;evidence.requestHash=hash;
   }

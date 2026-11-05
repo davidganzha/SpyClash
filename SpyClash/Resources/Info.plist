@@ -39,6 +39,10 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>GADApplicationIdentifier</key>
+	<string>$(SPYCLASH_ADMOB_APP_ID)</string>
+	<key>GADDelayAppMeasurementInit</key>
+	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
@@ -60,8 +64,19 @@
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
 	<true/>
+	<key>SKAdNetworkItems</key>
+	<array>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>cstr6suwn9.skadnetwork</string>
+		</dict>
+	</array>
+	<key>SpyClashAdsEnabled</key>
+	<string>$(SPYCLASH_ADS_ENABLED)</string>
 	<key>SpyClashBackendMode</key>
 	<string>$(SPYCLASH_BACKEND_MODE)</string>
+	<key>SpyClashRewardedAdUnitID</key>
+	<string>$(SPYCLASH_REWARDED_AD_UNIT_ID)</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Rajdhani-Bold.ttf</string>

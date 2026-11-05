@@ -51,6 +51,8 @@ export async function deleteAccount(ctx: AppContext, body: any) {
   // supported admin API, retried durably if its network response is lost.
   await tx`insert into app_private.lifecycle_jobs(user_id) values(${actor.id}) on conflict(user_id) do nothing`;
   if (mainDeletion?.native_account) {
+    const [rewardSchema]=await tx`select to_regclass('game_center_private.generation_reward_attempts') is not null as present`;
+    if(rewardSchema.present)await tx`delete from game_center_private.generation_reward_attempts where user_id=${actor.id}`;
     await tx`delete from game_center_private.generation_requests where user_id=${actor.id}`;
     await tx`update game_center_private.accounts set state='deleted',lease_id=null,lease_until=null,updated_at=${now}
       where user_id=${actor.id} and identity_key=${mainDeletion.identity_key}`;

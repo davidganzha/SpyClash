@@ -23,6 +23,8 @@ try{
   await db.begin(async tx=>{
     await tx.unsafe(readFileSync(resolve(root,'supabase/functions/game-center-session/schema.sql'),'utf8'));
     await tx.unsafe(readFileSync(resolve(root,'supabase/migrations/20261026234309_native_game_center_ai_relay.sql'),'utf8'));
+    await tx.unsafe(readFileSync(resolve(root,'supabase/migrations/20261101130901_native_generation_failure_recovery.sql'),'utf8'));
+    await tx.unsafe(readFileSync(resolve(root,'supabase/migrations/20261105224817_rewarded_generation_credits.sql'),'utf8'));
   });
 }finally{await db.end();}
 const regression=process.argv[2]==='legacy-regression';

@@ -6,6 +6,8 @@ import {createOpenAIWordPackProvider,assertNoKnownNamedThemeDrift,WORD_PACK_PROM
 import {filterSafeCommunityStrings,requireSafeCommunityText} from './word-generation/content-safety.ts';
 import {normalizeGeneratedWordPack,wordPackComparisonKey} from './word-generation/generation-cache.ts';
 import {nativeRelayConfigured,createNativeAIRelayProvider,nativeRelayHasUnknownOutcome,settleNativeRelayFailure,terminalNativeAIOutcome,failedNativeAIOutcome} from './native-ai-relay.ts';
+import {generationRewardMetadata,lockGenerationQuota,nativeRewardStatus,reserveRewardGeneration,rewardedGenerationEnabled} from './generation-reward-ledger.ts';
+import {createDurableNativeDirectProvider} from './native-direct-generation.ts';
 
 type Config=Record<string,string|undefined>;
 type Input={actor:AppActor,body:Record<string,any>,config:Config};
@@ -35,12 +37,13 @@ async function requireNative(tx:any,userID:string) {
  * owns one quota charge and one durable result, including after a lost ACK.
  * Relay claims survive an expired worker lease: paid work is never repeated. */
 export async function prepareNativeGeneration(input:Input,dependencies:{db:any,fetch?:typeof fetch}) {
+  const rewardsEnabled=rewardedGenerationEnabled(input.config);
   if(!nativeGenerationCapabilities(input.config).configured)throw new AppServiceError('native_generation_unconfigured','Word generation is not available yet. Try again later.',503,true);
   const request=command(input.body),hash=await requestHash(input.body),db=dependencies.db,leaseID=crypto.randomUUID();
   const evidenceFor=(result:any)=>{const evidence={actor:input.actor.id,requestID:request.request_id,hash,result};evidenceSet.add(evidence);return evidence;};
   const reservation=await db.begin(async(tx:any)=>{
     await requireNative(tx,input.actor.id);
-    await tx`select pg_advisory_xact_lock(hashtextextended(${input.actor.id+':native-ai-quota'},0))`;
+    await lockGenerationQuota(tx,input.actor.id);
     const [prior]=await tx`select *,lease_until>clock_timestamp() as leased from game_center_private.generation_requests
       where user_id=${input.actor.id} and request_id=${request.request_id} for update`;
     if(prior&&prior.request_hash!==hash)throw new AppServiceError('request_id_reused','This request belongs to another word pack.',409);
@@ -51,21 +54,22 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
     if(prior&&await nativeRelayHasUnknownOutcome(tx,input.actor.id,request.request_id)){
       await tx`update game_center_private.generation_requests set state='failed',charged=true,lease_id=null,lease_until=null,error_code='generation_outcome_unknown',updated_at=clock_timestamp()
         where user_id=${input.actor.id} and request_id=${request.request_id}`;
-      return {unknown:true};
+      return {unknown:true,metered:Boolean(prior.charge_source&&prior.charge_source!=='legacy')};
     }
     const [{today}]=await tx`select (clock_timestamp() at time zone 'UTC')::date::text as today`;
     const unlimited=await nativeGameCenterHasMembership(tx,input.actor.id);
     const [{used}]=await tx`select count(*)::int as used from game_center_private.generation_requests where user_id=${input.actor.id} and usage_date=${today} and charged`;
     const keepsCharge=prior?.charged===true;
-    if(!unlimited&&!keepsCharge&&used>=NATIVE_AI_DAILY_LIMIT)throw new AppServiceError('ai_limit_reached','Today’s word generation limit has been reached.',429,false);
-    await tx`insert into game_center_private.generation_requests(user_id,request_id,request_hash,usage_date,charged,state,lease_id,lease_until)
-      values(${input.actor.id},${request.request_id},${hash},${today},true,'pending',${leaseID},clock_timestamp()+interval '120 seconds')
+    const rewardReservation=rewardsEnabled?await reserveRewardGeneration(tx,input.actor.id,request.request_id,prior,input.config):null;
+    if(!rewardsEnabled&&!unlimited&&!keepsCharge&&used>=NATIVE_AI_DAILY_LIMIT)throw new AppServiceError('ai_limit_reached','Today’s word generation limit has been reached.',429,false);
+    await tx`insert into game_center_private.generation_requests(user_id,request_id,request_hash,usage_date,charged,state,lease_id,lease_until,charge_source)
+      values(${input.actor.id},${request.request_id},${hash},${today},true,'pending',${leaseID},clock_timestamp()+interval '120 seconds',${rewardReservation?.source||(keepsCharge?prior.charge_source:'legacy')})
       on conflict(user_id,request_id) do update set state='pending',charged=true,
         usage_date=case when game_center_private.generation_requests.charged then game_center_private.generation_requests.usage_date else excluded.usage_date end,
-        lease_id=excluded.lease_id,lease_until=excluded.lease_until,error_code=null,updated_at=clock_timestamp()`;
-    return {unlimited,used:used+(keepsCharge?0:1)};
+        lease_id=excluded.lease_id,lease_until=excluded.lease_until,charge_source=excluded.charge_source,error_code=null,updated_at=clock_timestamp()`;
+    return {unlimited,used:used+(keepsCharge?0:1),metered:rewardsEnabled||Boolean(prior?.charged&&prior?.charge_source&&prior.charge_source!=='legacy')};
   });
-  if(reservation.unknown)throw terminalNativeAIOutcome();
+  if(reservation.unknown)throw rewardsEnabled||reservation.metered?busy():terminalNativeAIOutcome();
   if(reservation.result)return evidenceFor(reservation.result);
   let qualityRejected=false;
   const validate=<T>(operation:()=>T):T=>{
@@ -74,7 +78,8 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
   try{
     const provider=input.config.APP_NATIVE_GAME_CENTER_AI_PROVIDER==='base44-managed'
       ?createNativeAIRelayProvider({db,config:input.config,actorID:input.actor.id,requestID:request.request_id,requestHash:hash,leaseID,fetch:dependencies.fetch})
-      :createOpenAIWordPackProvider({apiKey:input.config.OPENAI_API_KEY!,model:input.config.SPYCLASH_OPENAI_MODEL,timeoutMilliseconds:45_000,fetch:dependencies.fetch});
+      :reservation.metered?createDurableNativeDirectProvider({db,config:input.config,actorID:input.actor.id,requestID:request.request_id,leaseID,fetch:dependencies.fetch})
+        :createOpenAIWordPackProvider({apiKey:input.config.OPENAI_API_KEY!,model:input.config.SPYCLASH_OPENAI_MODEL,timeoutMilliseconds:45_000,fetch:dependencies.fetch});
     const generate=async(count:number,excluded:string[])=>{
       // Recheck ownership before each external call; never continue provider
       // work on an account deleted while the first call was in flight.
@@ -103,17 +108,21 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
       if(pack.words.length<request.count&&!pack.exhausted)throw new Error('quality');
       return pack;
     });
-    const result={name:request.theme,...normalized,ai_limit:reservation.unlimited?null:NATIVE_AI_DAILY_LIMIT,
+    let result:any={name:request.theme,...normalized,ai_limit:reservation.unlimited?null:NATIVE_AI_DAILY_LIMIT,
       ai_generations_today:reservation.used,ai_remaining:reservation.unlimited?null:Math.max(0,NATIVE_AI_DAILY_LIMIT-reservation.used)};
     await db.begin(async(tx:any)=>{
       await requireNative(tx,input.actor.id);
+      if(rewardsEnabled){
+        await lockGenerationQuota(tx,input.actor.id);
+        result={...result,...generationRewardMetadata(await nativeRewardStatus(tx,input.actor.id,input.config))};
+      }
       const rows=await tx`update game_center_private.generation_requests set state='complete',result=${tx.json(result)},lease_id=null,lease_until=null,updated_at=clock_timestamp()
         where user_id=${input.actor.id} and request_id=${request.request_id} and request_hash=${hash} and lease_id=${leaseID} and lease_until>clock_timestamp() and state='pending' returning request_id`;
       if(!rows.length)throw busy();
     });
     return evidenceFor(result);
   }catch(error){
-    if(input.config.APP_NATIVE_GAME_CENTER_AI_PROVIDER==='base44-managed'){
+    if(input.config.APP_NATIVE_GAME_CENTER_AI_PROVIDER==='base44-managed'||reservation.metered){
       const outcome=await settleNativeRelayFailure(db,input.actor.id,request.request_id,leaseID,qualityRejected).catch(()=> 'unknown');
       if(outcome==='unknown')throw new AppServiceError('generation_in_progress','This attempt is awaiting confirmation. Retry the same request later.',503,true);
       if(outcome==='quality')throw failedNativeAIOutcome('quality_failed');

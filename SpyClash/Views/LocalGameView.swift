@@ -1818,6 +1818,8 @@ struct LocalGameView: View {
     }
 
     private var localGenerateButton: some View {
+        VStack(spacing: 12) {
+        GenerationAllowanceView(isGenerating: isGenerating)
         Button {
             Task { await generateLocalTheme() }
         } label: {
@@ -1835,6 +1837,7 @@ struct LocalGameView: View {
         .disabled(!localHasCustomTheme || isGenerating)
         .opacity(localHasCustomTheme ? 1 : 0.42)
         .accessibilityIdentifier("localGame.generateThemeWords")
+        }
     }
 
     private var localWordPackSelector: some View {
@@ -3948,7 +3951,7 @@ struct LocalGameView: View {
                     aiGenerationsToday: nil
                 )
             } else {
-                generated = try await appState.client.generateWordPack(
+                generated = try await appState.generateWordPack(
                     theme: theme,
                     count: targetCount,
                     requestID: requestID,
@@ -4030,7 +4033,7 @@ struct LocalGameView: View {
                     aiGenerationsToday: nil
                 )
             } else {
-                generated = try await appState.client.generateWordPack(
+                generated = try await appState.generateWordPack(
                     theme: theme,
                     count: additionalCount,
                     requestID: requestID,

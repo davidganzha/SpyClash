@@ -11,6 +11,7 @@ extension AppState {
             membershipRealtime.stop()
             let disabled = MembershipScope(userID: nil, accessToken: nil)
             membership.bind(disabled)
+            generationRewards.bind(disabled)
             storeKit.bind(disabled)
             return
         }
@@ -25,6 +26,15 @@ extension AppState {
 #endif
         } else { preview = nil }
         membership.bind(membershipScope, preview: preview)
+        var generationPreview: GenerationRewardStatus?
+#if DEBUG
+        if shouldUsePreviewData, ProcessInfo.processInfo.arguments.contains("--spyclash-preview-generations") {
+            let unlimited = ProcessInfo.processInfo.arguments.contains("--spyclash-preview-generations-unlimited")
+            let exhausted = ProcessInfo.processInfo.arguments.contains("--spyclash-preview-generations-exhausted")
+            generationPreview = GenerationRewardStatus(enabled: true, unlimited: unlimited, freeRemaining: unlimited ? nil : exhausted ? 0 : 3, resetsAt: Date().addingTimeInterval(3600), adAvailable: true)
+        }
+#endif
+        generationRewards.bind(membershipScope, preview: generationPreview)
         storeKit.bind(shouldUsePreviewData ? MembershipScope(userID: nil, accessToken: nil) : membershipScope)
     }
 
@@ -35,6 +45,7 @@ extension AppState {
         let expectedScope = membershipScope
         membershipRealtime.bind(expectedScope)
         _ = await membership.refresh()
+        _ = await generationRewards.refresh()
         if membership.snapshot?.accessProtocol == "limitless" {
             await storeKit.synchronizeAfterActivation()
         }
@@ -45,6 +56,7 @@ extension AppState {
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }
             guard !Task.isCancelled else { return }
             _ = await membership.refresh()
+            _ = await generationRewards.refresh()
         }
     }
 }
