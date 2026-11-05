@@ -89,7 +89,6 @@ struct ProfileView: View {
         PageChrome(eyebrow: copy.eyebrow, status: "") {
             VStack(alignment: .leading, spacing: 16) {
                 synchronizedSpyCard
-                achievementCollection
                 profileCard
                 if appState.membership.snapshot?.isUniversal != true {
                     LimitlessEntry()
@@ -97,6 +96,7 @@ struct ProfileView: View {
                 if appState.membership.benefits?.advancedStatistics == true {
                     statsCard
                 }
+                achievementCollection
                 legalCard
                 if appState.membership.snapshot?.providers.contains("apple") == true {
                     Text(LimitlessCopy(language: appState.language).deletionNotice)
