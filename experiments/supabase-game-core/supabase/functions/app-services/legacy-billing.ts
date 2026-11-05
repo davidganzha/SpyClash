@@ -1,6 +1,7 @@
 import {AppServiceError, requireUUID, type AppActor, type AppContext} from './contracts.ts';
 import {canonical, digest} from './integration-crypto.ts';
 import {assertIsolatedSupabase, canonicalBase44Configuration, verifyLegacyCredential, boundedLegacyJSON, CANONICAL_BASE44_APP_ID, CANONICAL_BASE44_ORIGIN} from './legacy-provider.ts';
+import type {AppleLoyaltySnapshot} from './billing-rules/apple-loyalty.ts';
 
 type Config = Record<string,string|undefined>;
 const evidenceSet = new WeakSet<object>();
@@ -48,6 +49,36 @@ function membershipResponse(value:any) {
   }
   if (value.expires_at != null && !Number.isFinite(Date.parse(value.expires_at))) throw new AppServiceError('legacy_billing_response_invalid','The existing membership expiry is invalid.',502,true);
   return value;
+}
+
+function verifiedLoyaltySnapshot(value:any, now:Date): AppleLoyaltySnapshot | undefined {
+  const validID = (id:unknown): id is string => typeof id === 'string' && /^[0-9]{1,128}$/.test(id);
+  const checked = typeof value?.verified_at === 'string' ? Date.parse(value.verified_at) : NaN;
+  if (!value || value.environment !== 'production' || !validID(value.original_transaction_id)
+    || !Number.isFinite(checked) || checked < 0 || checked > now.getTime()+300_000
+    || !Array.isArray(value.transaction_ids) || value.transaction_ids.length > 2000
+    || !value.transaction_ids.every(validID)) return undefined;
+  return {original_transaction_id:value.original_transaction_id,environment:'production',
+    transaction_ids:[...new Set<string>(value.transaction_ids)],verified_at:new Date(checked).toISOString()};
+}
+
+/** Input is server-only Base44 evidence. Never pass the client request here.
+ * New complete histories replace a chain, so refunds can remove paid periods;
+ * ordinary membership checks, outages and delayed restores retain prior data. */
+export function mergeLegacyLoyaltyChains(previous:unknown, incoming:unknown, now:Date) {
+  const chains:Record<string,AppleLoyaltySnapshot> = {};
+  if (previous && typeof previous === 'object' && !Array.isArray(previous)) {
+    for (const [key,value] of Object.entries(previous)) {
+      const snapshot = verifiedLoyaltySnapshot(value,now);
+      if (snapshot?.original_transaction_id === key) chains[key] = snapshot;
+    }
+  }
+  const next = verifiedLoyaltySnapshot(incoming,now);
+  if (next && (!chains[next.original_transaction_id]
+    || Date.parse(next.verified_at) >= Date.parse(chains[next.original_transaction_id].verified_at))) {
+    chains[next.original_transaction_id] = next;
+  }
+  return chains;
 }
 
 /** Existing Base44 is the commerce authority. Its credential and verified user
@@ -121,12 +152,20 @@ export async function dispatchLegacyBilling(ctx:AppContext,body:Record<string,an
     const expiry = new Date(Math.min(evidence.snapshotCheckedAt+300_000,snapshot.expires_at ? Date.parse(snapshot.expires_at) : Infinity));
     const active = snapshot.active === true && expiry > ctx.now;
     const checkedAt = new Date(evidence.snapshotCheckedAt);
-    const data = {status:active?'active':'inactive',providers:snapshot.providers,protocol:snapshot.protocol,source_expires_at:snapshot.expires_at,verified_at:checkedAt.toISOString()};
+    const sourceKey = 'base44:'+evidence.legacyID;
+    // Serialize empty-row inserts as well as subsequent mirror refreshes. This
+    // prevents a simultaneous aggregate check from erasing a verified chain.
+    await ctx.tx`select pg_advisory_xact_lock(hashtextextended(${sourceKey},0))`;
+    const [owner] = await ctx.tx`select user_id,data from app_private.entitlements where source_key=${sourceKey} for update`;
+    if (owner && owner.user_id !== ctx.actor.id) throw new AppServiceError('legacy_owner_mismatch','This membership belongs to a different account.',409);
+    const loyaltyChains = mergeLegacyLoyaltyChains(owner?.data?.loyalty_chains,
+      command.action === 'sync_transaction' && evidence.result?.entitlement?.environment === 'production'
+        ? evidence.result?.loyalty : undefined,ctx.now);
+    const data = {status:active?'active':'inactive',providers:snapshot.providers,protocol:snapshot.protocol,source_expires_at:snapshot.expires_at,verified_at:checkedAt.toISOString(),
+      ...(Object.keys(loyaltyChains).length ? {loyalty_chains:loyaltyChains} : {})};
     // A membership read aggregates Apple, Stripe and grants; it must not relabel
     // a previously verified monthly transaction as the current weekly offer.
     const productID = command.action === 'sync_transaction' ? evidence.result.entitlement.product_id : '';
-    const [owner] = await ctx.tx`select user_id from app_private.entitlements where source_key=${'base44:'+evidence.legacyID}`;
-    if (owner && owner.user_id !== ctx.actor.id) throw new AppServiceError('legacy_owner_mismatch','This membership belongs to a different account.',409);
     await ctx.tx`insert into app_private.entitlements(source_key,user_id,active,expires_at,data,provider,product_id,provider_event_at,updated_at)
       values(${'base44:'+evidence.legacyID},${ctx.actor.id},${active},${expiry},${ctx.tx.json(data)},'base44',${productID},${checkedAt},${ctx.now})
       on conflict(source_key) do update set active=excluded.active,expires_at=excluded.expires_at,data=excluded.data,

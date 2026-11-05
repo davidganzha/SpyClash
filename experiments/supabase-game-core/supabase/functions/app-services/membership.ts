@@ -5,6 +5,7 @@ import {appleVerificationConfigured,verifyApple,verifyStoredAppleEntitlement,nat
 import {nativeGameCenterAccount,resolveNativeGameCenterAccount} from './native-game-center.ts';
 import {accountGate} from './account-gate.ts';
 import {usesLegacyBilling,legacyBillingConfigured,prepareLegacyBilling,dispatchLegacyBilling} from './legacy-billing.ts';
+import {mergeAppleLoyaltySnapshot} from './billing-rules/apple-loyalty.ts';
 
 export const WEEKLY_PRODUCT = 'com.spyclash.ios.limitless.weekly';
 const acceptedEvidence = new WeakSet<object>();
@@ -84,7 +85,8 @@ async function applyVerifiedMembership(ctx:AppContext,verified:any,checkedAt:num
   await ctx.tx`select pg_advisory_xact_lock(hashtextextended(${incoming.source_key+':entitlement'},0))`;
   const [prior] = await ctx.tx`select user_id,data from app_private.entitlements where source_key=${incoming.source_key} for update`;
   if (prior && prior.user_id !== ctx.actor.id) throw new AppServiceError('purchase_owner_mismatch','This subscription belongs to another account.',409);
-  const record = prior && !shouldApplyProviderEvent(prior.data,incoming) ? prior.data : incoming;
+  const record = prior && !shouldApplyProviderEvent(prior.data,incoming) ? prior.data
+    : mergeAppleLoyaltySnapshot(incoming,prior?.data,verified.loyalty);
   const active = ['active','trialing','grace_period'].includes(record.status) && Date.parse(record.expires_at)>ctx.now.getTime();
   await ctx.tx`insert into app_private.entitlements(source_key,user_id,active,expires_at,data,provider,product_id,provider_event_at,updated_at)
     values(${record.source_key},${ctx.actor.id},${active},${record.expires_at},${ctx.tx.json(record)},'apple',${record.product_id},${record.provider_event_at},${ctx.now})
@@ -112,7 +114,7 @@ export async function checkMembership(ctx: AppContext) {
  * as a tombstone so a later account cannot claim the same purchase. */
 export async function cleanupBillingPush(ctx: AppContext) {
   await ctx.tx`update app_private.apple_accounts set state='deleted' where user_id=${ctx.actor.id}`;
-  await ctx.tx`update app_private.entitlements set active=false,data=data-'user_email' where user_id=${ctx.actor.id}`;
+  await ctx.tx`update app_private.entitlements set active=false,data=data-'user_email'-'loyalty_transaction_ids'-'loyalty_verified_at'-'loyalty_chains' where user_id=${ctx.actor.id}`;
   await ctx.tx`delete from app_private.membership_grants where user_id=${ctx.actor.id}`;
   await ctx.tx`delete from app_private.push_registrations where user_id=${ctx.actor.id}`;
   await ctx.tx`update app_private.legacy_links set state='deleted' where user_id=${ctx.actor.id}`;

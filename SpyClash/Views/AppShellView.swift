@@ -1061,6 +1061,10 @@ struct AppShellView: View {
         if appState.shouldUsePreviewData {
             await Task.yield()
             guard isCurrent(), let state = sharedCommunityNetworkState else { return }
+            if action == .join {
+                appState.gameInvitations.errorMessage = appState.previewInvitationJoinMessage
+                return
+            }
             let updated: CommunityState
             if request.primaryAction == .accept {
                 let verb = action == .accept ? "accept" : "decline"
@@ -1147,6 +1151,9 @@ struct AppShellView: View {
             return
         } catch {
             guard isCurrent() else { return }
+            if request.primaryAction == .join {
+                appState.gameInvitations.errorMessage = error.localizedDescription
+            }
             appState.showToast(error.localizedDescription, kind: .error)
             HapticManager.shared.fire(.notification(.error))
         }
@@ -3292,24 +3299,22 @@ private struct WebMenuTopBar: View {
                     Spacer()
 
                     Button(action: toggle) {
-                        toggleIndicator
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(toggleAccessibilityLabel)
-                        .accessibilityIdentifier("spy-command-menu-drag-handle")
-                        .accessibilityValue(attentionAccessibilityValue)
-                        .overlay(alignment: .topTrailing) {
+                        HStack(spacing: 8) {
                             if totalAttentionCount > 0 {
-                                CommunityAttentionBadge(
-                                    count: totalAttentionCount,
-                                    compact: true
-                                )
-                                    .offset(x: 3, y: -4)
+                                CommunityAttentionBadge(count: totalAttentionCount, prominent: true)
+                                    .accessibilityHidden(true)
                                     .transition(.scale.combined(with: .opacity))
                             }
+                            toggleIndicator
+                                .frame(width: 32, height: 44)
                         }
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(toggleAccessibilityLabel)
+                    .accessibilityIdentifier("spy-command-menu-drag-handle")
+                    .accessibilityValue(attentionAccessibilityValue)
                 }
                 .padding(.horizontal, 24)
 
@@ -3824,19 +3829,23 @@ private struct CommunityAttentionBadge: View {
 
     let count: Int
     var compact = false
+    var prominent = false
     var accessibilityDescription: String? = nil
+    @ScaledMetric(relativeTo: .caption) private var prominentFontSize: CGFloat = 14
 
     var body: some View {
         Text(count > 99 ? "99+" : "\(count)")
-            .font(.system(size: compact ? 9 : 10, weight: .black, design: .monospaced))
+            .font(.system(size: prominent ? min(prominentFontSize, 18) : (compact ? 9 : 10), weight: prominent ? .bold : .black, design: .monospaced))
             .foregroundStyle(.white)
             .lineLimit(1)
-            .minimumScaleFactor(0.72)
-            .padding(.horizontal, compact ? 5 : 7)
-            .frame(minWidth: compact ? 19 : 24, minHeight: compact ? 19 : 22)
+            .minimumScaleFactor(prominent ? 1 : 0.72)
+            .monospacedDigit()
+            .padding(.horizontal, prominent ? 7 : (compact ? 5 : 7))
+            .padding(.vertical, prominent ? 4 : 0)
+            .frame(minWidth: prominent ? 28 : (compact ? 19 : 24), minHeight: prominent ? 28 : (compact ? 19 : 22))
             .background(SpyTheme.red, in: Capsule())
-            .overlay(Capsule().stroke(Color.white.opacity(0.90), lineWidth: 1))
-            .shadow(color: SpyTheme.red.opacity(0.72), radius: 7)
+            .overlay(Capsule().stroke(Color.white.opacity(prominent ? 0.16 : 0.90), lineWidth: 1))
+            .shadow(color: SpyTheme.red.opacity(prominent ? 0 : 0.72), radius: prominent ? 0 : 7)
             .accessibilityLabel("\(count) \(resolvedAccessibilityDescription)")
     }
 

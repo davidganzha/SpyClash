@@ -27,4 +27,44 @@ final class SpyAchievementTests: XCTestCase {
         XCTAssertEqual(values.first { $0.id == "ghost" }?.boundedProgress, 0)
         XCTAssertFalse(values.contains { $0.id == "future_award" })
     }
+
+    func testGameplayStatisticsNeverGrantPaymentAwards() throws {
+        let awards = SpyAchievementCatalog.progress(games: Int.max, wins: Int.max, spyWins: Int.max, detectiveWins: Int.max)
+        for id in [SpyAchievementID.loyalty3, .loyalty6, .loyalty12] {
+            let award = try XCTUnwrap(awards.first { $0.id == id.rawValue })
+            XCTAssertEqual(award.progress, 0)
+            XCTAssertFalse(award.isUnlocked)
+        }
+    }
+
+    func testLoyaltyProgressUsesServerPaymentsAndCanonicalTierTargets() throws {
+        let awards = SpyAchievementCatalog.normalized([
+            SpyAchievementProgress(id: "loyalty_3", progress: 6, target: 99),
+            SpyAchievementProgress(id: "loyalty_6", progress: 6, target: 1),
+            SpyAchievementProgress(id: "loyalty_12", progress: 6, target: -1)
+        ])
+        let first = try XCTUnwrap(awards.first { $0.id == "loyalty_3" })
+        let second = try XCTUnwrap(awards.first { $0.id == "loyalty_6" })
+        let third = try XCTUnwrap(awards.first { $0.id == "loyalty_12" })
+        XCTAssertEqual(first.target, 3)
+        XCTAssertEqual(first.progress, 3)
+        XCTAssertTrue(first.isUnlocked)
+        XCTAssertEqual(second.target, 6)
+        XCTAssertTrue(second.isUnlocked)
+        XCTAssertEqual(third.target, 12)
+        XCTAssertEqual(third.progress, 6)
+        XCTAssertFalse(third.isUnlocked)
+    }
+
+    func testMissingOrInvalidPaymentProgressCannotUnlockLoyalty() throws {
+        let awards = SpyAchievementCatalog.normalized([
+            SpyAchievementProgress(id: "loyalty_3", progress: -10, target: 0),
+            SpyAchievementProgress(id: "loyalty_6", progress: 5, target: 1)
+        ])
+        for id in [SpyAchievementID.loyalty3, .loyalty6, .loyalty12] {
+            XCTAssertFalse(try XCTUnwrap(awards.first { $0.id == id.rawValue }).isUnlocked)
+        }
+        XCTAssertEqual(awards.first { $0.id == "loyalty_3" }?.progress, 0)
+        XCTAssertEqual(awards.first { $0.id == "loyalty_12" }?.progress, 0)
+    }
 }

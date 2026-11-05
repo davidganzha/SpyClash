@@ -118,7 +118,7 @@ struct ProfileView: View {
         .task(id: historyTaskID) {
             await loadHistory(requestID: historyTaskID)
         }
-        .task(id: "\(appState.user?.id ?? "")-\(achievementRequestID)") {
+        .task(id: "\(appState.user?.id ?? "")-\(achievementRequestID)-\(appState.membership.revision)") {
             await loadAchievements()
         }
         .overlay {

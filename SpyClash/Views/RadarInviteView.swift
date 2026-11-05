@@ -1560,17 +1560,29 @@ struct RadarIncomingInvitationOverlay: View {
     @Environment(AppState.self) private var appState
     let invitation: RadarIncomingInvitation
     @State private var isJoining = false
+    @State private var joinError: String?
 
     var body: some View {
         GameInvitationOverlay(
             source: .radar, callSign: invitation.hostCallSign, avatar: invitation.hostAvatar,
             spyID: invitation.hostSpyID, roomCode: invitation.roomCode,
             isBusy: isJoining || appState.isRadarInvitationJoinInProgress || appState.gameInvitations.busyInviteID != nil,
+            errorMessage: joinError,
             onDecline: { appState.declineRadarInvitation(invitation) },
             onJoin: {
                 Task { @MainActor in
                     isJoining = true
-                    _ = await appState.acceptRadarInvitation(invitation)
+                    joinError = nil
+                    let joined = await appState.acceptRadarInvitation(invitation)
+                    if !joined {
+                        let fallback = switch appState.language {
+                        case .en: "Could not join. The invitation may have expired. Try again or ask the host for a new invitation."
+                        case .ru: "Не удалось войти. Возможно, приглашение устарело. Попробуйте снова или попросите новое приглашение."
+                        case .es: "No se pudo entrar. La invitación puede haber caducado. Inténtalo de nuevo o pide otra invitación."
+                        case .uk: "Не вдалося увійти. Можливо, запрошення застаріло. Спробуйте ще раз або попросіть нове запрошення."
+                        }
+                        joinError = appState.deepLinkStatus ?? fallback
+                    }
                     isJoining = false
                 }
             }

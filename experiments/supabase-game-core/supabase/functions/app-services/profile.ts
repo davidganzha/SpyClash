@@ -4,7 +4,7 @@ import { stableSpyID, isReservedManualSpyID, publicProfile } from './policies/co
 import { safeCommunityAvatar, safeCommunityDisplayName } from './policies/community-safety.ts';
 import { requiresPremiumProfileChange } from './policies/profile-membership.ts';
 import { aggregateCompetitiveStats, aggregateCompetitiveRoleStats } from '../full-game-core/rules/competitive-stats.ts';
-import { aggregateAchievementStats, achievementProgress } from './policies/achievements.ts';
+import { aggregateAchievementStats, aggregateLoyaltyPayments, achievementProgress } from './policies/achievements.ts';
 
 export const clean = (value: unknown): string => String(value ?? '').trim();
 const languages = new Set(['en','ru','uk','es']);
@@ -66,9 +66,11 @@ export async function projectedProfiles(ctx:AppContext,profiles:any[]):Promise<a
   const rows=await ctx.tx`select result from full_game_private.history where player_id=any(${ids}::uuid[])`;
   const records=rows.map((r:any)=>r.result);
   const stats=aggregateCompetitiveStats(records), roles=aggregateCompetitiveRoleStats(records), awards=aggregateAchievementStats(records);
+  const billing=await ctx.tx`select user_id,provider,data from app_private.entitlements where user_id=any(${ids}::uuid[]) and provider in ('apple','base44')`;
+  const loyalty=aggregateLoyaltyPayments(billing);
   return profiles.map(p=>{
     const s=stats.get(p.user_id),r=roles.get(p.user_id);
-    return publicProfile({...p.data,id:p.user_id,spy_id:p.spy_id,rating:s?.rating||0,games_played:s?.games||0,games_won:s?.wins||0,spy_games_played:r?.spyGames||0,spy_games_won:r?.spyWins||0,detective_games_played:r?.detectiveGames||0,detective_games_won:r?.detectiveWins||0,achievements:achievementProgress(awards.get(p.user_id))});
+    return publicProfile({...p.data,id:p.user_id,spy_id:p.spy_id,rating:s?.rating||0,games_played:s?.games||0,games_won:s?.wins||0,spy_games_played:r?.spyGames||0,spy_games_won:r?.spyWins||0,detective_games_played:r?.detectiveGames||0,detective_games_won:r?.detectiveWins||0,achievements:achievementProgress(awards.get(p.user_id),loyalty.get(p.user_id))});
   });
 }
 export async function ownProfile(ctx:AppContext,profile:any):Promise<any> {

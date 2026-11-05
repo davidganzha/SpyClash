@@ -30,11 +30,13 @@ final class GameInvitationCenterTests: XCTestCase {
         center.install(state)
         center.onDecision = { _, _ in XCTFail("Old account handler must not survive") }
         center.busyInviteID = "i"
+        center.errorMessage = "Old account error"
         center.bind(user: try user("second"))
         center.install(state)
         XCTAssertNil(center.current)
         XCTAssertNil(center.onDecision)
         XCTAssertNil(center.busyInviteID)
+        XCTAssertNil(center.errorMessage)
     }
 
     func testBusyDecisionCannotJoinAgainAndSnapshotRemovalDismisses() throws {
@@ -51,6 +53,38 @@ final class GameInvitationCenterTests: XCTestCase {
         center.install(CommunityState(me: profile("me"), friends: [relationship], incoming: [], outgoing: [], blocked: [], incomingRoomInvites: []))
         XCTAssertNil(center.current)
     }
+
+    func testJoinErrorSurvivesRefreshButClearsForRetryAndNextInvitation() throws {
+        let center = GameInvitationCenter()
+        center.bind(user: try user("me"))
+        let sender = profile("friend"), invitation = invite("i", from: profile("friend"))
+        let relationship = CommunityRelationship(id: "f", status: "accepted", direction: "incoming", profile: sender)
+        let state = CommunityState(me: profile("me"), friends: [relationship], incoming: [], outgoing: [], blocked: [], incomingRoomInvites: [invitation])
+        center.install(state)
+        center.errorMessage = "Room unavailable"
+        center.install(state)
+        XCTAssertEqual(center.errorMessage, "Room unavailable")
+        var attempted = false
+        center.onDecision = { _, _ in attempted = true }
+        center.decide(invitation, accept: true)
+        XCTAssertTrue(attempted)
+        XCTAssertNil(center.errorMessage)
+        center.errorMessage = "Retry failed"
+        center.install(CommunityState(me: profile("me"), friends: [relationship], incoming: [], outgoing: [], blocked: [], incomingRoomInvites: [invite("next", from: sender)]))
+        XCTAssertNil(center.errorMessage)
+    }
+
+#if DEBUG
+    func testPreviewProfileCannotReportSuccessfulRealRoomJoin() async {
+        let state = AppState(client: Base44Client(), readStoredToken: { nil }, saveStoredToken: { _ in }, clearStoredToken: {})
+        state.isUIPreviewMode = true
+        state.language = .ru
+        let joined = await state.joinRoom(code: "ABC123")
+        XCTAssertFalse(joined)
+        XCTAssertNil(state.activeRoom)
+        XCTAssertEqual(state.deepLinkStatus, state.previewInvitationJoinMessage)
+    }
+#endif
 
     private func user(_ id: String) throws -> SpyUser {
         try JSONDecoder().decode(SpyUser.self, from: JSONSerialization.data(withJSONObject: ["id": id, "email": "\(id)@example.test"]))

@@ -31,7 +31,30 @@ export function aggregateAchievementStats(records: readonly History[]): Map<stri
   return table;
 }
 
-export function achievementProgress(stats: AchievementStats = { games: 0, wins: 0, spyWins: 0, detectiveWins: 0 }): AchievementProgress[] {
+/** Read only private, server-verified billing snapshots. No profile or client counters. */
+export function aggregateLoyaltyPayments(entitlements: readonly Record<string, any>[]): Map<string, number> {
+  const users = new Map<string, Set<string>>();
+  for (const row of entitlements) {
+    const userID = clean(row.user_id), data = row.data;
+    if (!userID || !data || typeof data !== 'object') continue;
+    const snapshots = row.provider === 'apple'
+      ? [{ environment: data.environment, transaction_ids: data.loyalty_transaction_ids, verified_at: data.loyalty_verified_at }]
+      : row.provider === 'base44' && data.loyalty_chains && typeof data.loyalty_chains === 'object'
+      ? Object.values(data.loyalty_chains) : [];
+    for (const snapshot of snapshots as any[]) {
+      if (snapshot?.environment !== 'production' || !Number.isFinite(Date.parse(snapshot?.verified_at))
+        || !Array.isArray(snapshot?.transaction_ids)) continue;
+      const ids = users.get(userID) ?? new Set<string>();
+      for (const id of snapshot.transaction_ids) {
+        if (typeof id === 'string' && /^[0-9]{1,128}$/.test(id)) ids.add(id);
+      }
+      users.set(userID, ids);
+    }
+  }
+  return new Map([...users].map(([id, transactions]) => [id, transactions.size]));
+}
+
+export function achievementProgress(stats: AchievementStats = { games: 0, wins: 0, spyWins: 0, detectiveWins: 0 }, paidSubscriptions = 0): AchievementProgress[] {
   const milestone = (id: string, value: number, target: number): AchievementProgress => ({ id, progress: Math.min(count(value), target), target });
   return [
     milestone('first_mission', stats.games, 1),
@@ -44,5 +67,8 @@ export function achievementProgress(stats: AchievementStats = { games: 0, wins: 
     milestone('sharp_eye', stats.detectiveWins, 1),
     milestone('case_closed', stats.detectiveWins, 10),
     milestone('double_agent', Math.min(stats.spyWins, stats.detectiveWins), 5),
+    milestone('loyalty_3', paidSubscriptions, 3),
+    milestone('loyalty_6', paidSubscriptions, 6),
+    milestone('loyalty_12', paidSubscriptions, 12),
   ];
 }

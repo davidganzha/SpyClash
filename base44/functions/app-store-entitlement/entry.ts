@@ -2,6 +2,7 @@ import { ensureAppleFetchBodyCompatibility } from "./apple-fetch-body-compatibil
 import {
   AppStoreServerAPIClient,
   Environment,
+  GetTransactionHistoryVersion,
   type JWSTransactionDecodedPayload,
   SignedDataVerifier,
   VerificationException,
@@ -55,6 +56,7 @@ import {
   runAppleNotificationDiagnostic,
 } from "./apple-notification-diagnostic.ts";
 import { appleVerificationFailureDetails } from "./apple-verification-error.ts";
+import { readAppleLoyaltyHistory } from "./apple-loyalty.ts";
 import {
   appleRequestErrorResponse,
   RequestError,
@@ -976,6 +978,40 @@ async function handleAuthenticatedSync(
       entitlement,
       () => assertAppleAccountLease(accountStore, lease),
     );
+    // Loyalty is optional metadata after verified ownership and delivery. A
+    // history outage must never turn a valid purchase/restore into a failure.
+    let loyalty;
+    let loyaltyTimeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const client = appStoreAPIClient(verified.environment);
+      loyalty = await Promise.race([
+        readAppleLoyaltyHistory({
+          transactionID: String(canonical.transaction.transactionId || ""),
+          originalTransactionID: entitlement.original_transaction_id,
+          appAccountToken: transactionToken,
+          expectedBundleID: BUNDLE_ID,
+          expectedProducts: SUPPORTED_SUBSCRIPTION_PRODUCT_IDS,
+          expectedEnvironment: verified.environment,
+          expectedAppAppleID: SPYCLASH_APPLE_APP_ID,
+          getHistory: (id, revision) => client.getTransactionHistory(
+            id, revision, {}, GetTransactionHistoryVersion.V2,
+          ),
+          verifyTransaction: (jws) => verified.verifier.verifyAndDecodeTransaction(jws),
+        }),
+        new Promise<never>((_, reject) => {
+          loyaltyTimeout = setTimeout(() => reject(new Error("Loyalty history timeout")), 8_000);
+        }),
+      ]);
+      if (canonical.status === 5) {
+        loyalty.transaction_ids = loyalty.transaction_ids.filter(
+          (id) => id !== canonical.transaction.transactionId,
+        );
+      }
+    } catch {
+      console.warn("Optional Apple Loyalty history is temporarily unavailable.");
+    } finally {
+      if (loyaltyTimeout !== undefined) clearTimeout(loyaltyTimeout);
+    }
     await publishMembershipSignal({
       store: base44.asServiceRole.entities.MembershipSignal,
       userID: entitlement.user_id,
@@ -1009,6 +1045,7 @@ async function handleAuthenticatedSync(
       server_status_verified: true,
       submitted_product_id: verified.transaction.productId,
       entitlement: publicAppleEntitlement(persisted),
+      ...(loyalty ? { loyalty } : {}),
     });
   } finally {
     if (leaseHeld) {

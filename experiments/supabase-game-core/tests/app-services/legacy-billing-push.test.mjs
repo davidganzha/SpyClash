@@ -77,6 +77,50 @@ test('verified revoked monthly restore is acknowledged without granting membersh
   assert.deepEqual(await call(a,body,fetcher),reply);
   const [mirror]=await db`select active,product_id from app_private.entitlements where user_id=${a.id}`;assert.equal(mirror.active,false);assert.equal(mirror.product_id,monthly);
 });
+test('verified Loyalty chains survive membership checks and deduplicate restores while newer refunds replace older history',async()=>{
+  const a=await actor(),chain='100000000000001',paid=['100000000000002','100000000000003','100000000000004'];
+  const checked=Date.now()-30_000;
+  const loyalty={original_transaction_id:chain,environment:'production',transaction_ids:paid,verified_at:new Date(checked).toISOString()};
+  const reply=value=>({success:true,server_status_verified:true,entitlement:{product_id:WEEKLY_PRODUCT,status:'active',environment:'production'},...(value?{loyalty:value}:{})});
+  const sync=async(value,extra={})=>call(a,{action:'sync_transaction',signed_transaction:'provider-verified-production-loyalty',request_id:crypto.randomUUID(),base44_access_token:credential,...extra},provider(a,url=>Response.json(url.endsWith('checkSubscriptionV2')?snapshot(true):reply(value))));
+  const chains=async()=>{const [row]=await db`select data from app_private.entitlements where user_id=${a.id}`;return row.data.loyalty_chains;};
+  await sync(loyalty);
+  await sync({...loyalty,transaction_ids:[...paid,paid[0]]});
+  assert.deepEqual((await chains())[chain].transaction_ids,paid);
+  await call(a,{action:'check',base44_access_token:credential},provider(a,()=>Response.json({...snapshot(true),loyalty:{...loyalty,transaction_ids:[]}})));
+  assert.deepEqual((await chains())[chain].transaction_ids,paid,'Aggregate membership checks cannot replace payment history');
+  await sync({...loyalty,transaction_ids:[paid[0]],verified_at:new Date(checked-1000).toISOString()});
+  assert.deepEqual((await chains())[chain].transaction_ids,paid,'Delayed history must not replace newer verified transactions');
+  const other='200000000000001';
+  await sync({...loyalty,original_transaction_id:other,transaction_ids:['200000000000002']});
+  assert.equal(Object.keys(await chains()).length,2,'Separate owned purchase chains are retained');
+  await sync({...loyalty,transaction_ids:[paid[0]],verified_at:new Date(checked+1000).toISOString()});
+  assert.deepEqual((await chains())[chain].transaction_ids,[paid[0]],'New complete history can remove refunded periods');
+  assert.equal((await chains())[other].transaction_ids.length,1);
+});
+test('optional Loyalty outage, malformed history and sandbox responses preserve prior production progress',async()=>{
+  const a=await actor(),chain='300000000000001',loyalty={original_transaction_id:chain,environment:'production',transaction_ids:['300000000000002','300000000000003','300000000000004'],verified_at:new Date(Date.now()-30_000).toISOString()};
+  const sync=async(value,environment='production',bodyExtra={})=>call(a,{action:'sync_transaction',signed_transaction:'provider-verified-optional-loyalty',request_id:crypto.randomUUID(),base44_access_token:credential,...bodyExtra},provider(a,url=>Response.json(url.endsWith('checkSubscriptionV2')?snapshot(true):{success:true,server_status_verified:true,entitlement:{product_id:WEEKLY_PRODUCT,status:'active',environment},...(value?{loyalty:value}:{})})));
+  await sync(loyalty);
+  for(const invalid of [undefined,{...loyalty,environment:'sandbox'},{...loyalty,original_transaction_id:'not-an-apple-id'},{...loyalty,transaction_ids:['client-forged']},{...loyalty,transaction_ids:Array.from({length:2001},(_,i)=>String(i+1))},{...loyalty,verified_at:new Date(Date.now()+600_000).toISOString()}]) {
+    assert.equal((await sync(invalid)).server_status_verified,true,'Optional metadata must not fail a valid purchase');
+    const [row]=await db`select data from app_private.entitlements where user_id=${a.id}`;
+    assert.deepEqual(row.data.loyalty_chains[chain].transaction_ids,loyalty.transaction_ids);
+  }
+  await sync({...loyalty,transaction_ids:[],verified_at:new Date().toISOString()},'sandbox');
+  await sync(undefined,'production',{loyalty:{...loyalty,transaction_ids:[]}});
+  const [row]=await db`select data from app_private.entitlements where user_id=${a.id}`;
+  assert.deepEqual(row.data.loyalty_chains[chain].transaction_ids,loyalty.transaction_ids,'Sandbox or client JSON never replaces trusted production history');
+});
+test('verified Loyalty response cannot be mirrored onto a foreign entitlement owner',async()=>{
+  const a=await actor(),foreign=await actor(),sourceKey='base44:'+a.legacyID;
+  await db`insert into app_private.entitlements(source_key,user_id,active,data,provider) values(${sourceKey},${foreign.id},false,'{}'::jsonb,'base44')`;
+  const body={action:'sync_transaction',signed_transaction:'provider-verified-owned-production-chain',request_id:crypto.randomUUID(),base44_access_token:credential};
+  const fetcher=provider(a,url=>Response.json(url.endsWith('checkSubscriptionV2')?snapshot(true):{success:true,server_status_verified:true,entitlement:{product_id:WEEKLY_PRODUCT,status:'active',environment:'production'},loyalty:{original_transaction_id:'400000000000001',environment:'production',transaction_ids:['400000000000002'],verified_at:new Date().toISOString()}}));
+  await assert.rejects(call(a,body,fetcher),e=>e.code==='legacy_owner_mismatch');
+  const [row]=await db`select user_id,data from app_private.entitlements where source_key=${sourceKey}`;
+  assert.equal(row.user_id,foreign.id);assert.equal(row.data.loyalty_chains,undefined);
+});
 test('Supabase credentials and mismatched legacy owners cannot reach existing billing',async()=>{
   const a=await actor(),foreign=await actor();let calls=0;
   const noProvider=async()=>{calls++;throw new Error('Must not reach provider');};

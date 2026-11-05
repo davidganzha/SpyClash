@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { aggregateAchievementStats, achievementProgress } from '../../supabase/functions/app-services/policies/achievements.ts';
+import { aggregateAchievementStats, aggregateLoyaltyPayments, achievementProgress } from '../../supabase/functions/app-services/policies/achievements.ts';
 import { projectedProfiles } from '../../supabase/functions/app-services/profile.ts';
 import type { AppContext } from '../../supabase/functions/app-services/contracts.ts';
 
@@ -35,11 +35,40 @@ Deno.test('FAN group wins never unlock role awards; standard FAN role wins do', 
 });
 Deno.test('award thresholds remain bounded; double-agent requires wins on both sides', () => {
   const awards = achievementProgress({ games: 500, wins: 80, spyWins: 9, detectiveWins: 4 });
-  assert.equal(awards.length, 10);
+  assert.equal(awards.length, 13);
   assert.deepEqual(awards.find(a => a.id === 'veteran'), { id: 'veteran', progress: 50, target: 50 });
   assert.deepEqual(awards.find(a => a.id === 'master_of_disguise'), { id: 'master_of_disguise', progress: 9, target: 10 });
   assert.deepEqual(awards.find(a => a.id === 'double_agent'), { id: 'double_agent', progress: 4, target: 5 });
   assert.ok(achievementProgress({ games: -3, wins: NaN, spyWins: Infinity, detectiveWins: -1 }).every(a => a.progress === 0));
+});
+
+Deno.test('Loyalty uses distinct verified production payments across billing snapshots, never membership access', () => {
+  const verified_at = '2026-11-05T10:00:00Z';
+  const rows = [
+    {user_id:'a',provider:'apple',active:false,data:{environment:'production',loyalty_transaction_ids:['100','101','101'],loyalty_verified_at:verified_at}},
+    {user_id:'a',provider:'base44',data:{loyalty_chains:{'99':{environment:'production',transaction_ids:['100','102'],verified_at}}}},
+    {user_id:'a',provider:'apple',active:true,data:{environment:'sandbox',loyalty_transaction_ids:['103'],loyalty_verified_at:verified_at}},
+    {user_id:'a',provider:'admin',data:{environment:'production',loyalty_transaction_ids:['104'],loyalty_verified_at:verified_at}},
+    {user_id:'a',provider:'apple',active:true,data:{environment:'production',loyalty_transaction_ids:['105']}},
+    {user_id:'b',provider:'apple',data:{environment:'production',loyalty_transaction_ids:['200','bad-id',null,300],loyalty_verified_at:verified_at}},
+  ];
+  assert.deepEqual([...aggregateLoyaltyPayments(rows)], [['a',3],['b',1]]);
+  assert.deepEqual(achievementProgress(undefined, 6).filter(a=>a.id.startsWith('loyalty_')), [
+    {id:'loyalty_3',progress:3,target:3},{id:'loyalty_6',progress:6,target:6},{id:'loyalty_12',progress:6,target:12},
+  ]);
+});
+
+Deno.test('public Loyalty projection exposes only bounded awards and ignores forged profile billing', async () => {
+  const tx = async (parts: TemplateStringsArray) => parts.join('').includes('app_private.entitlements')
+    ? [{user_id:'agent-a',provider:'apple',data:{environment:'production',loyalty_transaction_ids:['900','901','902'],loyalty_verified_at:'2026-11-05T10:00:00Z'}}] : [];
+  const [profile] = await projectedProfiles({tx} as unknown as AppContext, [{user_id:'agent-a',spy_id:'123-456',data:{
+    display_name:'Agent',loyalty_transaction_ids:['forged'],paidSubscriptions:999,
+    achievements:[{id:'loyalty_12',progress:12,target:12}],
+  }}]);
+  assert.deepEqual(profile.achievements.find((a:any)=>a.id==='loyalty_3'),{id:'loyalty_3',progress:3,target:3});
+  assert.deepEqual(profile.achievements.find((a:any)=>a.id==='loyalty_12'),{id:'loyalty_12',progress:3,target:12});
+  assert.ok(!JSON.stringify(profile).includes('900'));
+  assert.ok(!JSON.stringify(profile).includes('loyalty_transaction_ids'));
 });
 Deno.test('public projection ignores writable profile counters and forged awards', async () => {
   const ctx = { tx: async () => [{ result: row('real', { won: false }) }] } as unknown as AppContext;

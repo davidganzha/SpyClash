@@ -5117,6 +5117,7 @@ final class AppState: NSObject {
         guard gameInvitations.busyInviteID == nil else { return false }
         guard let runID = radarInvitationJoinGate.begin() else { return false }
         defer { finishRadarInvitationJoin(runID) }
+        deepLinkStatus = nil
         return await joinRadarInvitation(invitation)
     }
 
@@ -5189,6 +5190,12 @@ final class AppState: NSObject {
 
     @discardableResult
     func joinRoom(code rawCode: String) async -> Bool {
+#if DEBUG
+        guard !shouldUsePreviewData else {
+            deepLinkStatus = previewInvitationJoinMessage
+            return false
+        }
+#endif
         guard let user else {
             pendingJoinCode = rawCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
             deepLinkStatus = language.auth.signInToJoin(pendingJoinCode)
@@ -5242,6 +5249,17 @@ final class AppState: NSObject {
             return false
         }
     }
+
+#if DEBUG
+    var previewInvitationJoinMessage: String {
+        switch language {
+        case .en: "Demo profile. Sign in to your account to play."
+        case .ru: "Демо-профиль. Чтобы играть, войди в свой аккаунт."
+        case .es: "Perfil de demostración. Inicia sesión para jugar."
+        case .uk: "Демо-профіль. Щоб грати, увійди у свій акаунт."
+        }
+    }
+#endif
 
     func handleIncomingURL(_ url: URL) {
         if !SupabaseTestEnvironment.isEnabled,

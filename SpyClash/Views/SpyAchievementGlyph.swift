@@ -103,6 +103,12 @@ private struct SpyAchievementLinework: Shape {
             line([(23, 7), (29, 7), (33, 12), (33, 18), (36, 22), (31, 23), (31, 28), (23, 28), (23, 34)])
             line([(20, 10), (20, 16)])
             line([(20, 23), (20, 29)])
+        case .loyalty3, .loyalty6, .loyalty12:
+            // Interlocking angular links form the Loyalty family; the stencil
+            // beneath the knot marks its first, second, or third tier.
+            line([(19, 10), (12, 6), (5, 10), (5, 20), (12, 24), (19, 20), (19, 16)])
+            line([(21, 20), (28, 24), (35, 20), (35, 10), (28, 6), (21, 10), (21, 14)])
+            line([(13, 15), (27, 15)])
         }
 
         let scale = min(rect.width, rect.height) / 40
@@ -139,6 +145,12 @@ private struct SpyAchievementStencil: Shape {
         case .doubleAgent:
             cut([(10, 15), (15, 16), (15, 18), (10, 18)])
             cut([(30, 15), (25, 16), (25, 18), (30, 18)])
+        case .loyalty3, .loyalty6, .loyalty12:
+            let rank = achievement == .loyalty3 ? 1 : (achievement == .loyalty6 ? 2 : 3)
+            for index in 0..<rank {
+                let x = 20 + CGFloat(index) * 6 - CGFloat(rank - 1) * 3
+                cut([(x - 1, 29), (x + 1, 29), (x + 1, 35), (x - 1, 35)])
+            }
         case .firstMission, .veteran, .firstVictory, .winningRecord, .caseClosed:
             break
         }

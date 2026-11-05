@@ -1,5 +1,6 @@
 import {AppServiceError} from './contracts.ts';
 import {readCanonicalAppleSubscriptionStatus} from './billing-rules/apple-subscription-status.ts';
+import {readAppleLoyaltyHistory, type AppleLoyaltySnapshot} from './billing-rules/apple-loyalty.ts';
 
 export const MAIN_APPLE_BUNDLE = 'com.spyclash.ios';
 export const MAIN_APPLE_APP_ID = 6793534085;
@@ -35,26 +36,43 @@ export function appleVerificationConfigured(config:Config) {
     && config.APP_IAP_PRIVATE_KEY_P8 && config.APP_IAP_ROOT_CERTIFICATES_JSON);
 }
 async function appleTools(config:Config,target:Target) {
-  const {AppStoreServerAPIClient,Environment,SignedDataVerifier,VerificationStatus} = await import('npm:@apple/app-store-server-library@3.1.0');
+  const {AppStoreServerAPIClient,Environment,SignedDataVerifier,VerificationStatus,GetTransactionHistoryVersion} = await import('npm:@apple/app-store-server-library@3.1.0');
   const {Buffer} = await import('node:buffer');
   const roots = JSON.parse(config.APP_IAP_ROOT_CERTIFICATES_JSON!);
   if (!Array.isArray(roots) || !roots.length || roots.some(r=>typeof r !== 'string'))
     throw new AppServiceError('apple_roots_unconfigured','Apple verification roots are not configured.',503);
   const environment = target.environment === 'Production' ? Environment.PRODUCTION : Environment.SANDBOX;
+  const client = new AppStoreServerAPIClient(config.APP_IAP_PRIVATE_KEY_P8!,config.APP_IAP_KEY_ID!,config.APP_IAP_ISSUER_ID!,target.bundle,environment);
   return {
     invalidEnvironment:VerificationStatus.INVALID_ENVIRONMENT,
     retryableFailure:VerificationStatus.RETRYABLE_VERIFICATION_FAILURE,
     verifier:new SignedDataVerifier(roots.map(r=>Buffer.from(r,'base64')),true,environment,target.bundle,target.appAppleID),
-    client:new AppStoreServerAPIClient(config.APP_IAP_PRIVATE_KEY_P8!,config.APP_IAP_KEY_ID!,config.APP_IAP_ISSUER_ID!,target.bundle,environment),
+    client,
+    getHistory:(id:string,revision:string|null)=>client.getTransactionHistory(id,revision,{},GetTransactionHistoryVersion.V2),
   };
 }
 async function canonical(transaction:any,target:Target,tools:Awaited<ReturnType<typeof appleTools>>) {
   if (transaction.productId !== WEEKLY_PRODUCT || transaction.bundleId !== target.bundle || transaction.environment !== target.environment)
     throw new AppServiceError('transaction_identity_mismatch','The transaction belongs to a different app or product.',422);
-  return await readCanonicalAppleSubscriptionStatus({transaction,expectedBundleID:target.bundle,expectedProductID:WEEKLY_PRODUCT,
+  const verified = await readCanonicalAppleSubscriptionStatus({transaction,expectedBundleID:target.bundle,expectedProductID:WEEKLY_PRODUCT,
     expectedEnvironment:target.environment,expectedAppAppleID:target.appAppleID || 0,
     getStatuses:id=>tools.client.getAllSubscriptionStatuses(id),
     verifyTransaction:jws=>tools.verifier.verifyAndDecodeTransaction(jws),verifyRenewal:jws=>tools.verifier.verifyAndDecodeRenewalInfo(jws)});
+  let loyalty: AppleLoyaltySnapshot | undefined;
+  let historyTimeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    loyalty = await Promise.race([readAppleLoyaltyHistory({
+      transactionID:verified.transaction.transactionId!,originalTransactionID:verified.transaction.originalTransactionId!,
+      appAccountToken:verified.transaction.appAccountToken,expectedBundleID:target.bundle,expectedProducts:[WEEKLY_PRODUCT],
+      expectedEnvironment:target.environment,expectedAppAppleID:target.appAppleID || 0,
+      getHistory:tools.getHistory,verifyTransaction:jws=>tools.verifier.verifyAndDecodeTransaction(jws),
+    }),new Promise<never>((_,reject)=>{historyTimeout=setTimeout(()=>reject(new Error('Apple Loyalty history timed out.')),8000);})]);
+    if (verified.status === 5) loyalty.transaction_ids = loyalty.transaction_ids.filter(id=>id!==verified.transaction.transactionId);
+  } catch {
+    // Awards are optional evidence: an Apple history outage must never block a
+    // verified purchase/restore or replace a prior complete Loyalty snapshot.
+  } finally { if (historyTimeout !== undefined) clearTimeout(historyTimeout); }
+  return {...verified,loyalty};
 }
 export async function verifyApple(signed:string,config:Config,dependencies?:{tools?:typeof appleTools}) {
   if (!appleVerificationConfigured(config)) throw new AppServiceError('apple_verification_unconfigured','App Store verification is not configured.',503);
