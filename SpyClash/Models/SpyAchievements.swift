@@ -33,23 +33,6 @@ enum SpyAchievementID: String, CaseIterable, Identifiable {
         }
     }
 
-    var symbol: String {
-        switch self {
-        case .firstMission: "antenna.radiowaves.left.and.right"
-        case .fieldAgent: "shield.lefthalf.filled"
-        case .veteran: "star.circle.fill"
-        case .firstVictory: "flag.checkered"
-        case .winningRecord: "trophy.fill"
-        case .ghost: "eye.slash.fill"
-        case .masterOfDisguise: "theatermasks.fill"
-        case .sharpEye: "scope"
-        case .caseClosed: "checkmark.seal.fill"
-        case .doubleAgent: "person.2.fill"
-        }
-    }
-
-    var isRare: Bool { [.veteran, .masterOfDisguise, .caseClosed, .doubleAgent].contains(self) }
-
     func title(_ language: AppLanguage) -> String {
         switch self {
         case .firstMission: text(language, "First mission", "Первый выход", "Primera misión", "Перша місія")

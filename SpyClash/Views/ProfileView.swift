@@ -370,14 +370,15 @@ struct ProfileView: View {
         } else {
             HStack(spacing: 12) {
                 if isAchievementsLoading {
-                    SpySpinner(size: 20, accent: SpyTheme.amber)
+                    SpySpinner(size: 16, accent: SpyTheme.red)
                 } else {
-                    Image(systemName: "seal").foregroundStyle(SpyTheme.amber)
+                    SpyAchievementGlyph(achievement: .firstMission)
+                        .foregroundStyle(SpyTheme.muted).frame(width: 24, height: 24)
                 }
                 Text(isAchievementsLoading
                      ? localized(en: "Loading achievements…", ru: "Загружаем достижения…", es: "Cargando logros…", uk: "Завантажуємо досягнення…")
                      : localized(en: "Achievements could not be loaded", ru: "Не удалось загрузить достижения", es: "No se pudieron cargar los logros", uk: "Не вдалося завантажити досягнення"))
-                    .font(.footnote)
+                    .font(.caption)
                     .foregroundStyle(SpyTheme.bodyText)
                 Spacer(minLength: 0)
                 if !isAchievementsLoading {
@@ -385,12 +386,12 @@ struct ProfileView: View {
                         Image(systemName: "arrow.clockwise")
                             .frame(width: 44, height: 44)
                     }
-                    .foregroundStyle(SpyTheme.amber)
+                    .foregroundStyle(SpyTheme.red)
                     .accessibilityLabel(localized(en: "Retry achievements", ru: "Загрузить достижения повторно", es: "Reintentar logros", uk: "Завантажити досягнення знову"))
                 }
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, minHeight: 80)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, minHeight: 60)
             .background(SpyTheme.card)
             .overlay(CutCornerShape(cut: 10).stroke(SpyTheme.stroke, lineWidth: 1))
         }
