@@ -13,6 +13,26 @@ struct SpyGameIntroParticipant<ID: Hashable>: Identifiable {
     }
 }
 
+/// A single choreography shared by the visual and its two tactile accents.
+/// Every phase comes to rest without a spring overshoot or a clamped velocity.
+enum SpyGameIntroChoreography {
+    static func phase(_ progress: Double, from start: Double, to end: Double) -> Double {
+        let t = min(max((progress - start) / max(end - start, 0.001), 0), 1)
+        return t * t * t * (t * (t * 6 - 15) + 10)
+    }
+
+    static func spread(_ progress: Double, index: Int, count: Int) -> Double {
+        let delay = Double(index) / Double(max(count - 1, 1)) * 0.085
+        return phase(progress, from: 0.16 + delay, to: 0.50 + delay)
+    }
+
+    static func pulse(_ progress: Double) -> Double {
+        let rise = phase(progress, from: 0.60, to: 0.70)
+        let settle = phase(progress, from: 0.70, to: 0.84)
+        return rise * (1 - settle)
+    }
+}
+
 struct SpyGameIntroScene<ParticipantID: Hashable>: View {
     let participants: [SpyGameIntroParticipant<ParticipantID>]
     let spyCount: Int
@@ -22,10 +42,10 @@ struct SpyGameIntroScene<ParticipantID: Hashable>: View {
     let duration: TimeInterval
     let holdsFinalFrame: Bool
     let accessibilityIdentifier: String
-
     let fixedProgress: Double?
 
     @SpyReduceMotion private var reduceMotion
+    @State private var timelineCompleted = false
 
     init(
         participants: [SpyGameIntroParticipant<ParticipantID>],
@@ -50,244 +70,196 @@ struct SpyGameIntroScene<ParticipantID: Hashable>: View {
     }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: pausesTimeline)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: resolvedFixedProgress != nil || timelineCompleted)) { timeline in
             GeometryReader { proxy in
-                introStage(
-                    size: proxy.size,
-                    progress: resolvedProgress(at: timeline.date)
-                )
+                introStage(size: proxy.size, progress: resolvedProgress(at: timeline.date))
             }
         }
         .background(SpyTheme.black)
         .dynamicTypeSize(...DynamicTypeSize.large)
         .ignoresSafeArea()
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(fanEnabled ? "FAN MODE. " + FanModeCopy(language: language).rules : copy.introAccessibility(spyCount: normalizedSpyCount))
+        .accessibilityLabel(
+            fanEnabled
+                ? "FAN MODE. " + FanModeCopy(language: language).rules
+                : copy.introAccessibility(spyCount: spyCount)
+        )
         .accessibilityIdentifier(accessibilityIdentifier)
         .task(id: startedAt) {
             await playIntroHaptics()
         }
+        .task(id: startedAt) {
+            timelineCompleted = false
+            guard resolvedFixedProgress == nil else { return }
+            let remaining = startedAt.addingTimeInterval(normalizedDuration).timeIntervalSinceNow
+            do {
+                if remaining > 0 {
+                    try await Task.sleep(for: .seconds(remaining))
+                }
+                try Task.checkCancellation()
+                timelineCompleted = true
+            } catch {
+                return
+            }
+        }
     }
 
     private func introStage(size: CGSize, progress: Double) -> some View {
-        let deckPoint = CGPoint(x: size.width / 2, y: size.height * 0.65)
-        let warningProgress = reduceMotion ? 1 : SpyExperienceMotion.segment(progress, from: 0.72, to: 0.84)
-        let warningExit = reduceMotion || holdsFinalFrame ? 0 : SpyExperienceMotion.segment(progress, from: 0.90, to: 0.96)
-        let warningOpacity = reduceMotion ? 1 : warningProgress * (1 - warningExit)
-        let dimmedOpacity = reduceMotion ? 0.42 : 1 - warningProgress * 0.88
-        let outro = reduceMotion || holdsFinalFrame ? 0 : SpyExperienceMotion.segment(progress, from: 0.94, to: 1)
-        let deckReveal = SpyExperienceMotion.spring(
-            SpyExperienceMotion.segment(progress, from: 0.16, to: 0.34)
-        )
+        let center = CGPoint(x: size.width / 2, y: size.height * 0.47)
+        let radius = min(size.width * 0.32, size.height * 0.22, 156)
+        let cardWidth = min(size.width * 0.174, 76)
+        let entrance = SpyGameIntroChoreography.phase(progress, from: 0.08, to: 0.22)
+        let mission = SpyGameIntroChoreography.phase(progress, from: 0.54, to: 0.70)
+        let pulse = reduceMotion ? 0 : SpyGameIntroChoreography.pulse(progress)
+        let exit = holdsFinalFrame ? 0 : SpyGameIntroChoreography.phase(progress, from: 0.85, to: 1)
 
         return ZStack {
-            SpyCinematicBackdrop(intensity: CGFloat(0.72 + warningProgress * 0.34))
-                .opacity(dimmedOpacity + warningProgress * 0.28)
+            SpyTheme.black
 
-            VStack(spacing: 7) {
-                SpyWordmark(fontSize: 22)
+            RadialGradient(
+                colors: [SpyTheme.red.opacity(0.11 + pulse * 0.045), .clear],
+                center: .center,
+                startRadius: 6,
+                endRadius: radius * 1.75
+            )
+            .frame(width: radius * 4, height: radius * 4)
+            .position(center)
+            .opacity(entrance)
+            .accessibilityHidden(true)
+
+            VStack(spacing: 10) {
+                SpyWordmark(fontSize: 21)
                 Text(copy.gameStarting)
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .tracking(2.4)
-                    .foregroundStyle(SpyTheme.dim)
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .tracking(2.1)
+                    .foregroundStyle(Color.white.opacity(0.38))
             }
-            .position(x: size.width / 2, y: max(68, size.height * 0.10))
-            .opacity(SpyExperienceMotion.segment(progress, from: 0, to: 0.14))
-            .blur(radius: reduceMotion ? 0 : warningProgress * 5)
-            .offset(y: reduceMotion ? 0 : -warningProgress * 10)
+            .position(x: size.width / 2, y: max(96, size.height * 0.15))
+            .opacity(entrance * (1 - mission * 0.35))
 
-            ForEach(Array(participants.enumerated()), id: \.element.id) { index, participant in
-                let target = participantPosition(index: index, count: participants.count, size: size)
-                let appearance = reduceMotion
-                    ? 1
-                    : SpyExperienceMotion.easeOut(
-                        SpyExperienceMotion.segment(
-                            progress,
-                            from: 0.11 + Double(index) * 0.018,
-                            to: 0.29 + Double(index) * 0.018
-                        )
-                    )
-                let window = dealWindow(index: index, count: participants.count)
-                let rawDeal = reduceMotion
-                    ? 1
-                    : SpyExperienceMotion.segment(progress, from: window.start, to: window.end)
-                let deal = reduceMotion ? 1 : SpyExperienceMotion.spring(rawDeal)
-                let cardPoint = SpyExperienceMotion.arcPoint(
-                    from: deckPoint,
-                    to: CGPoint(x: target.x, y: target.y + 72),
-                    progress: min(max(deal, 0), 1),
-                    lift: 56 + abs(target.x - deckPoint.x) * 0.18
-                )
-                let landingPulse = SpyExperienceMotion.pulse(rawDeal, center: 0.88, width: 0.18)
-
-                SpyGameIntroParticipantIdentity(
-                    name: participant.name,
-                    avatar: participant.avatar,
-                    isReady: rawDeal > 0.82,
-                    illumination: CGFloat(min(max(deal, 0), 1))
-                )
-                .scaleEffect(0.82 + 0.18 * appearance + landingPulse * 0.035)
-                .opacity(appearance * dimmedOpacity)
-                .position(target)
-                .blur(radius: reduceMotion ? 0 : warningProgress * 3)
-
-                CutCornerShape(cut: 10)
-                    .stroke(SpyTheme.red.opacity(0.62), lineWidth: 1)
-                    .frame(width: 66 + landingPulse * 24, height: 66 + landingPulse * 24)
-                    .position(x: target.x, y: target.y + 12)
-                    .opacity(landingPulse * dimmedOpacity)
-                    .accessibilityHidden(true)
-
-                SpyGameIntroRoleCardBack()
-                    .frame(width: min(42, size.width * 0.108))
-                    .rotation3DEffect(
-                        .degrees(reduceMotion ? 0 : (Double(index % 3) - 1) * 12 * (1 - rawDeal)),
-                        axis: (x: 0.22, y: 1, z: 0),
-                        perspective: 0.72
-                    )
-                    .rotationEffect(
-                        .degrees(
-                            reduceMotion
-                                ? 0
-                                : (Double(index % 3) - 1) * 10 * (1 - rawDeal) + sin(rawDeal * .pi) * 7
-                        )
-                    )
-                    .scaleEffect(0.78 + min(max(deal, 0), 1) * 0.22)
-                    .position(cardPoint)
-                    .shadow(color: SpyTheme.red.opacity(0.28 * sin(rawDeal * .pi)), radius: 16)
-                    .opacity((rawDeal > 0 ? 1 : 0) * dimmedOpacity)
-                    .accessibilityHidden(true)
-            }
-
-            SpyGameIntroCardDeck()
-                .position(deckPoint)
-                .scaleEffect(0.72 + 0.28 * deckReveal)
-                .rotation3DEffect(
-                    .degrees(reduceMotion ? 0 : (1 - deckReveal) * 26),
-                    axis: (x: 1, y: 0, z: 0),
-                    perspective: 0.68
-                )
-                .opacity(
-                    deckReveal *
-                        (1 - SpyExperienceMotion.segment(progress, from: 0.68, to: 0.78)) *
-                        dimmedOpacity
-                )
-                .shadow(color: SpyTheme.red.opacity(0.22), radius: 24, y: 14)
-                .accessibilityHidden(true)
+            cardFormation(
+                center: center,
+                radius: radius,
+                cardWidth: cardWidth,
+                progress: progress,
+                entrance: entrance,
+                mission: mission
+            )
 
             Circle()
-                .stroke(
-                    LinearGradient(
-                        colors: [.clear, SpyTheme.red.opacity(0.92), .clear],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1.4
-                )
-                .frame(width: 120, height: 120)
-                .scaleEffect(0.35 + warningProgress * 2.8)
-                .opacity(reduceMotion ? 0 : (1 - warningProgress) * warningProgress * 2.2)
-                .position(x: size.width / 2, y: size.height * 0.49)
+                .stroke(SpyTheme.red.opacity(0.26), lineWidth: 0.75)
+                .frame(width: radius * 1.12, height: radius * 1.12)
+                .scaleEffect(1 + pulse * 0.18)
+                .position(center)
+                .opacity(reduceMotion ? 0 : pulse * 0.72)
                 .accessibilityHidden(true)
 
-            VStack(spacing: 0) {
-                Text(fanEnabled ? "FAN MODE" : copy.spyTeam(spyCount: normalizedSpyCount))
-                    .foregroundStyle(SpyTheme.red)
-                Text(fanEnabled ? FanModeCopy(language: language).text("TRUST NO ONE", "НЕ ВЕРЬ НИКОМУ", "NO CONFÍES EN NADIE", "НЕ ВІР НІКОМУ") : copy.amongYou)
-                    .foregroundStyle(.white)
-            }
-            .font(SpyTheme.brandFont(size: min(48, size.width * 0.125)))
-            .tracking(2.5)
-            .multilineTextAlignment(.center)
-            .shadow(color: SpyTheme.red.opacity(0.28), radius: 30)
-            .scaleEffect(reduceMotion ? 1 : 0.72 + 0.28 * SpyExperienceMotion.spring(warningProgress))
-            .blur(radius: reduceMotion ? 0 : (1 - warningProgress) * 14 + warningExit * 6)
-            .opacity(warningOpacity)
-            .position(x: size.width / 2, y: size.height * 0.49)
+            missionTitle(cardWidth: cardWidth)
+                .scaleEffect(reduceMotion ? 1 : 0.985 + mission * 0.015 + pulse * 0.03)
+                .opacity(mission)
+                .position(center)
 
             Color.black
-                .opacity(outro)
+                .opacity(exit)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
+        .clipped()
     }
 
-    private func dealWindow(index: Int, count: Int) -> (start: Double, end: Double) {
-        let intervals = max(count - 1, 1)
-        let spacing = min(0.058, 0.22 / Double(intervals))
-        let start = 0.29 + Double(index) * spacing
-        return (start, start + 0.24)
-    }
+    private func cardFormation(
+        center: CGPoint,
+        radius: CGFloat,
+        cardWidth: CGFloat,
+        progress: Double,
+        entrance: Double,
+        mission: Double
+    ) -> some View {
+        ZStack {
+            ForEach(0..<visualCardCount, id: \.self) { index in
+                let spread = reduceMotion
+                    ? 1
+                    : SpyGameIntroChoreography.spread(progress, index: index, count: visualCardCount)
+                let fraction = Double(index) / Double(visualCardCount)
+                let targetAngle = fraction * 360 - 90
+                let radialRotation = fraction > 0.5 ? fraction * 360 - 360 : fraction * 360
+                // A restrained shared arc opens the deck, then resolves into a true circle.
+                let travelAngle = (targetAngle - 22 * (1 - spread)) * .pi / 180
+                let stackOffset = (Double(index) - Double(visualCardCount - 1) / 2) * 0.75
+                let x = cos(travelAngle) * radius * spread + stackOffset * (1 - spread)
+                let y = sin(travelAngle) * radius * spread + (28 + stackOffset) * (1 - spread)
+                let rotation = reduceMotion
+                    ? radialRotation
+                    : stackOffset * 0.7 * (1 - spread) + radialRotation * spread
 
-    private func participantPosition(index: Int, count: Int, size: CGSize) -> CGPoint {
-        guard count > 0 else {
-            return CGPoint(x: size.width / 2, y: size.height * 0.26)
+                SpyGameIntroRoleCardBack()
+                    .frame(width: cardWidth, height: cardWidth / 0.70)
+                    .rotationEffect(.degrees(rotation))
+                    .scaleEffect(reduceMotion ? 1 : 0.96 + entrance * 0.04)
+                    .position(x: center.x + x, y: center.y + y)
+                    .opacity(entrance * (1 - mission * 0.70))
+            }
         }
+        .accessibilityHidden(true)
+    }
 
-        let columns = min(count, size.width < 360 ? 3 : 4)
-        let row = index / columns
-        let rows = Int(ceil(Double(count) / Double(columns)))
-        let column = index % columns
-        let rowCount = row == rows - 1 ? count - row * columns : columns
-        let horizontalInset: CGFloat = 50
-        let usableWidth = max(size.width - horizontalInset * 2, 0)
-        let x = rowCount == 1
-            ? size.width / 2
-            : horizontalInset + usableWidth * CGFloat(column) / CGFloat(rowCount - 1)
-        let y = size.height * 0.22 + CGFloat(row) * 104
-        return CGPoint(x: x, y: y)
+    private func missionTitle(cardWidth: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            Text(fanEnabled ? copy.fanLead : copy.missionLead)
+                .font(.system(size: min(cardWidth * 0.25, 18), weight: .semibold, design: .monospaced))
+                .tracking(2.0)
+                .foregroundStyle(.white.opacity(0.9))
+
+            Text(fanEnabled ? copy.fanSubject : copy.missionSubject(spyCount: spyCount))
+                .font(SpyTheme.brandFont(size: min(cardWidth * 0.61, 44)))
+                .tracking(1.5)
+                .foregroundStyle(SpyTheme.red)
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.70)
+        .multilineTextAlignment(.center)
+        .frame(width: cardWidth * 3.4)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var visualCardCount: Int {
+        // The ring is decorative, never a disclosure of roles or exact team composition.
+        min(max(participants.count, 6), 12)
     }
 
     private func resolvedProgress(at date: Date) -> Double {
-        if let fixedProgress = resolvedFixedProgress {
-            return fixedProgress
-        }
-        if reduceMotion {
-            return 0.82
-        }
-
-        return min(max(date.timeIntervalSince(startedAt) / normalizedDuration, 0), 1)
+        resolvedFixedProgress ?? (timelineCompleted ? 1 : min(max(date.timeIntervalSince(startedAt) / normalizedDuration, 0), 1))
     }
 
     @MainActor
     private func playIntroHaptics() async {
         guard !reduceMotion, resolvedFixedProgress == nil else { return }
 
-        let count = max(participants.count, 1)
-        for index in participants.indices {
-            let window = dealWindow(index: index, count: count)
-            let targetDate = startedAt.addingTimeInterval(normalizedDuration * (window.start + 0.18))
-            let delay = targetDate.timeIntervalSinceNow
-            if delay > 0 {
-                try? await Task.sleep(for: .seconds(delay))
+        let cues: [(Double, HapticManager.HapticType)] = [(0.19, .navigation), (0.66, .reveal)]
+        for (progress, feedback) in cues {
+            let date = startedAt.addingTimeInterval(normalizedDuration * progress)
+            let delay = date.timeIntervalSinceNow
+            // A delayed snapshot/resume must not replay every missed haptic at once.
+            guard delay > -0.12 else { continue }
+            do {
+                if delay > 0 {
+                    try await Task.sleep(for: .seconds(delay))
+                }
+                try Task.checkCancellation()
+            } catch {
+                return
             }
-            guard !Task.isCancelled else { return }
-            HapticManager.shared.fire(.navigation)
+            guard !reduceMotion, abs(date.timeIntervalSinceNow) < 0.15 else { continue }
+            HapticManager.shared.fire(feedback)
         }
-
-        let warningDate = startedAt.addingTimeInterval(normalizedDuration * 0.74)
-        let warningDelay = warningDate.timeIntervalSinceNow
-        if warningDelay > 0 {
-            try? await Task.sleep(for: .seconds(warningDelay))
-        }
-        guard !Task.isCancelled else { return }
-        HapticManager.shared.fire(.reveal)
     }
 
     private var normalizedDuration: TimeInterval {
-        max(duration, 0.01)
-    }
-
-    private var normalizedSpyCount: Int {
-        max(spyCount, 1)
-    }
-
-    private var pausesTimeline: Bool {
-        reduceMotion || resolvedFixedProgress != nil
+        duration.isFinite ? max(duration, 0.01) : Base44Client.gameIntroDuration
     }
 
     private var resolvedFixedProgress: Double? {
-        fixedProgress.map { min(max($0, 0), 1) }
+        fixedProgress.flatMap { $0.isFinite ? min(max($0, 0), 1) : nil }
     }
 
     private var copy: SpyGameIntroCopy {
@@ -295,104 +267,43 @@ struct SpyGameIntroScene<ParticipantID: Hashable>: View {
     }
 }
 
-private struct SpyGameIntroParticipantIdentity: View {
-    let name: String
-    let avatar: String
-    let isReady: Bool
-    let illumination: CGFloat
-
-    var body: some View {
-        VStack(spacing: 7) {
-            ZStack(alignment: .bottomTrailing) {
-                CutCornerShape(cut: 9)
-                    .fill(SpyTheme.control)
-                    .frame(width: 52, height: 52)
-                    .overlay {
-                        CutCornerShape(cut: 9)
-                            .stroke(isReady ? SpyTheme.green.opacity(0.74) : SpyTheme.red.opacity(0.46), lineWidth: 1.2)
-                    }
-
-                Text(displayAvatar)
-                    .font(.system(size: 25))
-                    .frame(width: 52, height: 52)
-                    .saturation(0.24 + illumination * 0.76)
-                    .opacity(0.46 + illumination * 0.54)
-
-                if isReady {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 7, weight: .black))
-                        .foregroundStyle(.black)
-                        .frame(width: 15, height: 15)
-                        .background(SpyTheme.green, in: CutCornerShape(cut: 4))
-                        .offset(x: 4, y: 4)
-                }
-            }
-
-            Text(name.uppercased())
-                .font(SpyTheme.brandFont(size: 11))
-                .tracking(0.8)
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.62)
-                .frame(width: 88)
-
-            Capsule()
-                .fill(isReady ? SpyTheme.green.opacity(0.72) : SpyTheme.red.opacity(0.24))
-                .frame(width: isReady ? 24 : 10, height: 1)
-        }
-    }
-
-    private var displayAvatar: String {
-        let normalizedAvatar = avatar.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !normalizedAvatar.isEmpty {
-            return normalizedAvatar
-        }
-
-        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return normalizedName.first.map { String($0).uppercased() } ?? "•"
-    }
-}
-
 private struct SpyGameIntroRoleCardBack: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack {
-                SpyTheme.card
+                CutCornerShape(cut: 7)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(red: 0.14, green: 0.055, blue: 0.06), SpyTheme.card],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
 
-                SpyCardSurfacePattern(theme: .field, accent: SpyTheme.red)
-                    .opacity(0.44)
+                CutCornerShape(cut: 4)
+                    .stroke(SpyTheme.red.opacity(0.17), lineWidth: 0.6)
+                    .padding(5)
 
-                VStack(spacing: 3) {
+                VStack(spacing: 5) {
                     SpyBrandMark()
-                        .frame(width: 27, height: 31)
-                        .scaleEffect(min(proxy.size.width / 82, 0.66))
-                    SpyWordmark(fontSize: 5.5)
+                        .frame(width: proxy.size.width * 0.50, height: proxy.size.height * 0.42)
+                    SpyWordmark(fontSize: proxy.size.width * 0.086)
                 }
+                .padding(.horizontal, 8)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .clipped()
-        }
-        .aspectRatio(0.75, contentMode: .fit)
-        .clipShape(CutCornerShape(cut: 6))
-        .overlay {
-            CutCornerShape(cut: 6)
-                .stroke(SpyTheme.red.opacity(0.62), lineWidth: 0.8)
-        }
-        .accessibilityHidden(true)
-    }
-}
-
-private struct SpyGameIntroCardDeck: View {
-    var body: some View {
-        ZStack {
-            ForEach(0..<4, id: \.self) { index in
-                SpyGameIntroRoleCardBack()
-                    .frame(width: 76)
-                    .offset(x: CGFloat(index) * 2.4 - 4, y: CGFloat(index) * -2.8 + 5)
-                    .rotationEffect(.degrees(Double(index) * 1.55 - 2.3))
+            .overlay {
+                CutCornerShape(cut: 7)
+                    .stroke(
+                        LinearGradient(
+                            colors: [SpyTheme.red.opacity(0.76), SpyTheme.red.opacity(0.24)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.85
+                    )
             }
         }
-        .accessibilityHidden(true)
+        .shadow(color: .black.opacity(0.48), radius: 6, y: 3)
     }
 }
 
@@ -400,37 +311,40 @@ private struct SpyGameIntroCopy {
     let language: AppLanguage
 
     var gameStarting: String {
-        text(
-            "// THE GAME BEGINS",
-            "// EL JUEGO EMPIEZA",
-            "// ИГРА НАЧИНАЕТСЯ",
-            "// ГРА ПОЧИНАЄТЬСЯ"
-        )
+        text("THE GAME BEGINS", "EMPIEZA EL JUEGO", "ИГРА НАЧИНАЕТСЯ", "ГРА ПОЧИНАЄТЬСЯ")
     }
 
-    var amongYou: String {
-        text("AMONG YOU", "ENTRE USTEDES", "СРЕДИ ВАС", "СЕРЕД ВАС")
+    var missionLead: String {
+        text("FIND THE", "ENCUENTRA", "НАЙДИТЕ", "ЗНАЙДІТЬ")
     }
 
-    func spyTeam(spyCount: Int) -> String {
+    func missionSubject(spyCount: Int) -> String {
         spyCount > 1
-            ? text("SPIES", "ESPÍAS", "ШПИОНЫ", "ШПИГУНИ")
-            : text("SPY", "ESPÍA", "ШПИОН", "ШПИГУН")
+            ? text("SPIES", "A LOS ESPÍAS", "ШПИОНОВ", "ШПИГУНІВ")
+            : text("SPY", "AL ESPÍA", "ШПИОНА", "ШПИГУНА")
+    }
+
+    var fanLead: String {
+        text("TRUST", "NO CONFÍES", "НЕ ВЕРЬТЕ", "НЕ ВІРТЕ")
+    }
+
+    var fanSubject: String {
+        text("NO ONE", "EN NADIE", "НИКОМУ", "НІКОМУ")
     }
 
     func introAccessibility(spyCount: Int) -> String {
         spyCount > 1
             ? text(
-                "The game begins. Cards are dealt. The spies are among you.",
-                "El juego comienza. Las cartas están repartidas. Los espías están entre ustedes.",
-                "Игра начинается. Карты розданы. Шпионы среди вас.",
-                "Гра починається. Карти роздано. Шпигуни серед вас."
+                "The game begins. Cards are dealt. Find the spies.",
+                "El juego comienza. Se reparten las cartas. Encuentra a los espías.",
+                "Игра начинается. Карты раздаются. Найдите шпионов.",
+                "Гра починається. Карти роздаються. Знайдіть шпигунів."
             )
             : text(
-                "The game begins. Cards are dealt. The spy is among you.",
-                "El juego comienza. Las cartas están repartidas. El espía está entre ustedes.",
-                "Игра начинается. Карты розданы. Шпион среди вас.",
-                "Гра починається. Карти роздано. Шпигун серед вас."
+                "The game begins. Cards are dealt. Find the spy.",
+                "El juego comienza. Se reparten las cartas. Encuentra al espía.",
+                "Игра начинается. Карты раздаются. Найдите шпиона.",
+                "Гра починається. Карти роздаються. Знайдіть шпигуна."
             )
     }
 

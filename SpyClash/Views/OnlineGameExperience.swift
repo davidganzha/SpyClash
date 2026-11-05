@@ -643,8 +643,7 @@ struct OnlineGameIntroScene: View {
 
     let room: GameRoom
     let language: AppLanguage
-
-    @SpyReduceMotion private var reduceMotion
+    var presentationStartedAt: Date? = nil
 
     var body: some View {
         SpyGameIntroScene(
@@ -654,7 +653,7 @@ struct OnlineGameIntroScene: View {
             spyCount: room.lobbySpyCountValue,
             fanEnabled: room.fanSettings.isEnabled,
             language: language,
-            startedAt: OnlineExperienceClock.date(from: room.introStartedAt) ?? .distantFuture,
+            startedAt: presentationStartedAt ?? OnlineExperienceClock.date(from: room.introStartedAt) ?? .now,
             duration: Self.totalDuration,
             holdsFinalFrame: true,
             fixedProgress: debugFixedProgress,
@@ -662,285 +661,15 @@ struct OnlineGameIntroScene: View {
         )
     }
 
-    private func introStage(size: CGSize, progress: Double) -> some View {
-        let deckPoint = CGPoint(x: size.width / 2, y: size.height * 0.65)
-        let warningProgress = SpyExperienceMotion.segment(progress, from: 0.72, to: 0.84)
-        let warningExit = SpyExperienceMotion.segment(progress, from: 0.90, to: 0.96)
-        let warningOpacity = warningProgress * (1 - warningExit)
-        let dimmedOpacity = 1 - warningProgress * 0.88
-        let outro = SpyExperienceMotion.segment(progress, from: 0.94, to: 1)
-        let deckReveal = SpyExperienceMotion.spring(
-            SpyExperienceMotion.segment(progress, from: 0.16, to: 0.34)
-        )
-
-        return ZStack {
-            SpyCinematicBackdrop(intensity: CGFloat(0.72 + warningProgress * 0.34))
-                .opacity(dimmedOpacity + warningProgress * 0.28)
-
-            VStack(spacing: 7) {
-                SpyWordmark(fontSize: 22)
-                Text(copy.gameStarting)
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .tracking(2.4)
-                    .foregroundStyle(SpyTheme.dim)
-            }
-            .position(x: size.width / 2, y: max(68, size.height * 0.10))
-            .opacity(SpyExperienceMotion.segment(progress, from: 0, to: 0.14))
-            .blur(radius: warningProgress * 5)
-            .offset(y: -warningProgress * 10)
-
-            ForEach(Array(room.playersList.enumerated()), id: \.element.id) { index, player in
-                let target = playerPosition(index: index, count: room.playersList.count, size: size)
-                let appearance = reduceMotion
-                    ? 1
-                    : SpyExperienceMotion.easeOut(
-                        SpyExperienceMotion.segment(
-                            progress,
-                            from: 0.11 + Double(index) * 0.018,
-                            to: 0.29 + Double(index) * 0.018
-                        )
-                    )
-                let window = dealWindow(index: index, count: room.playersList.count)
-                let rawDeal = reduceMotion ? 1 : SpyExperienceMotion.segment(progress, from: window.start, to: window.end)
-                let deal = reduceMotion ? 1 : SpyExperienceMotion.spring(rawDeal)
-                let cardPoint = SpyExperienceMotion.arcPoint(
-                    from: deckPoint,
-                    to: CGPoint(x: target.x, y: target.y + 72),
-                    progress: min(max(deal, 0), 1),
-                    lift: 56 + abs(target.x - deckPoint.x) * 0.18
-                )
-                let landingPulse = SpyExperienceMotion.pulse(rawDeal, center: 0.88, width: 0.18)
-
-                IntroOperativeIdentity(
-                    player: player,
-                    isReady: rawDeal > 0.82,
-                    illumination: CGFloat(min(max(deal, 0), 1))
-                )
-                    .scaleEffect(0.82 + 0.18 * appearance + landingPulse * 0.035)
-                    .opacity(appearance * dimmedOpacity)
-                    .position(target)
-                    .blur(radius: warningProgress * 3)
-
-                CutCornerShape(cut: 10)
-                    .stroke(SpyTheme.red.opacity(0.62), lineWidth: 1)
-                    .frame(width: 66 + landingPulse * 24, height: 66 + landingPulse * 24)
-                    .position(x: target.x, y: target.y + 12)
-                    .opacity(landingPulse * dimmedOpacity)
-                    .accessibilityHidden(true)
-
-                IntroRoleCardBack()
-                    .frame(width: min(42, size.width * 0.108))
-                    .rotation3DEffect(
-                        .degrees((Double(index % 3) - 1) * 12 * (1 - rawDeal)),
-                        axis: (x: 0.22, y: 1, z: 0),
-                        perspective: 0.72
-                    )
-                    .rotationEffect(.degrees((Double(index % 3) - 1) * 10 * (1 - rawDeal) + sin(rawDeal * .pi) * 7))
-                    .scaleEffect(0.78 + min(max(deal, 0), 1) * 0.22)
-                    .position(cardPoint)
-                    .shadow(color: SpyTheme.red.opacity(0.28 * sin(rawDeal * .pi)), radius: 16)
-                    .opacity((rawDeal > 0 ? 1 : 0) * dimmedOpacity)
-                    .accessibilityHidden(true)
-            }
-
-            IntroCardDeck()
-                .position(deckPoint)
-                .scaleEffect(0.72 + 0.28 * deckReveal)
-                .rotation3DEffect(.degrees((1 - deckReveal) * 26), axis: (x: 1, y: 0, z: 0), perspective: 0.68)
-                .opacity(deckReveal * (1 - SpyExperienceMotion.segment(progress, from: 0.68, to: 0.78)) * dimmedOpacity)
-                .shadow(color: SpyTheme.red.opacity(0.22), radius: 24, y: 14)
-
-            Circle()
-                .stroke(
-                    LinearGradient(
-                        colors: [.clear, SpyTheme.red.opacity(0.92), .clear],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1.4
-                )
-                .frame(width: 120, height: 120)
-                .scaleEffect(0.35 + warningProgress * 2.8)
-                .opacity((1 - warningProgress) * warningProgress * 2.2)
-                .position(x: size.width / 2, y: size.height * 0.49)
-                .accessibilityHidden(true)
-
-            VStack(spacing: 0) {
-                Text(copy.spyTeam(spyCount: room.lobbySpyCountValue))
-                    .foregroundStyle(SpyTheme.red)
-                Text(copy.amongYou)
-                    .foregroundStyle(.white)
-            }
-            .font(SpyTheme.brandFont(size: min(48, size.width * 0.125)))
-            .tracking(2.5)
-            .multilineTextAlignment(.center)
-            .shadow(color: SpyTheme.red.opacity(0.28), radius: 30)
-            .scaleEffect(0.72 + 0.28 * SpyExperienceMotion.spring(warningProgress))
-            .blur(radius: (1 - warningProgress) * 14 + warningExit * 6)
-            .opacity(warningOpacity)
-            .position(x: size.width / 2, y: size.height * 0.49)
-
-            Color.black
-                .opacity(outro)
-                .allowsHitTesting(false)
-        }
-    }
-
-    private func dealWindow(index: Int, count: Int) -> (start: Double, end: Double) {
-        let intervals = max(count - 1, 1)
-        let spacing = min(0.058, 0.22 / Double(intervals))
-        let start = 0.29 + Double(index) * spacing
-        return (start, start + 0.24)
-    }
-
-    private func playerPosition(index: Int, count: Int, size: CGSize) -> CGPoint {
-        guard count > 0 else { return CGPoint(x: size.width / 2, y: size.height * 0.26) }
-        let columns = min(count, size.width < 360 ? 3 : 4)
-        let row = index / columns
-        let rows = Int(ceil(Double(count) / Double(columns)))
-        let column = index % columns
-        let rowCount = row == rows - 1 ? count - row * columns : columns
-        let horizontalInset: CGFloat = 50
-        let usableWidth = max(size.width - horizontalInset * 2, 0)
-        let x = rowCount == 1
-            ? size.width / 2
-            : horizontalInset + usableWidth * CGFloat(column) / CGFloat(rowCount - 1)
-        let y = size.height * 0.22 + CGFloat(row) * 104
-        return CGPoint(x: x, y: y)
-    }
-
-    private func resolvedProgress(at date: Date) -> Double {
-        if let debugFixedProgress { return debugFixedProgress }
-        if reduceMotion { return 0.82 }
-        guard let startedAt = OnlineExperienceClock.date(from: room.introStartedAt) else { return 0 }
-        return min(max(date.timeIntervalSince(startedAt) / Self.totalDuration, 0), 1)
-    }
-
-    @MainActor
-    private func playIntroHaptics() async {
-        guard !reduceMotion,
-              debugFixedProgress == nil,
-              let startedAt = OnlineExperienceClock.date(from: room.introStartedAt) else { return }
-
-        let count = max(room.playersList.count, 1)
-        for index in room.playersList.indices {
-            let window = dealWindow(index: index, count: count)
-            let targetDate = startedAt.addingTimeInterval(Self.totalDuration * (window.start + 0.18))
-            let delay = targetDate.timeIntervalSinceNow
-            if delay > 0 {
-                try? await Task.sleep(for: .seconds(delay))
-            }
-            guard !Task.isCancelled else { return }
-            HapticManager.shared.fire(.navigation)
-        }
-
-        let warningDate = startedAt.addingTimeInterval(Self.totalDuration * 0.74)
-        let warningDelay = warningDate.timeIntervalSinceNow
-        if warningDelay > 0 {
-            try? await Task.sleep(for: .seconds(warningDelay))
-        }
-        guard !Task.isCancelled else { return }
-        HapticManager.shared.fire(.reveal)
-    }
-
     private var debugFixedProgress: Double? {
 #if DEBUG
         let prefix = "--spyclash-online-intro-progress="
         guard let argument = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix(prefix) }),
-              let value = Double(argument.dropFirst(prefix.count)) else { return nil }
+              let value = Double(argument.dropFirst(prefix.count)), value.isFinite else { return nil }
         return min(max(value, 0), 1)
 #else
         return nil
 #endif
-    }
-
-    private var copy: SpyGameExperienceCopy { SpyGameExperienceCopy(language: language) }
-}
-
-private struct IntroOperativeIdentity: View {
-    let player: Player
-    let isReady: Bool
-    let illumination: CGFloat
-
-    var body: some View {
-        VStack(spacing: 7) {
-            ZStack(alignment: .bottomTrailing) {
-                CutCornerShape(cut: 9)
-                    .fill(SpyTheme.control)
-                    .frame(width: 52, height: 52)
-                    .overlay {
-                        CutCornerShape(cut: 9)
-                            .stroke(isReady ? SpyTheme.green.opacity(0.74) : SpyTheme.red.opacity(0.46), lineWidth: 1.2)
-                    }
-
-                Text(player.avatar.isEmpty ? String(player.name.prefix(1)).uppercased() : player.avatar)
-                    .font(.system(size: 25))
-                    .frame(width: 52, height: 52)
-                    .saturation(0.24 + illumination * 0.76)
-                    .opacity(0.46 + illumination * 0.54)
-
-                if isReady {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 7, weight: .black))
-                        .foregroundStyle(.black)
-                        .frame(width: 15, height: 15)
-                        .background(SpyTheme.green, in: CutCornerShape(cut: 4))
-                        .offset(x: 4, y: 4)
-                }
-            }
-
-            Text(player.name.uppercased())
-                .font(SpyTheme.brandFont(size: 11))
-                .tracking(0.8)
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.62)
-                .frame(width: 88)
-
-            Capsule()
-                .fill(isReady ? SpyTheme.green.opacity(0.72) : SpyTheme.red.opacity(0.24))
-                .frame(width: isReady ? 24 : 10, height: 1)
-        }
-    }
-}
-
-private struct IntroRoleCardBack: View {
-    var body: some View {
-        GeometryReader { proxy in
-            ZStack {
-                SpyTheme.card
-
-                SpyCardSurfacePattern(theme: .field, accent: SpyTheme.red)
-                    .opacity(0.44)
-
-                VStack(spacing: 3) {
-                    MissionCardBrandMark(compact: true)
-                        .scaleEffect(min(proxy.size.width / 82, 0.66))
-                    SpyWordmark(fontSize: 5.5)
-                }
-            }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .clipped()
-        }
-        .aspectRatio(0.75, contentMode: .fit)
-        .clipShape(CutCornerShape(cut: 6))
-        .overlay {
-            CutCornerShape(cut: 6)
-                .stroke(SpyTheme.red.opacity(0.62), lineWidth: 0.8)
-        }
-    }
-}
-
-private struct IntroCardDeck: View {
-    var body: some View {
-        ZStack {
-            ForEach(0..<4, id: \.self) { index in
-                IntroRoleCardBack()
-                    .frame(width: 76)
-                    .offset(x: CGFloat(index) * 2.4 - 4, y: CGFloat(index) * -2.8 + 5)
-                    .rotationEffect(.degrees(Double(index) * 1.55 - 2.3))
-            }
-        }
     }
 }
 
@@ -977,6 +706,7 @@ struct OnlineRoleRevealScene: View {
         currentUserEmail: String?,
         isRevealed: Bool,
         isConfirming: Bool = false,
+        isPrepared: Bool = false,
         onReveal: @escaping () -> Void,
         onConfirm: @escaping () -> Void,
         onLeave: @escaping () -> Void
@@ -989,6 +719,7 @@ struct OnlineRoleRevealScene: View {
         self.currentUserEmail = currentUserEmail
         self.isRevealed = isRevealed
         self.isConfirming = isConfirming
+        _hasEntered = State(initialValue: isPrepared)
         self.onReveal = onReveal
         self.onConfirm = onConfirm
         self.onLeave = onLeave
@@ -1120,6 +851,7 @@ struct OnlineRoleRevealScene: View {
             }
         }
         .task {
+            guard !hasEntered else { return }
             if reduceMotion {
                 hasEntered = true
                 return

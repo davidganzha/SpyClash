@@ -2499,42 +2499,72 @@ struct GameView: View {
 
     private var typeErasedRootSurface: AnyView {
         AnyView(
-            Group {
-                if let room = appState.activeRoom, showsImmersiveGameExperience(for: room) {
-                    immersiveGameExperience(room)
-                } else {
-                    standardGameSurface
+            OnlineGameStartTransition(
+                room: appState.activeRoom,
+                accountID: appState.user?.id,
+                language: appState.language
+            ) { displayedRoom, preparesRoleReveal in
+                Group {
+                    if let room = displayedRoom, showsImmersiveGameExperience(for: room) {
+                        immersiveGameExperience(room, preparesRoleReveal: preparesRoleReveal)
+                    } else {
+                        standardGameSurface(displayedRoom)
+                    }
                 }
-            }
-            .animation(reduceMotion ? nil : SpyMotion.page, value: roomSceneKey)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if let room = appState.activeRoom,
-                   showsWaitingFooter(for: room),
-                   onlineInputPresentation.allowsWaitingFooter {
-                    waitingActionBar(room)
-                        .transition(
-                            .asymmetric(
-                                insertion: .move(edge: .bottom).combined(with: .opacity),
-                                removal: .move(edge: .bottom).combined(with: .opacity)
-                            )
-                        )
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if let room = displayedRoom,
+                       showsWaitingFooter(for: room),
+                       onlineInputPresentation.allowsWaitingFooter {
+                        waitingActionBar(room)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
                 }
+                .animation(reduceMotion ? nil : SpyMotion.page, value: waitingFooterSceneKey)
             }
-            .animation(reduceMotion ? nil : SpyMotion.page, value: waitingFooterSceneKey)
+            // The server gate follows authoritative time; presentation has its own
+            // clock so a late snapshot never fast-forwards the choreography.
+            .task(id: onlineIntroCompletionTaskKey) {
+                guard let room = appState.activeRoom,
+                      room.normalizedStatus == "roulette" else { return }
+                await completeRouletteIfNeeded(room)
+            }
+#if DEBUG
+            .task { await runIntroTransitionPreviewIfRequested() }
+#endif
         )
     }
 
-    private var standardGameSurface: some View {
+#if DEBUG
+    private func runIntroTransitionPreviewIfRequested() async {
+        guard appState.shouldUsePreviewData,
+              ProcessInfo.processInfo.arguments.contains("--spyclash-preview-intro-transition") else { return }
+        do { try await Task.sleep(for: .seconds(1.4)) } catch { return }
+        guard !Task.isCancelled, var room = appState.activeRoom,
+              room.normalizedStatus == "waiting" else { return }
+        room.status = "roulette"
+        room.introStartedAt = ISO8601DateFormatter().string(from: Date())
+        room.cardsRead = []
+        room.gameStartedAt = nil
+        appState.activeRoom = room
+    }
+#endif
+
+    private var onlineIntroCompletionTaskKey: String {
+        guard let room = appState.activeRoom, room.normalizedStatus == "roulette" else { return "inactive" }
+        return "\(appState.user?.id ?? "")|\(room.id)|\(room.introStartedAt ?? "pending")"
+    }
+
+    private func standardGameSurface(_ displayedRoom: GameRoom?) -> some View {
         PageChrome(
             eyebrow: copy.eyebrow,
-            status: appState.activeRoom.map(roomStateLabel) ?? copy.standby,
+            status: displayedRoom.map(roomStateLabel) ?? copy.standby,
             scrollTarget: onlineInputPresentation.revealsTheme
                 ? onlineThemeScrollTarget
                 : nil
         ) {
             VStack(alignment: .leading, spacing: 18) {
                 Group {
-                    if let room = appState.activeRoom {
+                    if let room = displayedRoom {
                         switch room.normalizedStatus {
                         case "ready_voting":
                             readyVotingRoom(room)
@@ -2551,7 +2581,7 @@ struct GameView: View {
                         emptyRoom
                     }
                 }
-                .id(roomSceneKey)
+                .id(displayedRoom.map { "\($0.id)-\($0.normalizedStatus)" } ?? "empty")
                 .transition(.opacity)
             }
             .padding(.horizontal, 18)
@@ -2732,15 +2762,11 @@ struct GameView: View {
     }
 
     @ViewBuilder
-    private func immersiveGameExperience(_ room: GameRoom) -> some View {
+    private func immersiveGameExperience(_ room: GameRoom, preparesRoleReveal: Bool = false) -> some View {
         switch room.normalizedStatus {
         case "roulette":
-            OnlineGameIntroScene(room: room, language: appState.language)
-                .transition(.opacity)
-                .ignoresSafeArea(.keyboard, edges: .bottom)
-                .task(id: "intro-\(room.id)-\(room.introStartedAt ?? "pending")") {
-                    await completeRouletteIfNeeded(room)
-                }
+            // The persistent transition layer owns the intro above this surface.
+            SpyTheme.black.ignoresSafeArea()
 
         case "playing" where !room.allRoleCardsRead || room.gameStartedAt == nil:
             OnlineRoleRevealScene(
@@ -2752,6 +2778,7 @@ struct GameView: View {
                 currentUserEmail: appState.user?.email,
                 isRevealed: revealRole,
                 isConfirming: isMarkingCardRead,
+                isPrepared: preparesRoleReveal,
                 onReveal: revealOnlineRole,
                 onConfirm: {
                     Task { await markCardRead(room) }
@@ -2825,7 +2852,7 @@ struct GameView: View {
             .ignoresSafeArea(.keyboard, edges: .bottom)
 
         default:
-            standardGameSurface
+            standardGameSurface(room)
         }
     }
 
@@ -8316,7 +8343,11 @@ struct GameView: View {
                 return
             }
 #endif
-            appState.showToast(message, kind: toastKind(for: rawStatus))
+            // The cinematic and ready card already communicate these states.
+            // A success badge would interrupt their full-screen dissolve.
+            if rawStatus != copy.rouletteArmed && rawStatus != copy.gameReady {
+                appState.showToast(message, kind: toastKind(for: rawStatus))
+            }
             status = ""
         }
     }
@@ -10940,7 +10971,12 @@ struct GameView: View {
             return
         }
         if appState.shouldUsePreviewData {
-            appState.activeRoom = GameRoom.previewRoom(status: "roulette")
+            var introRoom = room
+            introRoom.status = "roulette"
+            introRoom.introStartedAt = ISO8601DateFormatter().string(from: Date())
+            introRoom.cardsRead = []
+            introRoom.gameStartedAt = nil
+            appState.activeRoom = introRoom
             status = copy.rouletteArmed
             revealRole = false
             HapticManager.shared.fire(.notification(.success))
@@ -11003,14 +11039,32 @@ struct GameView: View {
         }
 
         if appState.shouldUsePreviewData {
+#if DEBUG
+            // Deterministic visual inspection never advances into a live room.
+            if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--spyclash-online-intro-progress=") }) { return }
+#endif
+            var previewDuration = Base44Client.gameIntroDuration
+#if DEBUG
+            let delayPrefix = "--spyclash-preview-intro-delay="
+            if let argument = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix(delayPrefix) }),
+               let delay = Double(argument.dropFirst(delayPrefix.count)), delay.isFinite {
+                previewDuration += min(max(delay, 0), 15)
+            }
+#endif
             do {
-                try await Task.sleep(for: .seconds(Base44Client.gameIntroDuration))
+                try await Task.sleep(for: .seconds(previewDuration))
                 try Task.checkCancellation()
             } catch {
                 return
             }
             guard isCurrentIntro() else { return }
-            appState.activeRoom = GameRoom.previewRoom(status: "cards-last")
+            var readyRoom = room
+            readyRoom.status = "playing"
+            readyRoom.matchID = "preview-match-\(room.id)"
+            readyRoom.cardsRead = room.playersList.dropFirst().map(\.email)
+            readyRoom.questionPhase = "asking"
+            readyRoom.gameStartedAt = nil
+            appState.activeRoom = readyRoom
             status = copy.gameReady
             return
         }
