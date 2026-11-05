@@ -1,0 +1,93 @@
+{
+  "build": 214,
+  "runtime": "iOS 26.5",
+  "tests_passed": 10,
+  "tests_failed": 0,
+  "fan_rosters_per_device": [
+    3,
+    4,
+    8,
+    12
+  ],
+  "runs": [
+    {
+      "device": "iPhone 17",
+      "points": [
+        402,
+        874
+      ],
+      "passed": 5,
+      "failed": 0,
+      "xcresult": "test_sim_2026-11-05T22-47-23-635Z_pid58230_2d924c97.xcresult"
+    },
+    {
+      "device": "iPhone SE 3rd generation",
+      "points": [
+        375,
+        667
+      ],
+      "passed": 5,
+      "failed": 0,
+      "xcresult": "test_sim_2026-11-05T22-49-16-444Z_pid58230_f1c17b41.xcresult"
+    }
+  ],
+  "screenshots": [
+    {
+      "file": "iphone-se-game-header-confirmed-return-to-lobby.png",
+      "sha256": "19e239dc855060d179b5fe9399f5f3499de9bd7904e8b29067e1f7986b63dfa7"
+    },
+    {
+      "file": "iphone-se-game-header-guest-personal-exit-confirmation.png",
+      "sha256": "a2829902a0973982deb069f177ca4ec94b6cfd382af182c0d9e0aa673980e67a"
+    },
+    {
+      "file": "iphone-se-game-header-guest-personal-exit-only.png",
+      "sha256": "e21c9bb7bc95070fd4b92d17d775d091fc3b8ffdefc1bc7b386e56b40d63c422"
+    },
+    {
+      "file": "iphone-se-game-header-host-exit-confirmation.png",
+      "sha256": "5e0c05603fb04a9bb682d1a6a2230dbf9ac1e594bae7ba8a13aa62b9916f982f"
+    },
+    {
+      "file": "iphone-se-game-header-host-lobby-confirmation.png",
+      "sha256": "a7acc42ac5d784552b7770f2ad91e61d0bdd6c756d429a2fd962eea2fbb1fead"
+    },
+    {
+      "file": "iphone-se-game-header-host-paused-three-controls.png",
+      "sha256": "4ed82ffabdbcc3809752759787e692504a92c4a1f34055e9aefe434c2a5e0bff"
+    },
+    {
+      "file": "iphone-se-game-header-host-three-controls.png",
+      "sha256": "4bdba2e67ca615d68e63eb9467f686281e918640626c1982d24bc2485318cfb0"
+    },
+    {
+      "file": "iphone17-game-header-confirmed-return-to-lobby.png",
+      "sha256": "9abaa550b8e6f8f6926f3962238b140262382c8535d489eececd8f1631243187"
+    },
+    {
+      "file": "iphone17-game-header-guest-personal-exit-confirmation.png",
+      "sha256": "7ad7fdec0c78a787d101b08fd5e6b360a3768158915c97572448419e831319d4"
+    },
+    {
+      "file": "iphone17-game-header-guest-personal-exit-only.png",
+      "sha256": "e89783ebab2e59ab42a8e4031a3db786127d02e581e74766c83fceafeedb66f1"
+    },
+    {
+      "file": "iphone17-game-header-host-exit-confirmation.png",
+      "sha256": "3e661c8d6e7127ec1c129cb964ea653d2508040dda7a1c5df0fd82603ad1c8fc"
+    },
+    {
+      "file": "iphone17-game-header-host-lobby-confirmation.png",
+      "sha256": "53c82b250de92606875b0b711bbba91808ac222db76499e7ddf49c5377f85e13"
+    },
+    {
+      "file": "iphone17-game-header-host-paused-three-controls.png",
+      "sha256": "18ea512972ed3c6e696721f56fb9346bd11bb6533389bb74e0289fcb1ac7d2c2"
+    },
+    {
+      "file": "iphone17-game-header-host-three-controls.png",
+      "sha256": "49ee7d3a7489f45836cc6e589c30de3d27b73a50bc492f302b5d4b72b0361e2e"
+    }
+  ],
+  "scope": "Native Simulator previews; no production requests from these tests."
+}

@@ -1293,6 +1293,12 @@ struct OnlineActiveGameScene: View {
     private struct PlayerBallot: Identifiable {
         let id: String
     }
+    private struct HeaderConfirmation: Identifiable {
+        enum Action { case leave, lobby }
+        let action: Action
+        let scope: String
+        var id: String { "\(scope)|\(action)" }
+    }
     let room: GameRoom
     let language: AppLanguage
     let role: MissionRoleCardContent
@@ -1322,7 +1328,7 @@ struct OnlineActiveGameScene: View {
     let onToggleLobbyReturn: () -> Void
     let onLeave: () -> Void
 
-    @State private var isConfirmingLeave = false
+    @State private var headerConfirmation: HeaderConfirmation?
     @State private var playerBallot: PlayerBallot?
     @State private var handledCountdownEventID: String?
     @State private var handledAssociationSpinEventID: String?
@@ -1397,12 +1403,6 @@ struct OnlineActiveGameScene: View {
                     VStack(spacing: 0) {
                         gameBrandHeader
 
-                        if lobbyReturn.isAvailable {
-                            lobbyReturnControl(
-                                accessibilityID: "onlineExperience.returnToLobbyVote"
-                            )
-                        }
-
                         ZStack(alignment: .top) {
                             VStack(spacing: 0) {
                                 timerHeader(at: timeline.date, compact: compactFanVote)
@@ -1430,14 +1430,15 @@ struct OnlineActiveGameScene: View {
                                     .layoutPriority(3)
                                     .zIndex(10)
                             }
+                            .accessibilityHidden(room.isGamePaused)
+                            .allowsHitTesting(!room.isGamePaused)
 
+                            if room.isGamePaused {
+                                pausedOverlay
+                                    .transition(.opacity)
+                                    .zIndex(20)
+                            }
                         }
-                    }
-
-                    if room.isGamePaused {
-                        pausedOverlay
-                            .transition(.opacity)
-                            .zIndex(20)
                     }
                 }
             }
@@ -1461,13 +1462,27 @@ struct OnlineActiveGameScene: View {
         .onChange(of: canSubmitBallot) { _, canSubmit in
             if !canSubmit { playerBallot = nil }
         }
-        .confirmationDialog(
-            isHost ? copy.closeGame : copy.leaveGame,
-            isPresented: $isConfirmingLeave,
-            titleVisibility: .visible
-        ) {
-            Button(isHost ? copy.closeGame : copy.leaveGame, role: .destructive, action: leave)
-            Button(copy.cancel, role: .cancel) {}
+        .sheet(item: $headerConfirmation) { confirmation in
+            GameHeaderConfirmationSheet(
+                title: confirmation.action == .lobby ? copy.confirmLobbyTitle : copy.confirmLeaveTitle(isHost: isHost),
+                message: confirmation.action == .lobby ? copy.confirmLobbyMessage : copy.confirmLeaveMessage(isHost: isHost),
+                confirmTitle: confirmation.action == .lobby ? copy.returnToLobby : (isHost ? copy.closeGame : copy.leaveGame),
+                cancelTitle: copy.cancel,
+                symbol: confirmation.action == .lobby ? .lobby : .exit,
+                accent: confirmation.action == .lobby ? SpyTheme.amber : SpyTheme.red,
+                onConfirm: { confirmHeaderAction(confirmation) },
+                onCancel: { headerConfirmation = nil }
+            )
+            .presentationDetents([.height(360), .large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(Color.black)
+        }
+        .onChange(of: headerActionScope) { _, _ in headerConfirmation = nil }
+        .onChange(of: lobbyReturn) { _, presentation in
+            if headerConfirmation?.action == .lobby,
+               !presentation.isAvailable || presentation.isPending {
+                headerConfirmation = nil
+            }
         }
         .task(id: countdownTaskID) {
             await advanceCountdownIfNeeded()
@@ -1515,13 +1530,26 @@ struct OnlineActiveGameScene: View {
     }
 
     private var gameBrandHeader: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             SpyWordmark(fontSize: 24)
+            Spacer(minLength: 8)
 
-            Spacer(minLength: 10)
+            if isHost, lobbyReturn.isAvailable {
+                headerControl(
+                    symbol: .lobby,
+                    accessibilityLabel: lobbyReturn.hasFailed ? copy.retryReturnToLobby : copy.returnToLobby,
+                    accessibilityID: "onlineExperience.returnToLobbyVote",
+                    isPending: lobbyReturn.isPending,
+                    accent: lobbyReturn.hasFailed ? SpyTheme.amber : Color.white.opacity(0.88),
+                    action: requestLobbyReturn
+                )
+                .accessibilityValue(copy.returnToLobbyAccessibilityValue(
+                    pending: lobbyReturn.isPending, failed: lobbyReturn.hasFailed
+                ))
+            }
 
             headerControl(
-                systemImage: "rectangle.portrait.and.arrow.right",
+                symbol: .exit,
                 accessibilityLabel: isHost ? copy.closeGame : copy.leaveGame,
                 accessibilityID: "onlineExperience.leave",
                 action: requestLeave
@@ -1529,111 +1557,49 @@ struct OnlineActiveGameScene: View {
 
             if isHost {
                 headerControl(
-                    systemImage: room.isGamePaused ? "play.fill" : "pause.fill",
+                    symbol: room.isGamePaused ? .resume : .pause,
                     accessibilityLabel: room.isGamePaused ? copy.resume : copy.pause,
                     accessibilityID: "onlineExperience.pauseResume",
                     action: togglePause
                 )
             }
         }
-        .padding(.horizontal, 22)
+        .padding(.horizontal, 16)
         .frame(height: 64)
         .background(Color.black.opacity(0.82))
         .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(SpyTheme.stroke)
-                .frame(height: 1)
+            Rectangle().fill(SpyTheme.stroke).frame(height: 1)
         }
-    }
-
-    private func lobbyReturnControl(accessibilityID: String) -> some View {
-        let accent = lobbyReturn.hasFailed
-            ? SpyTheme.amber
-            : Color.white.opacity(0.72)
-
-        return HStack(spacing: 10) {
-            Button(action: toggleLobbyReturn) {
-                HStack(spacing: 8) {
-                    ZStack {
-                        if lobbyReturn.isPending {
-                            ProgressView()
-                                .controlSize(.mini)
-                                .tint(accent)
-                        } else {
-                            Image(
-                                systemName: lobbyReturn.hasFailed
-                                    ? "arrow.clockwise"
-                                    : "arrow.uturn.backward.circle"
-                            )
-                            .font(.system(size: 13, weight: .black))
-                        }
-                    }
-                    .frame(width: 16, height: 16)
-
-                    Text(copy.returnToLobby)
-                        .font(.system(size: 9, weight: .black, design: .monospaced))
-                        .tracking(0.75)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.62)
-                }
-                .foregroundStyle(accent)
-                .padding(.horizontal, 11)
-                .frame(minHeight: OnlineInteractionHitTargetPolicy.minimumSize)
-                .background(accent.opacity(0.055), in: CutCornerShape(cut: 6))
-                .overlay {
-                    CutCornerShape(cut: 6)
-                        .stroke(accent.opacity(0.32), lineWidth: 1)
-                }
-                .contentShape(CutCornerShape(cut: 6))
-            }
-            .buttonStyle(SpyWebPressStyle(pressedScale: 0.96))
-            .disabled(lobbyReturn.isPending)
-            .accessibilityIdentifier(accessibilityID)
-            .accessibilityLabel(
-                lobbyReturn.hasFailed
-                    ? copy.retryReturnToLobby
-                    : copy.returnToLobby
-            )
-            .accessibilityValue(
-                copy.returnToLobbyAccessibilityValue(
-                    pending: lobbyReturn.isPending,
-                    failed: lobbyReturn.hasFailed
-                )
-            )
-
-            Spacer(minLength: 8)
-
-
-        }
-        .padding(.horizontal, 16)
-        .frame(height: 46)
-        .background(Color.black.opacity(0.88))
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(SpyTheme.stroke)
-                .frame(height: 1)
-        }
-        .animation(.easeOut(duration: 0.16), value: lobbyReturn)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("onlineExperience.header")
     }
 
     private func headerControl(
-        systemImage: String,
+        symbol: GameHeaderGlyph.Symbol,
         accessibilityLabel: String,
         accessibilityID: String,
+        isPending: Bool = false,
+        accent: Color = Color.white.opacity(0.88),
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 14, weight: .black))
-                .foregroundStyle(Color.white.opacity(0.88))
-                .frame(width: 38, height: 38)
-                .background(SpyTheme.control, in: CutCornerShape(cut: 6))
-                .overlay {
-                    CutCornerShape(cut: 6)
-                        .stroke(SpyTheme.strokeStrong, lineWidth: 1)
+            ZStack {
+                if isPending {
+                    ProgressView().tint(accent)
+                } else {
+                    GameHeaderGlyph(symbol: symbol)
+                        .stroke(style: StrokeStyle(lineWidth: 1.8, lineCap: .square, lineJoin: .miter))
+                        .frame(width: 26, height: 26)
                 }
+            }
+            .foregroundStyle(accent)
+            .frame(width: 44, height: 44)
+            .background(SpyTheme.control, in: CutCornerShape(cut: 7))
+            .overlay(CutCornerShape(cut: 7).stroke(SpyTheme.strokeStrong, lineWidth: 1))
+            .contentShape(CutCornerShape(cut: 7))
         }
         .buttonStyle(SpyWebPressStyle(pressedScale: 0.94))
+        .disabled(isPending)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityIdentifier(accessibilityID)
     }
@@ -2225,57 +2191,21 @@ struct OnlineActiveGameScene: View {
 
     private var pausedOverlay: some View {
         ZStack {
-            SpyCinematicBackdrop(intensity: 1.12)
-
-            Color.black.opacity(0.72)
-                .ignoresSafeArea()
-
+            Color.black.opacity(0.94)
             VStack(spacing: 14) {
-                AnimatedTitle(
-                    text: copy.paused,
-                    redPrefixCount: copy.paused.count,
-                    fontSize: 44,
-                    letterSpacing: 3
-                )
-
+                Text(copy.paused)
+                    .font(.system(size: 32, weight: .bold, design: .monospaced))
+                    .foregroundStyle(SpyTheme.red)
                 Text(copy.timerStopped)
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .tracking(1.8)
-                    .foregroundStyle(Color.white.opacity(0.58))
-
-                if isHost {
-                    Button(action: togglePause) {
-                        HStack(spacing: 9) {
-                            Image(systemName: "play.fill")
-                            Text(copy.resumeGame)
-                        }
-                    }
-                    .buttonStyle(SpyCinematicButtonStyle(variant: .primary))
-                    .frame(width: 250)
-                    .padding(.top, 12)
-                    .accessibilityIdentifier("onlineExperience.pauseResume")
-                }
-
-                Button(action: requestLeave) {
-                    HStack(spacing: 9) {
-                        Image(systemName: "rectangle.portrait.and.arrow.right")
-                        Text(isHost ? copy.closeGame : copy.leaveGame)
-                    }
-                }
-                .buttonStyle(SpyCinematicButtonStyle(variant: .secondary))
-                .frame(width: 250)
-                .accessibilityIdentifier("onlineExperience.leave")
-
-                if lobbyReturn.isAvailable {
-                    lobbyReturnControl(
-                        accessibilityID: "onlineExperience.returnToLobbyVote.paused"
-                    )
-                    .frame(width: 250)
-                    .clipShape(CutCornerShape(cut: 7))
-                }
+                    .foregroundStyle(Color.white.opacity(0.64))
             }
+            .padding(20)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("onlineExperience.paused")
     }
 
     private func toggleRole() {
@@ -2311,20 +2241,36 @@ struct OnlineActiveGameScene: View {
         onSpyGuess()
     }
 
-    private func toggleLobbyReturn() {
-        guard lobbyReturn.isAvailable, !lobbyReturn.isPending else { return }
+    private var headerActionScope: String {
+        [room.id, room.matchID ?? "", room.viewerMembershipID ?? "",
+         currentUserEmail ?? "", room.hostEmail ?? "", isHost ? "host" : "guest",
+         room.normalizedStatus].joined(separator: "|")
+    }
+
+    private func requestLobbyReturn() {
+        guard isHost, lobbyReturn.isAvailable, !lobbyReturn.isPending else { return }
         HapticManager.shared.fire(.buttonPress)
-        onToggleLobbyReturn()
+        headerConfirmation = HeaderConfirmation(action: .lobby, scope: headerActionScope)
     }
 
     private func requestLeave() {
         HapticManager.shared.fire(.buttonPress)
-        isConfirmingLeave = true
+        headerConfirmation = HeaderConfirmation(action: .leave, scope: headerActionScope)
     }
 
-    private func leave() {
-        HapticManager.shared.fire(.notification(.warning))
-        onLeave()
+    private func confirmHeaderAction(_ confirmation: HeaderConfirmation) {
+        guard headerConfirmation?.id == confirmation.id,
+              confirmation.scope == headerActionScope else { return }
+        headerConfirmation = nil
+        switch confirmation.action {
+        case .lobby:
+            guard isHost, lobbyReturn.isAvailable, !lobbyReturn.isPending else { return }
+            HapticManager.shared.fire(.notification(.warning))
+            onToggleLobbyReturn()
+        case .leave:
+            HapticManager.shared.fire(.notification(.warning))
+            onLeave()
+        }
     }
 
     private func player(email: String?) -> Player? {
@@ -2660,6 +2606,107 @@ private extension MissionRoleCardContent {
     }
 }
 
+/// Original angular symbols, drawn on a shared 24-point grid.
+private struct GameHeaderGlyph: Shape {
+    enum Symbol { case lobby, exit, pause, resume }
+    let symbol: Symbol
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        func line(_ points: [(CGFloat, CGFloat)], closed: Bool = false) {
+            guard let first = points.first else { return }
+            func point(_ value: (CGFloat, CGFloat)) -> CGPoint {
+                CGPoint(x: rect.minX + value.0 * rect.width / 24,
+                        y: rect.minY + value.1 * rect.height / 24)
+            }
+            path.move(to: point(first))
+            for value in points.dropFirst() { path.addLine(to: point(value)) }
+            if closed { path.closeSubpath() }
+        }
+        switch symbol {
+        case .lobby:
+            line([(3, 10), (12, 3), (21, 10)])
+            line([(5, 10), (5, 21), (10, 21)])
+            line([(19, 10), (19, 12)])
+            line([(21, 17), (13, 17)])
+            line([(16, 14), (13, 17), (16, 20)])
+        case .exit:
+            line([(11, 3), (4, 3), (4, 21), (11, 21)])
+            line([(10, 12), (21, 12)])
+            line([(17, 8), (21, 12), (17, 16)])
+        case .pause:
+            line([(6, 4), (9, 4), (10, 5), (10, 20), (6, 20)], closed: true)
+            line([(14, 4), (17, 4), (18, 5), (18, 20), (14, 20)], closed: true)
+        case .resume:
+            line([(7, 4), (20, 12), (7, 20)], closed: true)
+        }
+        return path
+    }
+}
+
+private struct GameHeaderConfirmationSheet: View {
+    let title: String
+    let message: String
+    let confirmTitle: String
+    let cancelTitle: String
+    let symbol: GameHeaderGlyph.Symbol
+    let accent: Color
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(spacing: 12) {
+                    GameHeaderGlyph(symbol: symbol)
+                        .stroke(style: StrokeStyle(lineWidth: 2, lineCap: .square, lineJoin: .miter))
+                        .frame(width: 28, height: 28)
+                        .foregroundStyle(accent)
+                        .accessibilityHidden(true)
+                    Text(title)
+                        .font(.system(size: 20, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("onlineExperience.confirmation.title")
+                }
+                Text(message)
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.72))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("onlineExperience.confirmation.message")
+                VStack(spacing: 10) {
+                    confirmationButton(confirmTitle, accent: accent,
+                                       id: "onlineExperience.confirmation.confirm", action: onConfirm)
+                    confirmationButton(cancelTitle, accent: .white,
+                                       id: "onlineExperience.confirmation.cancel", action: onCancel)
+                }
+            }
+            .padding(24)
+        }
+        .background(Color.black)
+        .preferredColorScheme(.dark)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("onlineExperience.confirmation")
+    }
+
+    private func confirmationButton(_ title: String, accent: Color, id: String,
+                                    action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(accent)
+                .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .background(accent.opacity(0.08), in: CutCornerShape(cut: 8))
+                .overlay(CutCornerShape(cut: 8).stroke(accent.opacity(0.4), lineWidth: 1))
+                .contentShape(CutCornerShape(cut: 8))
+        }
+        .buttonStyle(SpyWebPressStyle())
+        .accessibilityIdentifier(id)
+    }
+}
+
 struct SpyGameExperienceCopy {
     let language: AppLanguage
 
@@ -2701,6 +2748,28 @@ struct SpyGameExperienceCopy {
     var leaveGame: String { text("LEAVE GAME", "SALIR DEL JUEGO", "ВЫЙТИ ИЗ ИГРЫ", "ВИЙТИ З ГРИ") }
     var closeGame: String { text("CLOSE GAME", "CERRAR JUEGO", "ЗАКРЫТЬ ИГРУ", "ЗАКРИТИ ГРУ") }
     var cancel: String { text("CANCEL", "CANCELAR", "ОТМЕНА", "СКАСУВАТИ") }
+    var confirmLobbyTitle: String {
+        text("Return everyone to the lobby?", "¿Devolver a todos al lobby?", "Вернуть всех в лобби?", "Повернути всіх до лобі?")
+    }
+    var confirmLobbyMessage: String {
+        text("The current game will end. All players will return to this room’s lobby.",
+             "La partida actual terminará. Todos volverán al lobby de esta sala.",
+             "Текущая игра прервётся. Все игроки вернутся в лобби этой комнаты.",
+             "Поточна гра перерветься. Усі гравці повернуться до лобі цієї кімнати.")
+    }
+    func confirmLeaveTitle(isHost: Bool) -> String {
+        isHost
+            ? text("Close the room?", "¿Cerrar la sala?", "Закрыть комнату?", "Закрити кімнату?")
+            : text("Leave the game?", "¿Salir de la partida?", "Выйти из игры?", "Вийти з гри?")
+    }
+    func confirmLeaveMessage(isHost: Bool) -> String {
+        isHost
+            ? text("The room will close for everyone. The current game will end.",
+                   "La sala se cerrará para todos. La partida actual terminará.",
+                   "Комната закроется для всех игроков. Текущая игра прервётся.",
+                   "Кімната закриється для всіх гравців. Поточна гра перерветься.")
+            : text("You will leave this room.", "Saldrás de esta sala.", "Вы покинете эту комнату.", "Ви залишите цю кімнату.")
+    }
     var returnToLobby: String { text("RETURN TO LOBBY", "VOLVER AL LOBBY", "ВЕРНУТЬСЯ В ЛОББИ", "ПОВЕРНУТИСЯ ДО ЛОБІ") }
     var retryReturnToLobby: String { text("RETRY RETURN TO LOBBY", "REINTENTAR REGRESO AL LOBBY", "ПОВТОРИТЬ ВОЗВРАТ В ЛОББИ", "ПОВТОРИТИ ПОВЕРНЕННЯ ДО ЛОБІ") }
     func returnToLobbyAccessibilityValue(pending: Bool, failed: Bool) -> String {

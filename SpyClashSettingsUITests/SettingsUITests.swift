@@ -378,3 +378,198 @@ final class FanVotingUITests: XCTestCase {
         add(attachment)
     }
 }
+
+/// Exercises the compact header against synthetic rooms, without live mutations.
+@MainActor
+final class GameHeaderUITests: XCTestCase {
+    private var app: XCUIApplication!
+    private let leaveID = "onlineExperience.leave"
+    private let pauseID = "onlineExperience.pauseResume"
+    private let lobbyID = "onlineExperience.returnToLobbyVote"
+    private let confirmationID = "onlineExperience.confirmation"
+
+    override func setUp() async throws {
+        continueAfterFailure = false
+        app = XCUIApplication(bundleIdentifier: "com.spyclash.ios")
+    }
+
+    override func tearDown() async throws {
+        app.terminate()
+    }
+
+    func testHostHeaderHasThreeControlsAndCancelPreservesGame() {
+        launchGame(playerCount: 12)
+        assertHeaderControls([lobbyID, leaveID, pauseID])
+        assertUnsubmittedBallot()
+        let initialLobbyValue = app.buttons[lobbyID].value as? String
+        let initialPauseLabel = app.buttons[pauseID].label
+        attachScreenshot("game-header-host-three-controls")
+
+        app.buttons[lobbyID].tap()
+        assertLobbyConfirmation()
+        attachScreenshot("game-header-host-lobby-confirmation")
+        cancelConfirmation()
+        assertUnsubmittedBallot()
+        assertHeaderControls([lobbyID, leaveID, pauseID])
+        XCTAssertEqual(app.buttons[lobbyID].value as? String, initialLobbyValue)
+        XCTAssertEqual(app.buttons[pauseID].label, initialPauseLabel)
+
+        app.buttons[leaveID].tap()
+        assertConfirmation(
+            title: "Закрыть комнату?",
+            message: "Комната закроется для всех игроков. Текущая игра прервётся.",
+            confirmLabel: "ЗАКРЫТЬ ИГРУ"
+        )
+        attachScreenshot("game-header-host-exit-confirmation")
+        cancelConfirmation()
+        assertUnsubmittedBallot()
+        assertHeaderControls([lobbyID, leaveID, pauseID])
+        XCTAssertEqual(app.buttons[lobbyID].value as? String, initialLobbyValue)
+        XCTAssertEqual(app.buttons[pauseID].label, initialPauseLabel)
+
+        // Pausing is also handled locally by the preview fixture. The header
+        // must remain accessible above the pause overlay without duplicate controls.
+        app.buttons[pauseID].tap()
+        waitForLabel("Продолжить таймер", on: app.buttons[pauseID])
+        assertHeaderControls([lobbyID, leaveID, pauseID])
+        attachScreenshot("game-header-host-paused-three-controls")
+        app.buttons[lobbyID].tap()
+        assertLobbyConfirmation()
+        cancelConfirmation()
+        assertHeaderControls([lobbyID, leaveID, pauseID])
+        XCTAssertEqual(app.buttons[pauseID].label, "Продолжить таймер")
+        XCTAssertEqual(app.buttons[lobbyID].value as? String, initialLobbyValue)
+        app.buttons[pauseID].tap()
+        waitForLabel(initialPauseLabel, on: app.buttons[pauseID])
+        assertUnsubmittedBallot()
+    }
+
+    func testGuestHasOnlyPersonalExitAndCancellationPreservesGame() {
+        launchGame(playerCount: 3, guest: true)
+        XCTAssertFalse(app.buttons[pauseID].exists)
+        XCTAssertFalse(app.buttons[lobbyID].exists)
+        assertHeaderControls([leaveID])
+        XCTAssertEqual(app.buttons[leaveID].label, "ВЫЙТИ ИЗ ИГРЫ")
+        attachScreenshot("game-header-guest-personal-exit-only")
+
+        app.buttons[leaveID].tap()
+        assertConfirmation(
+            title: "Выйти из игры?",
+            message: "Вы покинете эту комнату.",
+            confirmLabel: "ВЫЙТИ ИЗ ИГРЫ"
+        )
+        attachScreenshot("game-header-guest-personal-exit-confirmation")
+        cancelConfirmation()
+        assertUnsubmittedBallot()
+        assertHeaderControls([leaveID])
+        XCTAssertFalse(app.buttons[pauseID].exists)
+        XCTAssertFalse(app.buttons[lobbyID].exists)
+    }
+
+    func testConfirmLobbyReturnLeavesActiveGameInPreview() {
+        launchGame(playerCount: 3)
+        app.buttons[lobbyID].tap()
+        assertLobbyConfirmation()
+        // GameView handles this preview action locally through
+        // previewActiveLobbyReturnCandidate; no server request is performed.
+        app.buttons[confirmationID + ".confirm"].tap()
+        XCTAssertTrue(app.buttons["onlineRoom.leave"].waitForExistence(timeout: 5))
+        XCTAssertFalse(confirmation.exists)
+        XCTAssertFalse(app.buttons["fanMode.vote.player"].exists)
+        XCTAssertFalse(app.buttons[leaveID].exists)
+        XCTAssertFalse(app.buttons[lobbyID].exists)
+        attachScreenshot("game-header-confirmed-return-to-lobby")
+    }
+
+    private var confirmation: XCUIElement {
+        app.descendants(matching: .any).matching(identifier: confirmationID).firstMatch
+    }
+
+    private func launchGame(playerCount: Int, guest: Bool = false) {
+        app.launchArguments = [
+            "--spyclash-ui-preview", "--spyclash-preview-tab=game",
+            "--spyclash-preview-room=voting", "--spyclash-preview-lang=ru",
+            "--spyclash-preview-player-count=\(playerCount)", "--spyclash-preview-fan-mode"
+        ]
+        if guest { app.launchArguments.append("--spyclash-preview-guest") }
+        app.launch()
+        XCTAssertTrue(app.buttons["fanMode.vote.player"].waitForExistence(timeout: 10))
+        XCTAssertFalse(confirmation.exists)
+    }
+
+    private func assertHeaderControls(_ identifiers: [String]) {
+        let buttons = identifiers.map { app.buttons[$0] }
+        for button in buttons {
+            XCTAssertTrue(button.exists)
+            XCTAssertEqual(app.buttons.matching(identifier: button.identifier).count, 1,
+                           "The pause overlay must not duplicate header controls")
+            XCTAssertTrue(button.isEnabled)
+            XCTAssertTrue(button.isHittable)
+            XCTAssertGreaterThanOrEqual(button.frame.width, 44)
+            XCTAssertGreaterThanOrEqual(button.frame.height, 44)
+            XCTAssertTrue(app.frame.contains(button.frame), "\(button.identifier) must fit on screen")
+            XCTAssertEqual(button.frame.midY, buttons[0].frame.midY, accuracy: 1,
+                           "Exit, pause and lobby controls must occupy one row")
+        }
+        for (left, right) in zip(buttons, buttons.dropFirst()) {
+            XCTAssertLessThanOrEqual(left.frame.maxX, right.frame.minX,
+                                     "Header controls must not overlap and must keep their order")
+        }
+    }
+
+    private func assertLobbyConfirmation() {
+        assertConfirmation(
+            title: "Вернуть всех в лобби?",
+            message: "Текущая игра прервётся. Все игроки вернутся в лобби этой комнаты.",
+            confirmLabel: "ВЕРНУТЬСЯ В ЛОББИ"
+        )
+    }
+
+    private func assertConfirmation(title: String, message: String, confirmLabel: String) {
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts[confirmationID + ".title"].label, title)
+        XCTAssertEqual(app.staticTexts[confirmationID + ".message"].label, message)
+        XCTAssertEqual(app.buttons[confirmationID + ".confirm"].label, confirmLabel)
+        XCTAssertEqual(app.buttons[confirmationID + ".cancel"].label, "ОТМЕНА")
+        for suffix in ["cancel", "confirm"] {
+            let button = app.buttons[confirmationID + "." + suffix]
+            XCTAssertTrue(button.exists)
+            XCTAssertTrue(button.isEnabled)
+            XCTAssertTrue(button.isHittable)
+            XCTAssertTrue(app.frame.contains(button.frame))
+        }
+    }
+
+    private func cancelConfirmation() {
+        app.buttons[confirmationID + ".cancel"].tap()
+        let dismissed = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: confirmation
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 5), .completed)
+    }
+
+    private func waitForLabel(_ label: String, on element: XCUIElement) {
+        let updated = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label == %@", label), object: element
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [updated], timeout: 5), .completed)
+    }
+
+    private func assertUnsubmittedBallot() {
+        for target in ["player", "no_spies", "all_spies"] {
+            let choice = app.buttons["fanMode.vote.\(target)"]
+            XCTAssertTrue(choice.exists)
+            XCTAssertTrue(choice.isEnabled)
+            XCTAssertFalse(choice.isSelected)
+        }
+        XCTAssertFalse(app.buttons["onlineRoom.leave"].exists,
+                       "Cancelling a confirmation must keep the active game")
+    }
+
+    private func attachScreenshot(_ name: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+}
