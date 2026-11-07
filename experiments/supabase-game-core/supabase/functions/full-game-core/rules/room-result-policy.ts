@@ -16,7 +16,7 @@ export type RankedMatchIdentity = {
 
 export type TerminalIntent = {
   match_id: string;
-  winner: "spy" | "detectives" | "all" | "system";
+  winner: "spy" | "detectives" | "all" | "system" | "draw";
   decided_at: string;
   spy_guess?: string;
   fan_result_reason?: string;
@@ -38,9 +38,9 @@ function invalidTerminal(message: string, statusCode = 409): Error {
   });
 }
 
-function normalizedWinner(value: unknown): "spy" | "detectives" | "all" | "system" {
+function normalizedWinner(value: unknown): "spy" | "detectives" | "all" | "system" | "draw" {
   const winner = clean(value).toLocaleLowerCase();
-  if (winner !== "spy" && winner !== "detectives" && winner !== "all" && winner !== "system") {
+  if (winner !== "spy" && winner !== "detectives" && winner !== "all" && winner !== "system" && winner !== "draw") {
     throw invalidTerminal("The ranked winner is invalid.", 400);
   }
   return winner;
@@ -205,7 +205,10 @@ export function assertRankedTerminalRoom(
   winnerValue: unknown,
 ): void {
   const winner = normalizedWinner(winnerValue);
-  if (!isFanMode(room) && ["all", "system"].includes(winner)) throw invalidTerminal("Collective results require FAN mode");
+  if (!isFanMode(room) && ["all", "system", "draw"].includes(winner)) throw invalidTerminal("Collective results require FAN mode");
+  if (winner === "draw" && (!isFanAnomaly(room) || room.fan_result_reason !== "player_ejected" || !room.eliminated_emails?.length)) {
+    throw invalidTerminal("A FAN draw requires a completed player ejection.");
+  }
   if (status(room) !== "finished") {
     throw invalidTerminal("Only a finished room can be archived.");
   }
@@ -429,7 +432,7 @@ export function preTimerMembershipTransitionPatch(
 export function deriveExpiredGameWinner(
   room: Room,
   nowMilliseconds = Date.now(),
-): "spy" | "system" {
+): "spy" {
   const { durationSeconds } = assertStartedRankedRoom(room);
   const activeElapsedSeconds = gameActiveElapsedSeconds(room, nowMilliseconds);
   if (
@@ -438,7 +441,8 @@ export function deriveExpiredGameWinner(
   ) {
     throw invalidTerminal("The server game deadline has not elapsed.");
   }
-  return isFanAnomaly(room) ? "system" : "spy";
+  if (isFanMode(room)) throw invalidTerminal("FAN timer expiry opens voting; it cannot decide a winner.");
+  return "spy";
 }
 
 export function rejectRetiredResultRecording(): never {

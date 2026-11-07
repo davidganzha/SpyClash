@@ -81,3 +81,9 @@ Deno.test('public projection ignores writable profile counters and forged awards
   assert.deepEqual(profile.achievements.find((a: any) => a.id === 'first_victory'), { id: 'first_victory', progress: 0, target: 1 });
   assert.ok(!JSON.stringify(profile.achievements).includes('player_email'));
 });
+
+Deno.test('draws cannot unlock completed-match, victory or role achievements', () => {
+  const rows = [row('draw', { winner: 'draw', won: null, fan_scenario: 'all_spies' }),
+    row('malformed-draw', { winner: 'draw', won: true, fan_scenario: 'no_spies' })];
+  assert.equal(aggregateAchievementStats(rows).size, 0);
+});

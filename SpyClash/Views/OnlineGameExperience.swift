@@ -1483,7 +1483,7 @@ struct OnlineActiveGameScene: View {
         return VStack(spacing: 6) {
             Text(
                 timer.isExpired
-                    ? (room.fanSettings.isEnabled ? FanModeCopy(language: language).text("TIME EXPIRED", "ВРЕМЯ ВЫШЛО", "TIEMPO AGOTADO", "ЧАС ВИЙШОВ") : copy.spyWinsAtDeadline(spyCount: room.lobbySpyCountValue))
+                    ? (room.fanSettings.isEnabled ? FanModeCopy(language: language).text("FINAL VOTE", "ФИНАЛЬНОЕ ГОЛОСОВАНИЕ", "VOTACIÓN FINAL", "ФІНАЛЬНЕ ГОЛОСУВАННЯ") : copy.spyWinsAtDeadline(spyCount: room.lobbySpyCountValue))
                     : copy.playingRound(max(room.roundNumber ?? 1, 1))
             )
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
@@ -1973,8 +1973,7 @@ struct OnlineActiveGameScene: View {
                             guard canSubmitBallot else { return }
                             HapticManager.shared.fire(.navigation)
                             playerBallot = PlayerBallot(id: playerBallotScope)
-                        },
-                        onChooseConcept: { castVote($0.voteTarget) })
+                        })
             Text(voteSubmissionStatus)
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
                 .foregroundStyle(myVote == nil ? SpyTheme.dim : SpyTheme.green)

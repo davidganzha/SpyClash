@@ -111,7 +111,6 @@ struct LocalPrivateVoteView: View {
     let stage: LocalPrivateVoteStage
     let selectedTargetIndex: Int?
     let language: AppLanguage
-    var fanEnabled = false
     let onConfirmHandoff: () -> Void
     let onSelectTarget: (Int) -> Void
     let onConfirmVote: () -> Void
@@ -239,11 +238,6 @@ struct LocalPrivateVoteView: View {
             }
             .padding(.vertical, 4)
 
-            if fanEnabled {
-                FanConceptBallot(language: language, selected: selectedTargetIndex.flatMap(FanScenario.init(localTarget:))) {
-                    onSelectTarget($0.localTarget)
-                }
-            }
             Button(action: onConfirmVote) {
                 Label(copy.lockVote, systemImage: "lock.fill")
             }

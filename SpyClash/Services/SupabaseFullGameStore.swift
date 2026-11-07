@@ -155,7 +155,7 @@ final class SupabaseFullGameStore {
     func read(_ body: [String: JSONValue]) async throws -> JSONValue {
         guard let transport, !userID.isEmpty else { throw Self.notSignedIn }
         var capableBody = body
-        capableBody["client_capabilities"] = .array([.string("multi_spy_v1"), .string("fan_mode_v1")])
+        capableBody["client_capabilities"] = .array([.string("multi_spy_v1"), .string("fan_mode_v1"), .string("fan_mode_v2")])
         do { return try await transport.fullGame(.object(capableBody)) }
         catch { throw Self.failure(error).error }
     }
@@ -220,7 +220,7 @@ final class SupabaseFullGameStore {
         // Bind this new intent before awaiting a preceding command. A queued
         // tap must never silently become an action in a different match/turn.
         var body = input
-        body["client_capabilities"] = .array([.string("multi_spy_v1"), .string("fan_mode_v1")])
+        body["client_capabilities"] = .array([.string("multi_spy_v1"), .string("fan_mode_v1"), .string("fan_mode_v2")])
         let requestID = input["request_id"]?.string ?? UUID().uuidString.lowercased()
         guard UUID(uuidString: requestID) != nil, let action = body["action"]?.string else { throw Self.invalidResponse }
         body["request_id"] = .string(requestID)

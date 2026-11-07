@@ -4488,6 +4488,14 @@ extension WordPack {
 }
 
 enum FinishedRoomResultPolicy {
+    static func fanDrawScenario(in room: GameRoom) -> FanScenario? {
+        guard room.normalizedStatus == "finished", room.winner == "draw",
+              room.fanSettings.isEnabled,
+              let scenario = FanScenario(rawValue: room.fanScenario ?? ""),
+              scenario != .standard else { return nil }
+        return scenario
+    }
+
     static func wrongSpyGuess(in room: GameRoom) -> String? {
         guard room.winner?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -4555,8 +4563,12 @@ struct GameHistory: Codable, Identifiable, Hashable {
             }
     }
 
+    var isDraw: Bool {
+        winner?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "draw"
+    }
+
     var isOnlineCompetitiveMatch: Bool {
-        playerUserID?.nilIfBlank != nil
+        !isDraw && playerUserID?.nilIfBlank != nil
             && isOnlineHistoryMatch
             && ranked != false
             && (spyCount ?? 1) <= 1
@@ -4635,7 +4647,7 @@ enum GameHistoryAnalytics {
             ? visible.filter(\.isOnlineCompetitiveMatch)
             : visible
         let matches = eligible.filter {
-            $0.role?
+            !$0.isDraw && $0.role?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .lowercased() == normalizedRole
         }

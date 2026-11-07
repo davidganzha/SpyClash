@@ -26,7 +26,7 @@ if (process.argv.includes('--check')) {
   process.exit(0);
 }
 
-const caps = ['multi_spy_v1', 'fan_mode_v1'];
+const caps = ['multi_spy_v1', 'fan_mode_v1', 'fan_mode_v2'];
 const allTarget = '__fan_all_spies__', noneTarget = '__fan_no_spies__';
 const clients = [], rooms = [];
 const started = Date.now();
@@ -196,18 +196,23 @@ async function run(name, operation) {
 try {
   for (const actor of credentials) clients.push(await client(actor));
   check(new Set(clients.map(actor => actor.id)).size === 4, 'four_independent_auth_users');
-  for (const scenario of ['all_spies', 'no_spies']) await run(`${scenario}_correct_unanimous_vote`, async () => {
+  for (const scenario of ['all_spies', 'no_spies']) await run(`${scenario}_first_ejection_draw`, async () => {
     const { room, attempts } = await selectedScenario(scenario);
-    const round = await openVote(room), target = scenario === 'all_spies' ? allTarget : noneTarget;
-    for (const actor of clients.slice(0, 3)) {
+    const round = await openVote(room), target = clients[0].email;
+    for (const actor of clients.slice(1, 3)) {
       await vote(actor, room, target, round);
-      check((await read(clients[0], room)).status === 'playing', 'concept_waits_for_every_vote');
+      check((await read(clients[0], room)).status === 'playing', 'ejection_waits_for_threshold');
     }
     const finalBody = bodyFor(await read(clients[3], room), 'cast_detective_vote', { target_email: target, expected_vote_round_id: round });
     const final = await ok(clients[3], finalBody);
     stage = 'final_vote_idempotent_retry';
     assert.deepEqual(await ok(clients[3], finalBody), final);
-    return { ...await verifyResult(room, 'all', 'correct_concept', scenario, [true, true, true, true]), attempts, finalVoteRetry: true };
+    check(final.room.eliminated_emails.includes(target), 'accused_player_is_ejected');
+    for (const actor of clients) {
+      const view = await read(actor, room);
+      check(view.winner === 'draw' && view.fan_scenario === scenario, 'every_player_sees_draw_and_reveal');
+    }
+    return { ...await verifyResult(room, 'draw', 'player_ejected', scenario, [null, null, null, null]), attempts, finalVoteRetry: true };
   });
   await run('standard_fan_correct_player_accusation', async () => {
     const { room, views } = await selectedScenario('standard');
@@ -221,24 +226,30 @@ try {
     await vote(voters[2], room, clients[spyIndex].email, round);
     return verifyResult(room, 'detectives', null, 'standard', clients.map((_, index) => index !== spyIndex));
   });
-  await run('wrong_unanimous_concept_system_wins', async () => {
+  await run('retired_concept_votes_rejected', async () => {
     const { room } = await selectedScenario('standard'), round = await openVote(room);
-    for (const actor of clients) await vote(actor, room, noneTarget, round);
-    return verifyResult(room, 'system', 'wrong_concept', 'standard', [false, false, false, false]);
+    for (const target of [allTarget, noneTarget]) {
+      const reply = await clients[1].send(bodyFor(room, 'cast_detective_vote', { target_email: target, expected_vote_round_id: round }));
+      check(reply.status === 400 && reply.body.code === 'detective_vote_target_invalid', 'concept_vote_rejected');
+    }
+    const final = await read(clients[0], room);
+    check(final.status === 'playing' && !final.winner, 'retired_votes_never_finish_round');
+    return { roomID: final.id, status: final.status, conceptsRejected: 2 };
   });
-  await run('anomalous_player_accusation_system_wins', async () => {
-    const { room, scenario } = await playing(99, 1), round = await openVote(room);
-    for (const actor of clients.slice(1)) await vote(actor, room, clients[0].email, round);
-    return verifyResult(room, 'system', 'wrong_accusation', scenario, [false, false, false, false]);
+  await run('old_fan_client_requires_update', async () => {
+    const { room } = await playing(99, 1);
+    const reply = await clients[0].send({ action: 'get_room', room_id: room.id, client_capabilities: ['multi_spy_v1', 'fan_mode_v1'] });
+    check(reply.status === 426 && reply.body.code === 'client_update_required', 'old_fan_client_rejected');
+    return { roomID: room.id, oldClientRejected: true };
   });
   await run('split_votes_continue_and_duplicate_ballot_rejected', async () => {
     const { room } = await playing(99, 1), round = await openVote(room);
-    await vote(clients[0], room, allTarget, round);
-    const duplicate = await clients[0].send(bodyFor(room, 'cast_detective_vote', { target_email: noneTarget, expected_vote_round_id: round }));
+    await vote(clients[0], room, clients[1].email, round);
+    const duplicate = await clients[0].send(bodyFor(room, 'cast_detective_vote', { target_email: clients[2].email, expected_vote_round_id: round }));
     check(duplicate.status !== 200 && duplicate.body.code === 'detective_vote_already_cast', 'conflicting_second_vote_rejected');
-    await vote(clients[1], room, noneTarget, round);
-    await vote(clients[2], room, allTarget, round);
-    await vote(clients[3], room, noneTarget, round);
+    await vote(clients[1], room, clients[0].email, round);
+    await vote(clients[2], room, clients[3].email, round);
+    await vote(clients[3], room, clients[2].email, round);
     const final = await read(clients[0], room);
     check(final.status === 'playing' && !final.winner && !final.detective_vote_round_id, 'split_vote_continues_round');
     check(final.eliminated_emails.length === 0, 'split_vote_eliminates_nobody');

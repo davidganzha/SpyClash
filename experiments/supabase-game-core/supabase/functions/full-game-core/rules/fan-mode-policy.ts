@@ -1,5 +1,5 @@
-/** Server-owned FAN sabotage. Settings are public; the sampled concept is secret. */
-export const FAN_MODE_CAPABILITY = "fan_mode_v1";
+/** Server-owned FAN surprise. Settings are public; the sampled scenario stays secret until ejection. */
+export const FAN_MODE_CAPABILITY = "fan_mode_v2";
 export const FAN_ALL_SPIES_TARGET = "__fan_all_spies__";
 export const FAN_NO_SPIES_TARGET = "__fan_no_spies__";
 export type FanScenario = "standard" | "all_spies" | "no_spies";
@@ -110,7 +110,6 @@ export function fanVoteTransition(
       email && !(room.spectators || []).map(clean).includes(email)
     );
   const voter = clean(voterValue), target = clean(targetValue);
-  const concepts = [FAN_ALL_SPIES_TARGET, FAN_NO_SPIES_TARGET];
   if (!active.includes(voter)) {
     failure(
       "Only active operatives may vote",
@@ -119,11 +118,16 @@ export function fanVoteTransition(
     );
   }
   if (
-    (!active.includes(target) && !concepts.includes(target)) || voter === target
+    !active.includes(target) || voter === target
   ) failure("Invalid accusation", "detective_vote_target_invalid", 400);
-  const votes = (room.detective_votes || []).filter((vote: Room) =>
-    active.includes(clean(vote.voter_email))
-  );
+  // Drop stale/legacy concept votes and duplicate voters when resuming a room.
+  const seen = new Set<string>();
+  const votes = (room.detective_votes || []).filter((vote: Room) => {
+    const voter = clean(vote.voter_email), target = clean(vote.voted_for_email);
+    if (!active.includes(voter) || !active.includes(target) || voter === target || seen.has(voter)) return false;
+    seen.add(voter);
+    return true;
+  });
   const previous = votes.find((vote: Room) =>
     clean(vote.voter_email) === voter
   );
@@ -140,35 +144,22 @@ export function fanVoteTransition(
     vote_requests: [],
     detective_vote_round_id: "",
   };
-  const unanimous = concepts.find((concept) =>
-    tally(concept) === active.length
-  );
-  if (unanimous) {
-    const selected = unanimous === FAN_ALL_SPIES_TARGET
-      ? "all_spies"
-      : "no_spies";
-    const correct = fanScenario(room) === selected;
-    return {
-      patch: closed,
-      terminal_winner: correct ? "all" : "system",
-      terminal_patch: {
-        detective_votes: votes,
-        fan_result_reason: correct ? "correct_concept" : "wrong_concept",
-      },
-      decision: { outcome: "finish" },
-    };
-  }
   const accused = active.find((email: string) => tally(email) >= threshold);
   if (accused) {
+    const patch = {
+      ...closed,
+      spectators: [...new Set([...(room.spectators || []), accused])],
+      eliminated_emails: [...new Set([...(room.eliminated_emails || []), accused])],
+    };
     if (isFanAnomaly(room)) {
       return {
-        patch: closed,
-        terminal_winner: "system",
+        patch,
+        terminal_winner: "draw",
         terminal_patch: {
           detective_votes: votes,
-          fan_result_reason: "wrong_accusation",
+          fan_result_reason: "player_ejected",
         },
-        decision: { outcome: "finish" },
+        decision: { outcome: "eject", ejected_email: accused },
       };
     }
     const spy = clean(room.spy_email);
@@ -177,11 +168,6 @@ export function fanVoteTransition(
       : active.length - 1 <= 2
       ? "spy"
       : null;
-    const patch = {
-      ...closed,
-      spectators: [...(room.spectators || []), accused],
-      eliminated_emails: [...(room.eliminated_emails || []), accused],
-    };
     return {
       patch,
       terminal_winner: winner,

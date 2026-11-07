@@ -1,11 +1,11 @@
 // @ts-nocheck -- Original dynamic room documents retain their native JSON contract.
 // Rules are vendored from the original game; persistence and external side effects
 // are replaced by one atomic PostgreSQL transaction owned by the handler.
-import { fanSettings, isFanMode, isFanAnomaly, fanScenario, fanAssignmentCount, assertFanCapablePlayer, assertFanCapableRoster, fanVoteTransition } from "./rules/fan-mode-policy.ts";
+import { fanSettings, isFanMode, fanScenario, fanAssignmentCount, assertFanCapablePlayer, assertFanCapableRoster, fanVoteTransition } from "./rules/fan-mode-policy.ts";
 import { requireSafeCommunityText, safeCommunityAvatar, safeCommunityDisplayName } from "./rules/content-safety.ts";
 import { projectRoomForClient } from "./rules/room-projection.ts";
 import { assertAuthoritativeLobbyReady, hasAuthoritativeLobbyState, lobbyMutationPatch, validateLobbyMutation, lobbyStateFromRoom, selectedAuthoritativeLobbyWordPool } from "./rules/lobby-state-policy.ts";
-import { canonicalClientCapabilities, canonicalSpyEmails, lobbySpyCount, spiesKnowEachOther, validatedLobbySpyCount, assertMultiSpyCapableRoster, compatibleRosterForSpyCount, lobbyMembershipClampPatch, serverSpyAssignment, playerSupportsMultiSpy, roomHasDepartedPlayer, departedPlayerEmails, activeDepartureTransition, assertActiveSpyGuesser, spyGuessWinner, spyTeamTerminalWinner } from "./rules/multi-spy-policy.ts";
+import { refreshedPlayerCapabilities, canonicalClientCapabilities, canonicalSpyEmails, lobbySpyCount, spiesKnowEachOther, validatedLobbySpyCount, assertMultiSpyCapableRoster, compatibleRosterForSpyCount, lobbyMembershipClampPatch, serverSpyAssignment, playerSupportsMultiSpy, roomHasDepartedPlayer, departedPlayerEmails, activeDepartureTransition, assertActiveSpyGuesser, spyGuessWinner, spyTeamTerminalWinner } from "./rules/multi-spy-policy.ts";
 import { assertGameActionAllowedByDeadline, assertGameActionAllowedWhilePaused, hasGameTimerElapsed, pauseGameTransitionPatch, resumeGameTransitionPatch, finishGamePauseTransitionPatch, gameTimerDeadlineMilliseconds } from "./rules/game-timer-policy.ts";
 import { assertIntroCompletionAccess, introStartedAtForCompletion, serverIntroStartPatch, roleCardReadTransitionPatch, buildTerminalIntent, terminalIntentFromRoom, terminalPatchFromIntent, preTimerMembershipTransitionPatch, deriveExpiredGameWinner, rejectRetiredResultRecording, assertRankedTerminalRoom, rankedMatchIdentity } from "./rules/room-result-policy.ts";
 import { initialQuestionTurn, advanceQuestionTurn, encodeQuestionTurnOrderState, questionRosterChangePatch } from "./rules/question-turn-order.ts";
@@ -335,12 +335,18 @@ function secureRandom(): number {
 }
 
 /** Actor-only original projection. Raw server state is never a client response. */
-export function projectGame(room: GameRecord, actor: GameActor): GameRecord {
+export function projectGame(room: GameRecord, actor: GameActor, currentCapabilities?: unknown): GameRecord {
   if (room.closed || normalizedStatus(room) === "ended") failure("Room is closed", "room_closed", 404);
   requirePlayer(room, actor);
   if (roomHasDepartedPlayer(room, actor.email)) failure("This operative left the mission", "room_departed", 403);
-  assertFanCapablePlayer(room, players(room).find((p) => p.email === actor.email));
-  return projectRoomForClient(room, actor);
+  // A freshly updated app must be able to restore a room whose roster still
+  // remembers its previous binary. Reads use current transport capabilities;
+  // the next command persists only this authenticated participant's update.
+  const currentRoom = currentCapabilities === undefined ? room : {
+    ...room, players: refreshedPlayerCapabilities(room.players, actor.email, currentCapabilities).players,
+  };
+  assertFanCapablePlayer(currentRoom, players(currentRoom).find((p) => p.email === actor.email));
+  return projectRoomForClient(currentRoom, actor);
 }
 
 /** Informational clock boundary; a paused/unstarted game has no running deadline. */
@@ -391,13 +397,22 @@ export function reduceGame(input: GameInput): GameTransition {
     const spies = canonicalSpyEmails(room);
     for (const player of players(room)) {
       const isSpy = spies.includes(player.email);
-      history.push({ match_id: intent.match_id, result_key: gameHistoryResultKey(intent.match_id, player.user_id), player_user_id: player.user_id, player_email: player.email, room_code: room.code, match_type: "online", ranked: !isFanMode(room) && spies.length === 1, fan_mode_enabled: isFanMode(room), fan_scenario: fanScenario(room) || "", role: isSpy ? "spy" : "detective", word: displayWord(room) || "CLASSIFIED", category: clean(room.category) || "CLASSIC", winner: room.winner, player_count: players(room).length, spy_count: spies.length, won: room.winner === "all" ? true : room.winner === "system" ? false : room.winner === "spy" ? isSpy : !isSpy });
+      history.push({ match_id: intent.match_id, result_key: gameHistoryResultKey(intent.match_id, player.user_id), player_user_id: player.user_id, player_email: player.email, room_code: room.code, match_type: "online", ranked: !isFanMode(room) && spies.length === 1, fan_mode_enabled: isFanMode(room), fan_scenario: fanScenario(room) || "", role: isSpy ? "spy" : "detective", word: displayWord(room) || "CLASSIFIED", category: clean(room.category) || "CLASSIC", winner: room.winner, player_count: players(room).length, spy_count: spies.length, won: room.winner === "draw" ? null : room.winner === "all" ? true : room.winner === "system" ? false : room.winner === "spy" ? isSpy : !isSpy });
     }
     const recipients = terminalOutboxCommitRecipientUserIDs(room);
     emit("game_finished", room.game_finished_event_id, { winner: room.winner, recipient_user_ids: recipients });
     // This certificate is valid only because the handler persists room/history/
     // outbox/receipt in the same transaction. Never persist the room alone.
     patch(terminalOutboxCommitPatch({ room, recipientUserIDs: recipients, committedAt: new Date(input.now) }));
+  };
+  const openFanDeadlineVote = () => {
+    if (!isFanMode(room) || !hasGameTimerElapsed(room, input.now)) return;
+    if (detectiveVotingActive(room) && detectiveVoteRoundID(room)) return;
+    patch({
+      vote_requests: activePlayers(room).map((player) => player.email),
+      detective_votes: [],
+      detective_vote_round_id: uuid(),
+    });
   };
   const requireLive = () => {
     if (normalizedStatus(room) !== "playing") failure("Mission is not playing", "room_action_inactive");
@@ -433,6 +448,10 @@ export function reduceGame(input: GameInput): GameTransition {
   if (action !== "join_room") {
     requirePlayer(room, user);
     if (roomHasDepartedPlayer(room, user.email)) failure("This operative left the mission", "room_departed", 403);
+    if (body.client_capabilities !== undefined) {
+      const refreshed = refreshedPlayerCapabilities(room.players, user.email, body.client_capabilities);
+      if (refreshed.changed) patch({ players: refreshed.players });
+    }
     if (lobbySpyCount(room) > 1 && !playerSupportsMultiSpy(players(room).find((p) => p.email === user.email))) throw clientUpdateRequiredError();
     if (action !== "leave_room") assertFanCapablePlayer(room, players(room).find((p) => p.email === user.email));
   }
@@ -568,11 +587,12 @@ export function reduceGame(input: GameInput): GameTransition {
     case "request_vote": {
       requireLive(); requireMatch(); assertActiveRoundActor(activePlayers(room), user.email);
       if (shouldSpyWin(room)) { finish("spy"); break; }
+      if (isFanMode(room) && hasGameTimerElapsed(room, input.now)) { openFanDeadlineVote(); break; }
       patch(detectiveVoteRequestTransition(activePlayers(room).map((p) => p.email), voteRequests(room), user.email, detectiveVoteRoundID(room), uuid).patch); break;
     }
     case "cast_detective_vote": {
       requireLive(); requireMatch();
-      if (hasGameTimerElapsed(room, input.now)) { patch({ detective_votes: [], vote_requests: [], detective_vote_round_id: "" }); finish(deriveExpiredGameWinner(room, input.now), isFanAnomaly(room) ? { fan_result_reason: "timeout" } : {}); break; }
+      if (!isFanMode(room) && hasGameTimerElapsed(room, input.now)) { patch({ detective_votes: [], vote_requests: [], detective_vote_round_id: "" }); finish(deriveExpiredGameWinner(room, input.now)); break; }
       if (shouldSpyWin(room)) { finish("spy"); break; }
       if (!detectiveVotingActive(room)) failure("Detective voting is no longer active", "detective_vote_inactive");
       const explicit = explicitExpectedVoteRoundID(body);
@@ -587,17 +607,26 @@ export function reduceGame(input: GameInput): GameTransition {
       }
       if (binding.initialize && resolution.decision.outcome === "continue" && !Object.hasOwn(next, "detective_vote_round_id")) next.detective_vote_round_id = binding.roundID;
       patch(next);
-      if (resolution.terminal_winner) finish(resolution.terminal_winner, resolution.terminal_patch); break;
+      if (resolution.terminal_winner) finish(resolution.terminal_winner, resolution.terminal_patch);
+      else openFanDeadlineVote();
+      break;
     }
     case "submit_spy_guess":
-      if (isFanMode(room)) failure("FAN mode is solved by voting", "fan_guess_disabled");
+      if (isFanMode(room)) failure("FAN mode ends with a player vote", "fan_guess_disabled");
       requireLive(); requireMatch(); assertActiveSpyGuesser(room, user.email);
       { const guess = requireSafeCommunityText(clean(body.guess), "Spy guess"); finish(spyGuessWinner(displayWord(room), guess), { spy_guess: guess }); } break;
     case "finalize_expired_room":
     case "finish_room":
       if (action === "finish_room") requireHost(room, user);
       assertExpectedTimerFinalizationScope(room, body);
-      if (normalizedStatus(room) !== "finished") finish(deriveExpiredGameWinner(room, input.now), isFanAnomaly(room) ? { fan_result_reason: "timeout" } : {}); break;
+      if (normalizedStatus(room) !== "finished") {
+        if (isFanMode(room)) {
+          requireLive();
+          if (!hasGameTimerElapsed(room, input.now)) failure("The server game deadline has not elapsed", "invalid_ranked_terminal");
+          openFanDeadlineVote();
+        } else finish(deriveExpiredGameWinner(room, input.now));
+      }
+      break;
     case "vote_return_to_lobby":
       requireHost(room, user); requireMatch(); patch(activeGameLobbyReturnTransition(room, user.email, body.return_to_lobby_vote).patch); break;
     case "vote_play_again": {
@@ -620,8 +649,9 @@ export function reduceGame(input: GameInput): GameTransition {
       if (normalizedStatus(room) === "playing" && clean(room.game_started_at)) {
         const departure = activeDepartureTransition(room, user.email, { random, randomIndex });
         patch({ ...departure.patch, ...votes, player_feedback: (room.player_feedback || []).filter((p) => p.email !== user.email) });
-        if (isFanAnomaly(room) && activePlayers(room).length < 3) finish("system", { fan_result_reason: "insufficient_players" });
+        if (isFanMode(room) && activePlayers(room).length < 3) close();
         else if (departure.terminalWinner) finish(departure.terminalWinner);
+        else openFanDeadlineVote();
       } else {
         const next = players(room).filter((p) => p.email !== user.email);
         const without = (values) => uniqueStrings(values).filter((e) => e.toLowerCase() !== user.email);

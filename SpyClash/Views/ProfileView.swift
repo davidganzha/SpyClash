@@ -1158,7 +1158,7 @@ struct ProfileView: View {
 
     private var competitiveHistory: [GameHistory] {
         appState.shouldUsePreviewData
-            ? history
+            ? history.filter { !$0.isDraw }
             : history.filter(\.isOnlineCompetitiveMatch)
     }
 

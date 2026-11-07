@@ -27,23 +27,6 @@ enum FanScenario: String, Codable, CaseIterable {
     case allSpies = "all_spies"
     case noSpies = "no_spies"
 
-    static let concepts: [Self] = [.allSpies, .noSpies]
-    var voteTarget: String {
-        switch self {
-        case .standard: ""
-        case .allSpies: "__fan_all_spies__"
-        case .noSpies: "__fan_no_spies__"
-        }
-    }
-    var localTarget: Int { self == .allSpies ? -1 : -2 }
-    init?(voteTarget: String) {
-        guard let value = Self.concepts.first(where: { $0.voteTarget == voteTarget }) else { return nil }
-        self = value
-    }
-    init?(localTarget: Int) {
-        guard let value = Self.concepts.first(where: { $0.localTarget == localTarget }) else { return nil }
-        self = value
-    }
     func title(_ language: AppLanguage) -> String {
         let copy = FanModeCopy(language: language)
         switch self {
@@ -58,14 +41,13 @@ enum FanVoteDecision: Equatable {
     case pending
     case cancelled
     case player(Int)
-    case concept(FanScenario)
 }
 
 /// FAN thresholds never depend on the secret assignment, so voting cannot expose it.
 enum FanVotePolicy {
     static func appending(voter: Int, target: Int, active: [Int], votes: [LocalPrivateVote]) -> [LocalPrivateVote]? {
         guard active.contains(voter), !votes.contains(where: { $0.voterIndex == voter }),
-              (active.contains(target) && voter != target) || FanScenario(localTarget: target) != nil else { return nil }
+              active.contains(target) && voter != target else { return nil }
         return votes + [LocalPrivateVote(voterIndex: voter, targetIndex: target)]
     }
     static func decision(active: [Int], votes: [LocalPrivateVote]) -> FanVoteDecision {
@@ -74,13 +56,10 @@ enum FanVotePolicy {
         var seen = Set<Int>()
         let valid = votes.filter {
             eligible.contains($0.voterIndex) &&
-            (($0.targetIndex != $0.voterIndex && eligible.contains($0.targetIndex)) || FanScenario(localTarget: $0.targetIndex) != nil) &&
+            ($0.targetIndex != $0.voterIndex && eligible.contains($0.targetIndex)) &&
             seen.insert($0.voterIndex).inserted
         }
         let counts = Dictionary(grouping: valid, by: \.targetIndex).mapValues(\.count)
-        for concept in FanScenario.concepts where counts[concept.localTarget] == eligible.count {
-            return .concept(concept)
-        }
         for player in active where (counts[player] ?? 0) >= eligible.count - 1 {
             return .player(player)
         }
@@ -106,25 +85,45 @@ struct FanModeCopy {
         }
     }
     var rules: String {
-        text("The system may change the roles. Accuse one player, or unanimously choose a concept. A correct concept wins for everyone; a wrong one loses to the system. Split votes continue the round. Word guessing and teammate reveal are disabled.",
-             "Система может подменить роли. Обвините игрока или единогласно выберите версию. Верная версия — победа всех, неверная — победа системы. При разногласии раунд продолжается. Угадывание слова и раскрытие союзников отключены.",
-             "El sistema puede cambiar los roles. Acusad a alguien o elegid un concepto por unanimidad. Un concepto correcto da la victoria a todos; uno incorrecto, al sistema. Sin acuerdo, continúa la ronda. No se puede adivinar la palabra ni ver aliados.",
-             "Система може підмінити ролі. Звинуватьте гравця або одностайно оберіть версію. Правильна версія — перемога всіх, хибна — системи. Без згоди раунд триває. Вгадування слова й розкриття союзників вимкнено.")
+        text("Sometimes everyone is a spy — or nobody is. Keep playing and vote for a player. If a surprise round was drawn, the first ejection reveals it and everyone shares a draw. When time runs out, vote until someone is ejected. Word guessing and teammate reveal are disabled.",
+             "Иногда шпионами становятся все — или никто. Играйте и голосуйте за игрока. Если выпал сюрприз, первое исключение раскроет его и завершит матч весёлой ничьей. Когда время выйдет, голосуйте до исключения. Угадывание слова и раскрытие союзников отключены.",
+             "A veces todos son espías, o nadie lo es. Seguid jugando y votad por un jugador. Si salió una ronda sorpresa, la primera expulsión la revela y todos empatáis. Al acabarse el tiempo, votad hasta expulsar a alguien. No se puede adivinar la palabra ni ver aliados.",
+             "Іноді шпигунами стають усі — або ніхто. Грайте й голосуйте за гравця. Якщо випав сюрприз, перше виключення розкриє його та завершить матч веселою нічиєю. Коли час вийде, голосуйте до виключення. Вгадування слова й розкриття союзників вимкнено.")
     }
-    var unanimity: String { text("CONCEPTS REQUIRE EVERY VOTE", "ДЛЯ ВЕРСИИ НУЖНЫ ВСЕ ГОЛОСА", "LOS CONCEPTOS REQUIEREN UNANIMIDAD", "ДЛЯ ВЕРСІЇ ПОТРІБНІ ВСІ ГОЛОСИ") }
-    var ballotTitle: String { text("Choose your vote", "Выберите вариант", "Elige tu voto", "Оберіть варіант") }
+    var scenarioHint: String {
+        text("All spies: nobody knows the word. No spies: everyone knows it. The surprise stays secret until a player is ejected. No wins or losses in a surprise round.",
+             "Все шпионы: никто не знает слово. Шпионов нет: слово знают все. Сюрприз остаётся тайной до исключения игрока. В таком раунде нет побед и поражений.",
+             "Todos espías: nadie conoce la palabra. Sin espías: todos la conocen. La sorpresa se guarda hasta expulsar a alguien. En esa ronda no hay victorias ni derrotas.",
+             "Усі шпигуни: ніхто не знає слово. Шпигунів немає: слово знають усі. Сюрприз залишається таємницею до виключення гравця. У такому раунді немає перемог і поразок.")
+    }
+    var ballotTitle: String { text("Choose a suspect", "Выберите подозреваемого", "Elige un sospechoso", "Оберіть підозрюваного") }
     var voteForPlayer: String { text("Vote for a player", "Голосовать за игрока", "Votar por un jugador", "Голосувати за гравця") }
-    var voteNoSpies: String { text("No spies", "Шпионов нет", "No hay espías", "Шпигунів немає") }
-    var voteAllSpies: String { text("Everyone is a spy", "Все шпионы", "Todos son espías", "Усі шпигуни") }
     var choosePlayer: String { text("Choose a player", "Выберите игрока", "Elige un jugador", "Оберіть гравця") }
     var playerVoteHint: String { text("Tap a player to send your vote. You cannot change it afterwards.", "Нажмите на игрока, чтобы отправить голос. После этого изменить его нельзя.", "Toca a un jugador para enviar tu voto. Después no podrás cambiarlo.", "Натисніть на гравця, щоб надіслати голос. Після цього змінити його не можна.") }
     var close: String { text("Close", "Закрыть", "Cerrar", "Закрити") }
     func ballotRequirement(playerVotes: Int, total: Int) -> String {
-        text("Player: \(playerVotes) of \(total) votes. Other answers: everyone.",
-             "За игрока: \(playerVotes) из \(total) голосов. За версию — все.",
-             "Jugador: \(playerVotes) de \(total) votos. Otras respuestas: todos.",
-             "За гравця: \(playerVotes) з \(total) голосів. За версію — усі.")
+        text("Ejection: \(playerVotes) of \(total) votes. Split votes continue the game.",
+             "Для исключения: \(playerVotes) из \(total) голосов. Нет согласия — игра продолжается.",
+             "Expulsión: \(playerVotes) de \(total) votos. Sin acuerdo, la partida continúa.",
+             "Для виключення: \(playerVotes) з \(total) голосів. Немає згоди — гра триває.")
     }
+    var drawTitle: String { text("A FUN DRAW", "ВЕСЁЛАЯ НИЧЬЯ", "UN EMPATE DIVERTIDO", "ВЕСЕЛА НІЧИЯ") }
+    var drawSubtitle: String {
+        text("No winners. No losers. Just a little surprise for everyone.",
+             "Никто не выиграл. Никто не проиграл. Просто сюрприз для всей компании.",
+             "Sin ganadores ni perdedores. Solo una sorpresa para todos.",
+             "Ніхто не виграв. Ніхто не програв. Просто сюрприз для всієї компанії.")
+    }
+    var revealTitle: String { text("WAIT A SECOND…", "А ВОТ И СЮРПРИЗ…", "UN MOMENTO…", "А ОСЬ І СЮРПРИЗ…") }
+    var revealSubtitle: String { text("Let's turn over the cards", "Переворачиваем карты", "Vamos a revelar las cartas", "Перевертаємо карти") }
+    func revealedScenario(_ scenario: FanScenario) -> String {
+        switch scenario {
+        case .allSpies: text("EVERYONE WAS A SPY", "ВСЕ БЫЛИ ШПИОНАМИ", "TODOS ERAN ESPÍAS", "УСІ БУЛИ ШПИГУНАМИ")
+        case .noSpies: text("THERE WERE NO SPIES", "ШПИОНОВ НЕ БЫЛО", "NO HABÍA ESPÍAS", "ШПИГУНІВ НЕ БУЛО")
+        case .standard: scenario.title(language)
+        }
+    }
+    // Older finished rooms can still be read before the server update is deployed.
     func result(won: Bool) -> String {
         won ? text("SYSTEM OUTSMARTED", "СИСТЕМА РАЗГАДАНА", "SISTEMA DESCIFRADO", "СИСТЕМУ РОЗГАДАНО")
             : text("SYSTEM WINS", "СИСТЕМА ПОБЕДИЛА", "GANA EL SISTEMA", "СИСТЕМА ПЕРЕМОГЛА")

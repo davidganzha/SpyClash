@@ -235,6 +235,7 @@ struct FinishedMatchCompetitiveStatsExpectation: Hashable {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
         guard room.normalizedStatus == "finished",
+              !room.fanSettings.isEnabled,
               room.lobbySpyCountValue == 1,
               room.spyEmailsList.count == 1,
               !accountEmail.isEmpty,
@@ -6256,16 +6257,12 @@ final class AppState: NSObject {
                 previewRoom.spiesKnowEachOther = false
                 previewRoom.players = previewRoom.playersList.map { player in
                     var player = player
-                    player.clientCapabilities = ["multi_spy_v1", "fan_mode_v1"]
+                    player.clientCapabilities = ["multi_spy_v1", "fan_mode_v1", "fan_mode_v2"]
                     return player
                 }
                 if previewRoom.isVotingActive, let voterEmail = user?.email {
                     let target: String?
                     switch previewArgumentValue(prefix: "--spyclash-preview-fan-vote=", in: arguments) {
-                    case "all_spies":
-                        target = FanScenario.allSpies.voteTarget
-                    case "no_spies":
-                        target = FanScenario.noSpies.voteTarget
                     case "player":
                         target = previewRoom.activePlayers.first { $0.email != voterEmail }?.email
                     default:
@@ -6275,6 +6272,27 @@ final class AppState: NSObject {
                         previewRoom.detectiveVotes = [VoteRecord(voterEmail: voterEmail, votedForEmail: target)]
                     }
                 }
+            }
+            if arguments.contains("--spyclash-preview-fan-expired") {
+                previewRoom.gameStartedAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-1_000))
+                previewRoom.gameDurationSeconds = 300
+                previewRoom.gamePausedAt = nil
+            }
+            if let rawScenario = previewArgumentValue(prefix: "--spyclash-preview-fan-draw=", in: arguments),
+               let scenario = FanScenario(rawValue: rawScenario), scenario != .standard {
+                previewRoom.status = "finished"
+                previewRoom.fanModeEnabled = true
+                previewRoom.fanScenario = scenario.rawValue
+                previewRoom.fanResultReason = "player_ejected"
+                previewRoom.winner = "draw"
+                previewRoom.spyEmails = scenario == .allSpies ? previewRoom.playersList.map(\.email) : []
+                previewRoom.spyEmail = previewRoom.spyEmails?.first
+                previewRoom.voteRequests = []
+                previewRoom.detectiveVotes = []
+                previewRoom.detectiveVoteRoundID = nil
+                let ejectedEmail = previewRoom.playersList.last?.email
+                previewRoom.spectators = ejectedEmail.map { [$0] } ?? []
+                previewRoom.eliminatedEmails = previewRoom.spectators
             }
             activeRoom = previewRoom
         }

@@ -383,6 +383,7 @@ final class OnlineRoundStateTests: XCTestCase {
             {
                 "id":"room-1",
                 "code":"ABC123",
+                "status":"playing",
                 "detective_vote_cancellation_event_id":"event-1",
                 "detective_vote_cancellation_round_id":"round-7",
                 "detective_vote_cancellation_present_at":"2033-05-18T03:33:20.600Z",
@@ -6968,5 +6969,152 @@ final class OnlineVoteFeedbackPolicyTests: XCTestCase {
             ),
             .idle
         )
+    }
+}
+
+
+final class LocalFanOutcomeTests: XCTestCase {
+    func testEveryFanAssignmentRequiresFinalVotingWhenTimeExpires() {
+        // Deadline policy intentionally accepts no scenario: its public behavior
+        // cannot disclose whether the secret FAN assignment is ordinary or unusual.
+        XCTAssertEqual(LocalGameDeadlinePolicy.outcome(afterTickFrom: 2, fanEnabled: true), .continuePlaying(remainingSeconds: 1))
+        XCTAssertEqual(LocalGameDeadlinePolicy.outcome(afterTickFrom: 1, fanEnabled: true), .finalVote)
+        XCTAssertEqual(LocalGameDeadlinePolicy.outcome(afterTickFrom: 0, fanEnabled: true), .finalVote)
+        XCTAssertEqual(LocalGameDeadlinePolicy.outcome(afterTickFrom: 1, fanEnabled: false), .spyWins)
+    }
+
+    func testBothAnomaliesDrawAfterAnyValidPlayerEjection() {
+        for scenario in [FanScenario.allSpies, .noSpies] {
+            let roles = Array(repeating: scenario == .allSpies, count: 5)
+            for player in roles.indices {
+                XCTAssertEqual(LocalGameAccusationPolicy.outcome(
+                    accusing: player, spyFlags: roles, fanEnabled: true, fanScenario: scenario
+                ), .draw)
+            }
+        }
+    }
+
+    func testInvalidOrAlreadyEliminatedPlayerCannotTriggerFanReveal() {
+        for scenario in [FanScenario.allSpies, .noSpies] {
+            let roles = Array(repeating: scenario == .allSpies, count: 3)
+            for player in [-2, -1, 3] {
+                XCTAssertEqual(LocalGameAccusationPolicy.outcome(
+                    accusing: player, spyFlags: roles, fanEnabled: true, fanScenario: scenario
+                ), .invalidAccusation)
+            }
+            XCTAssertEqual(LocalGameAccusationPolicy.outcome(
+                accusing: 1, spyFlags: roles, eliminatedIndices: [1], fanEnabled: true, fanScenario: scenario
+            ), .invalidAccusation)
+        }
+    }
+
+    func testOrdinaryFanAssignmentRetainsNormalEliminationResults() {
+        let roles = [true, false, false, false, false]
+        XCTAssertEqual(LocalGameAccusationPolicy.outcome(
+            accusing: 0, spyFlags: roles, fanEnabled: true, fanScenario: .standard
+        ), .detectivesWin)
+        XCTAssertEqual(LocalGameAccusationPolicy.outcome(
+            accusing: 1, spyFlags: roles, fanEnabled: true, fanScenario: .standard
+        ), .continuePlaying)
+        XCTAssertEqual(LocalGameAccusationPolicy.outcome(
+            accusing: 2, spyFlags: roles, eliminatedIndices: [1, 3], fanEnabled: true, fanScenario: .standard
+        ), .spyWins)
+        XCTAssertEqual(LocalGameAccusationPolicy.outcome(
+            accusing: 0, spyFlags: roles, fanEnabled: false, fanScenario: .allSpies
+        ), .detectivesWin)
+    }
+}
+
+final class FanOnlineDrawTests: XCTestCase {
+    func testDrawHistoryIsVisibleWithoutAWinLossOrWinRatePenalty() throws {
+        let records = try JSONDecoder().decode([GameHistory].self, from: Data(#"[{"id":"win","player_user_id":"player","room_code":"ABC123","match_type":"online","ranked":true,"role":"detective","spy_count":1,"winner":"detectives","won":true},{"id":"draw","player_user_id":"player","room_code":"ABC124","match_type":"online","ranked":false,"role":"detective","spy_count":0,"winner":"draw","won":null},{"id":"draw-missing-ranked","player_user_id":"player","room_code":"ABC125","match_type":"online","role":"detective","spy_count":0,"winner":"draw","won":null}]"#.utf8))
+        XCTAssertEqual(records.filter(\.isOnlineHistoryMatch).count, 3)
+        XCTAssertEqual(records.filter(\.isOnlineCompetitiveMatch).map(\.id), ["win"])
+        XCTAssertNil(records[1].won)
+        XCTAssertTrue(records[1].isDraw)
+        for competitiveOnly in [false, true] {
+            XCTAssertEqual(GameHistoryAnalytics.rolePerformance("detective", in: records, competitiveOnly: competitiveOnly), GameHistoryRolePerformance(games: 1, wins: 1))
+        }
+    }
+
+    func testOnlyFinishedAnomalyDrawsCanRevealTheSecretScenario() {
+        var room = GameRoom.previewRoom(status: "finished")
+        room.fanModeEnabled = true
+        room.winner = "draw"
+        for scenario in [FanScenario.allSpies, .noSpies] {
+            room.fanScenario = scenario.rawValue
+            XCTAssertEqual(FinishedRoomResultPolicy.fanDrawScenario(in: room), scenario)
+            room.status = "playing"
+            XCTAssertNil(FinishedRoomResultPolicy.fanDrawScenario(in: room))
+            room.status = "finished"
+        }
+        room.fanScenario = FanScenario.standard.rawValue
+        XCTAssertNil(FinishedRoomResultPolicy.fanDrawScenario(in: room))
+        room.fanScenario = FanScenario.allSpies.rawValue
+        room.winner = "spy"
+        XCTAssertNil(FinishedRoomResultPolicy.fanDrawScenario(in: room))
+    }
+
+    func testDeadlineRequestsFinalBallotOnceAndAllowsFanVotesAfterExpiry() throws {
+        let now = Date(timeIntervalSince1970: 2_000)
+        var room = GameRoom.previewRoom(status: "playing")
+        room.fanModeEnabled = true
+        room.gameStartedAt = ISO8601DateFormatter().string(from: now.addingTimeInterval(-120))
+        room.gameDurationSeconds = 60
+        room.gamePausedAt = nil
+        room.voteRequests = []
+        let scope = try XCTUnwrap(OnlineRoomMatchScope(room: room))
+        XCTAssertTrue(ExpiredRoomFinalizationRetryPolicy.canAttempt(scope: scope, room: room, now: now))
+        room.voteRequests = room.activePlayers.map(\.email)
+        room.detectiveVoteRoundID = "final-ballot"
+        room.detectiveVotes = []
+        XCTAssertTrue(room.isVotingActive)
+        XCTAssertFalse(ExpiredRoomFinalizationRetryPolicy.canAttempt(scope: scope, room: room, now: now))
+        let voter = room.activePlayers[0].email
+        let target = room.activePlayers[1].email
+        let cast = try XCTUnwrap(DetectiveVoteCastScope(room: room, actorEmail: voter, targetEmail: target))
+        XCTAssertEqual(DetectiveVoteConflictRecoveryPolicy.resolution(previous: room, authoritative: room, cast: cast, now: now), .retry)
+        var persisted = room
+        persisted.detectiveVotes = [VoteRecord(voterEmail: voter, votedForEmail: target)]
+        XCTAssertEqual(DetectiveVoteConflictRecoveryPolicy.resolution(previous: room, authoritative: persisted, cast: cast, now: now), .persisted)
+        room.fanModeEnabled = false
+        XCTAssertEqual(DetectiveVoteConflictRecoveryPolicy.resolution(previous: room, authoritative: room, cast: cast, now: now), .deadline)
+    }
+
+    func testFanCannotSubmitLegacyConceptBallots() {
+        var room = GameRoom.previewRoom(status: "voting")
+        room.fanModeEnabled = true
+        room.detectiveVoteRoundID = "fan-ballot"
+        let voter = room.activePlayers[0].email
+        XCTAssertNil(DetectiveVoteCastScope(room: room, actorEmail: voter, targetEmail: "__fan_all_spies__"))
+        XCTAssertNil(DetectiveVoteCastScope(room: room, actorEmail: voter, targetEmail: "__fan_no_spies__"))
+        XCTAssertNotNil(DetectiveVoteCastScope(room: room, actorEmail: voter, targetEmail: room.activePlayers[1].email))
+    }
+
+    func testFanGamesDoNotWaitForCompetitiveStatsToIncrement() throws {
+        var room = GameRoom.previewRoom(status: "finished")
+        room.fanModeEnabled = true
+        let user = try JSONDecoder().decode(SpyUser.self, from: JSONSerialization.data(withJSONObject: ["id": "fan-player", "email": room.playersList[0].email]))
+        XCTAssertNil(FinishedMatchCompetitiveStatsExpectation(room: room, user: user))
+        room.winner = "draw"
+        XCTAssertNil(FinishedMatchCompetitiveStatsExpectation(room: room, user: user))
+    }
+}
+
+
+extension FanOnlineDrawTests {
+    func testSplitVoteFeedbackCannotCoverAFinishedDrawOrRestartedLobby() {
+        var room = GameRoom.previewRoom(status: "playing")
+        room.fanModeEnabled = true
+        room.detectiveVoteCancellationEventID = "previous-split"
+        room.detectiveVoteCancellationRoundID = "previous-ballot"
+        room.detectiveVoteCancellationPresentAt = ISO8601DateFormatter().string(from: Date())
+        room.detectiveVoteCancellationReason = DetectiveVoteCancellationEvent.supportedReason
+        XCTAssertNotNil(DetectiveVoteCancellationEvent(room: room))
+        for terminalStatus in ["finished", "ended", "waiting", "roulette"] {
+            room.status = terminalStatus
+            room.winner = terminalStatus == "finished" ? "draw" : nil
+            XCTAssertNil(DetectiveVoteCancellationEvent(room: room), "Old split-vote feedback must stop when the active match ends")
+        }
     }
 }

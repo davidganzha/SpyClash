@@ -724,7 +724,7 @@ final class Base44Client {
             email: user.email,
             name: user.callSign,
             avatar: user.avatar ?? "🕵️",
-            clientCapabilities: [Self.multiSpyCapability, "fan_mode_v1"]
+            clientCapabilities: [Self.multiSpyCapability, "fan_mode_v1", "fan_mode_v2"]
         )
     }
 
@@ -2311,7 +2311,7 @@ final class Base44Client {
         let payload = GameRoomActionPayload(
             action: action,
             accessToken: "",
-            clientCapabilities: [Self.multiSpyCapability, "fan_mode_v1"],
+            clientCapabilities: [Self.multiSpyCapability, "fan_mode_v1", "fan_mode_v2"],
             roomID: roomID,
             roomCode: roomCode,
             player: player,
@@ -2348,7 +2348,7 @@ final class Base44Client {
         let payload = GameRoomActionPayload(
             action: action,
             accessToken: token,
-            clientCapabilities: [Self.multiSpyCapability, "fan_mode_v1"],
+            clientCapabilities: [Self.multiSpyCapability, "fan_mode_v1", "fan_mode_v2"],
             roomID: roomID,
             roomCode: roomCode,
             player: player,
@@ -3394,7 +3394,7 @@ private struct GameRoomActionPayload: Encodable {
     init(
         action: String,
         accessToken: String,
-        clientCapabilities: [String]? = ["multi_spy_v1", "fan_mode_v1"],
+        clientCapabilities: [String]? = ["multi_spy_v1", "fan_mode_v1", "fan_mode_v2"],
         roomID: String? = nil,
         roomCode: String? = nil,
         player: Player? = nil,

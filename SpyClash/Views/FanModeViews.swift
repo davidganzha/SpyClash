@@ -39,7 +39,7 @@ struct FanModeSettingsPanel: View {
                             Spacer()
                             Text("\(settings.standardChance)%").monospacedDigit()
                         }.font(.system(size: 11, weight: .bold, design: .monospaced)).foregroundStyle(SpyTheme.green)
-                        Text(copy.text("All spies: nobody knows the word. No spies: everyone knows it. A wrong accusation or timeout in these rounds is a system win.", "Все шпионы: никто не знает слово. Шпионов нет: слово знают все. Ошибочное обвинение или конец времени в таком раунде — победа системы.", "Todos espías: nadie conoce la palabra. Sin espías: todos la conocen. Una acusación errónea o agotar el tiempo da la victoria al sistema.", "Усі шпигуни: ніхто не знає слово. Шпигунів немає: слово знають усі. Хибне звинувачення або кінець часу — перемога системи."))
+                        Text(copy.scenarioHint)
                             .font(.system(size: 11, design: .monospaced)).foregroundStyle(SpyTheme.dim).fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -75,40 +75,7 @@ struct FanModeSettingsPanel: View {
     }
 }
 
-struct FanConceptBallot: View {
-    let language: AppLanguage
-    let selected: FanScenario?
-    var isPending = false
-    var disabled = false
-    let onSelect: (FanScenario) -> Void
-
-    var body: some View {
-        VStack(spacing: 8) {
-            Text(FanModeCopy(language: language).unanimity)
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .foregroundStyle(SpyTheme.amber).multilineTextAlignment(.center)
-            ForEach(FanScenario.concepts, id: \.rawValue) { concept in
-                Button { onSelect(concept) } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: concept == .allSpies ? "person.3.fill" : "person.crop.circle.badge.checkmark")
-                        Text(concept.title(language)).font(.system(size: 12, weight: .bold, design: .monospaced))
-                        Spacer(minLength: 0)
-                        if selected == concept {
-                            if isPending { ProgressView().tint(SpyTheme.amber) }
-                            else { Image(systemName: "checkmark.circle.fill") }
-                        }
-                    }.foregroundStyle(SpyTheme.amber).padding(12).frame(maxWidth: .infinity, minHeight: 48)
-                        .background(SpyTheme.amber.opacity(selected == concept ? 0.16 : 0.06), in: CutCornerShape(cut: 8))
-                        .overlay(CutCornerShape(cut: 8).stroke(SpyTheme.amber.opacity(selected == concept ? 0.8 : 0.3), lineWidth: 1))
-                }.buttonStyle(SpyWebPressStyle()).disabled(disabled)
-                    .accessibilityIdentifier("fanMode.vote.\(concept.rawValue)")
-                    .accessibilityAddTraits(selected == concept ? .isSelected : [])
-            }
-        }
-    }
-}
-
-/// A fixed-height choice menu; the roster never pushes a FAN answer off screen.
+/// Player-only voting keeps the hidden surprise a surprise.
 struct FanVoteMenu: View {
     let language: AppLanguage
     let selectedTarget: String?
@@ -116,23 +83,16 @@ struct FanVoteMenu: View {
     let isPending: Bool
     let disabled: Bool
     let onChoosePlayer: () -> Void
-    let onChooseConcept: (FanScenario) -> Void
 
     private var copy: FanModeCopy { FanModeCopy(language: language) }
-    private var selectedConcept: FanScenario? { selectedTarget.flatMap(FanScenario.init(voteTarget:)) }
-    private var playerSelected: Bool { selectedTarget != nil && selectedConcept == nil }
+    private var playerSelected: Bool { selectedTarget != nil }
 
     var body: some View {
         VStack(spacing: 9) {
             choice(copy.voteForPlayer, icon: "person.crop.circle.badge.questionmark",
                    selected: playerSelected, subtitle: selectedPlayerName, opensList: true,
                    accent: .white, id: "fanMode.vote.player", action: onChoosePlayer)
-            choice(copy.voteNoSpies, icon: "person.crop.circle.badge.checkmark",
-                   selected: selectedConcept == .noSpies, accent: SpyTheme.amber,
-                   id: "fanMode.vote.no_spies") { onChooseConcept(.noSpies) }
-            choice(copy.voteAllSpies, icon: "person.3.fill",
-                   selected: selectedConcept == .allSpies, accent: SpyTheme.amber,
-                   id: "fanMode.vote.all_spies") { onChooseConcept(.allSpies) }
+
         }
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .contain)
@@ -259,5 +219,124 @@ struct FanPlayerBallotSheet: View {
         .preferredColorScheme(.dark)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("fanMode.vote.players")
+    }
+}
+
+/// The same terminal reveal is used on the shared phone and every online client.
+struct FanDrawRevealView: View {
+    let scenario: FanScenario
+    let language: AppLanguage
+    @SpyReduceMotion private var reduceMotion
+    @State private var revealedCount = 0
+    @State private var showOutcome = false
+
+    private var copy: FanModeCopy { FanModeCopy(language: language) }
+    private var accent: Color { scenario == .allSpies ? SpyTheme.amber : SpyTheme.green }
+
+    var body: some View {
+        VStack(spacing: 18) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                Text("FAN MODE").tracking(2)
+                Image(systemName: "sparkles")
+            }
+            .font(.system(size: 10, weight: .bold, design: .monospaced))
+            .foregroundStyle(accent)
+
+            Text(showOutcome ? copy.drawTitle : copy.revealTitle)
+                .font(.system(size: 25, weight: .black, design: .monospaced))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+                .contentTransition(.opacity)
+                .accessibilityIdentifier("fanMode.result.title")
+
+            HStack(spacing: 10) {
+                ForEach(0..<3, id: \.self) { index in
+                    roleCard(index)
+                }
+            }
+            .frame(height: 100)
+            .accessibilityHidden(true)
+
+            VStack(spacing: 10) {
+                Text(showOutcome ? copy.revealedScenario(scenario) : copy.revealSubtitle)
+                    .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    .foregroundStyle(accent)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("fanMode.result.scenario")
+                if showOutcome {
+                    Text(copy.drawSubtitle)
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundStyle(SpyTheme.muted)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        .accessibilityIdentifier("fanMode.result.drawExplanation")
+                }
+            }
+        }
+        .padding(.vertical, 26)
+        .padding(.horizontal, 18)
+        .frame(maxWidth: .infinity)
+        .background {
+            CutCornerShape(cut: 18)
+                .fill(accent.opacity(0.055))
+                .overlay(CutCornerShape(cut: 18).stroke(accent.opacity(0.45), lineWidth: 1))
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("fanMode.result.draw")
+        .task(id: scenario) {
+            revealedCount = 0
+            showOutcome = false
+            if reduceMotion {
+                revealedCount = 3
+                showOutcome = true
+                return
+            }
+            do {
+                try await Task.sleep(for: .milliseconds(320))
+                for count in 1...3 {
+                    try Task.checkCancellation()
+                    withAnimation(.easeInOut(duration: 0.4)) { revealedCount = count }
+                    try await Task.sleep(for: .milliseconds(240))
+                }
+                try await Task.sleep(for: .milliseconds(220))
+                try Task.checkCancellation()
+                withAnimation(.spring(response: 0.48, dampingFraction: 0.82)) { showOutcome = true }
+                HapticManager.shared.fire(.navigation)
+            } catch {
+                // Leaving the result cancels the reveal without a delayed haptic.
+            }
+        }
+    }
+
+    private func roleCard(_ index: Int) -> some View {
+        let revealed = index < revealedCount
+        return ZStack {
+            cardFace(icon: "questionmark", revealed: false)
+                .opacity(revealed ? 0 : 1)
+            cardFace(icon: scenario == .allSpies ? "eye.slash.fill" : "person.fill.checkmark", revealed: true)
+                .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
+                .opacity(revealed ? 1 : 0)
+        }
+        .frame(maxWidth: 76)
+        .frame(height: 96)
+        .rotation3DEffect(.degrees(revealed ? 180 : 0), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
+        .rotationEffect(.degrees(Double(index - 1) * (showOutcome ? 8 : 3)))
+        .offset(y: showOutcome && index == 1 ? -5 : 0)
+    }
+
+    private func cardFace(icon: String, revealed: Bool) -> some View {
+        ZStack {
+            CutCornerShape(cut: 9)
+                .fill(revealed ? accent.opacity(0.18) : SpyTheme.control)
+            CutCornerShape(cut: 9)
+                .stroke(revealed ? accent : Color.white.opacity(0.22), lineWidth: 1.5)
+            Image(systemName: icon)
+                .font(.system(size: 29, weight: .bold))
+                .foregroundStyle(revealed ? accent : SpyTheme.dim)
+        }
     }
 }

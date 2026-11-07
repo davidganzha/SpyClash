@@ -153,6 +153,10 @@ export function assertGameActionAllowedByDeadline(
   const elapsedSeconds = gameActiveElapsedSeconds(room, nowMilliseconds);
   if (elapsedSeconds < state.durationSeconds) return;
 
+  // FAN rounds share the same public deadline behavior regardless of secret roles.
+  // At zero, players can still open and submit the final ejection ballot.
+  if (room.fan_mode_enabled === true && ["request_vote", "cast_detective_vote", "join_room"].includes(action)) return;
+
   if (
     ["finalize_expired_room", "finish_room", "leave_room", "close_room"]
       .includes(

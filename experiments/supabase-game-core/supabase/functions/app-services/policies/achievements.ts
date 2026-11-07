@@ -14,7 +14,7 @@ export function aggregateAchievementStats(records: readonly History[]): Map<stri
     const id = clean(row.player_user_id);
     const type = clean(row.match_type).toLowerCase();
     const online = type ? type === 'online' : /^[A-Z0-9]{6}$/.test(clean(row.room_code).toUpperCase());
-    if (!id || !online || typeof row.won !== 'boolean') continue;
+    if (!id || !online || typeof row.won !== 'boolean' || clean(row.winner).toLowerCase() === 'draw') continue;
     if (row.player_count != null && (!Number.isInteger(Number(row.player_count)) || Number(row.player_count) < 3)) continue;
     const stats = table.get(id) ?? { games: 0, wins: 0, spyWins: 0, detectiveWins: 0 };
     stats.games += 1;

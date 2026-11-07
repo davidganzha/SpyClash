@@ -1587,6 +1587,7 @@ enum ExpiredRoomFinalizationRetryPolicy {
         scope.matches(room) &&
             room.normalizedStatus == "playing" &&
             !room.isGamePaused &&
+            !(room.fanSettings.isEnabled && room.isVotingActive) &&
             OnlineTimerSnapshot(room: room, now: now).isExpired
     }
 
@@ -1728,7 +1729,7 @@ struct DetectiveVoteCastScope: Equatable {
               !voteRoundID.isEmpty,
               actor != target,
               activePlayers.contains(actor),
-              (activePlayers.contains(target) || (room.fanSettings.isEnabled && FanScenario(voteTarget: target) != nil)) else { return nil }
+              activePlayers.contains(target) else { return nil }
         self.room = roomScope
         self.actorEmail = actorEmail.trimmingCharacters(in: .whitespacesAndNewlines)
         self.targetEmail = targetEmail.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1834,6 +1835,7 @@ enum DetectiveVoteConflictRecoveryPolicy {
             return .retry
         }
         if status == "playing",
+           !authoritative.fanSettings.isEnabled,
            OnlineTimerSnapshot(room: authoritative, now: now).isExpired {
             return .deadline
         }
@@ -1870,7 +1872,7 @@ enum DetectiveVoteConflictRecoveryPolicy {
               !authoritative.isGamePaused,
               authoritative.isVotingActive,
               authoritativeActive.contains(cast.actorKey),
-              (authoritativeActive.contains(cast.targetKey) || (authoritative.fanSettings.isEnabled && FanScenario(voteTarget: cast.targetKey) != nil)),
+              authoritativeActive.contains(cast.targetKey),
               actorVotes.isEmpty else { return .reject }
         return .retry
     }
@@ -2299,13 +2301,13 @@ struct GameView: View {
 
     private var productionBody: some View {
         rootWithRoomKickConfirmation
-        .disabled(detectiveVoteCancellationPresentation != nil)
-        .allowsHitTesting(detectiveVoteCancellationPresentation == nil)
-        .accessibilityHidden(detectiveVoteCancellationPresentation != nil)
+        .disabled(activeDetectiveVoteCancellationPresentation != nil)
+        .allowsHitTesting(activeDetectiveVoteCancellationPresentation == nil)
+        .accessibilityHidden(activeDetectiveVoteCancellationPresentation != nil)
         .overlay {
-            if let detectiveVoteCancellationPresentation {
+            if let presentation = activeDetectiveVoteCancellationPresentation {
                 DetectiveVoteCancellationOverlay(
-                    event: detectiveVoteCancellationPresentation,
+                    event: presentation,
                     languageCode: appState.language.rawValue
                 )
                 .transition(.identity)
@@ -2601,10 +2603,19 @@ struct GameView: View {
         return isTimeExpired(room)
     }
 
+    private var activeDetectiveVoteCancellationPresentation: DetectiveVoteCancellationEvent? {
+        guard let room = appState.activeRoom,
+              let event = detectiveVoteCancellationPresentation,
+              DetectiveVoteCancellationEvent(room: room)?.id == event.id else { return nil }
+        return event
+    }
+
     private var detectiveVoteCancellationTaskKey: String {
         guard let room = appState.activeRoom else { return "inactive" }
         return [
             room.id,
+            room.matchID ?? "",
+            room.normalizedStatus,
             room.detectiveVoteCancellationEventID ?? "",
             room.detectiveVoteCancellationRoundID ?? "",
             room.detectiveVoteCancellationPresentAt ?? "",
@@ -2891,7 +2902,7 @@ struct GameView: View {
     private func canCurrentUserCastVote(_ room: GameRoom) -> Bool {
         detectiveVoteCancellationPresentation == nil &&
             !room.isGamePaused &&
-            !isTimeExpired(room) &&
+            (room.fanSettings.isEnabled || !isTimeExpired(room)) &&
             room.isVotingActive &&
             !isCastingVote &&
             !isCurrentUserSpectator(room) &&
@@ -5711,7 +5722,7 @@ struct GameView: View {
             webActiveRoleCard(room)
             webEarlySpyGuessPanel(room)
 
-            if !isTimeExpired(room) {
+            if room.fanSettings.isEnabled || !isTimeExpired(room) {
                 if isCurrentUserSpectator(room), room.isVotingActive {
                     webSpectatorVotingPanel(room)
                 } else if !isCurrentUserSpectator(room) {
@@ -5994,7 +6005,7 @@ struct GameView: View {
 
     @ViewBuilder
     private func webEarlySpyGuessPanel(_ room: GameRoom) -> some View {
-        if currentUserIsSpy(room),
+        if !room.fanSettings.isEnabled, currentUserIsSpy(room),
            revealRole,
            !isCurrentUserSpectator(room),
            !room.enabledWordPool.isEmpty,
@@ -6475,40 +6486,45 @@ struct GameView: View {
 
     private func finishedRoom(_ room: GameRoom) -> some View {
         VStack(alignment: .leading, spacing: 18) {
-            SpyPanel(accent: (room.winner == "spy" || room.winner == "system") ? SpyTheme.red : SpyTheme.green) {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text(copy.result)
-                        .font(SpyTheme.micro)
-                        .tracking(0.12)
-                        .foregroundStyle(SpyTheme.dim)
-                        .spyKicker()
-                    Text((room.winner == "all" || room.winner == "system") ? FanModeCopy(language: appState.language).result(won: room.winner == "all") : (room.winner == "spy" ? spyVictoryTitle(room) : copy.detectivesWin))
-                        .font(.system(size: 34, weight: .black, design: .default))
-                        .tracking(0.04)
-                        .foregroundStyle((room.winner == "spy" || room.winner == "system") ? SpyTheme.red : SpyTheme.green)
-                        .spyFitted(lines: 2, scale: 0.54)
-                    if room.fanSettings.isEnabled, let scenario = FanScenario(rawValue: room.fanScenario ?? "") {
-                        Text(scenario.title(appState.language)).font(SpyTheme.micro).foregroundStyle(SpyTheme.amber)
-                    }
-                    Text(copy.wordResult(room.displayWord))
-                        .font(SpyTheme.micro)
-                        .tracking(0.12)
-                        .foregroundStyle(.white)
-                        .spyFitted(lines: 2, scale: 0.58)
-                    if let spyGuess = FinishedRoomResultPolicy.wrongSpyGuess(in: room) {
-                        Text(wrongSpyGuessResult(spyGuess))
-                            .font(SpyTheme.micro)
-                            .tracking(0.08)
-                            .foregroundStyle(SpyTheme.amber)
-                            .spyFitted(lines: 3, scale: 0.56)
-                            .accessibilityIdentifier("onlineRoom.result.spyGuess")
-                    }
-                    if !room.spyPlayers.isEmpty {
-                        Text(spyTeamResult(room.spyPlayers))
+            if let scenario = FinishedRoomResultPolicy.fanDrawScenario(in: room) {
+                FanDrawRevealView(scenario: scenario, language: appState.language)
+                    .id("fan-draw-\(room.matchID ?? room.id)")
+            } else {
+                SpyPanel(accent: (room.winner == "spy" || room.winner == "system") ? SpyTheme.red : SpyTheme.green) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text(copy.result)
                             .font(SpyTheme.micro)
                             .tracking(0.12)
                             .foregroundStyle(SpyTheme.dim)
+                            .spyKicker()
+                        Text((room.winner == "all" || room.winner == "system") ? FanModeCopy(language: appState.language).result(won: room.winner == "all") : (room.winner == "spy" ? spyVictoryTitle(room) : copy.detectivesWin))
+                            .font(.system(size: 34, weight: .black, design: .default))
+                            .tracking(0.04)
+                            .foregroundStyle((room.winner == "spy" || room.winner == "system") ? SpyTheme.red : SpyTheme.green)
+                            .spyFitted(lines: 2, scale: 0.54)
+                        if room.fanSettings.isEnabled, let scenario = FanScenario(rawValue: room.fanScenario ?? "") {
+                            Text(scenario.title(appState.language)).font(SpyTheme.micro).foregroundStyle(SpyTheme.amber)
+                        }
+                        Text(copy.wordResult(room.displayWord))
+                            .font(SpyTheme.micro)
+                            .tracking(0.12)
+                            .foregroundStyle(.white)
                             .spyFitted(lines: 2, scale: 0.58)
+                        if let spyGuess = FinishedRoomResultPolicy.wrongSpyGuess(in: room) {
+                            Text(wrongSpyGuessResult(spyGuess))
+                                .font(SpyTheme.micro)
+                                .tracking(0.08)
+                                .foregroundStyle(SpyTheme.amber)
+                                .spyFitted(lines: 3, scale: 0.56)
+                                .accessibilityIdentifier("onlineRoom.result.spyGuess")
+                        }
+                        if !room.spyPlayers.isEmpty {
+                            Text(spyTeamResult(room.spyPlayers))
+                                .font(SpyTheme.micro)
+                                .tracking(0.12)
+                                .foregroundStyle(SpyTheme.dim)
+                                .spyFitted(lines: 2, scale: 0.58)
+                        }
                     }
                 }
             }
@@ -11376,9 +11392,14 @@ struct GameView: View {
 
         if appState.shouldUsePreviewData {
             var previewRoom = room
-            previewRoom.status = "finished"
-            previewRoom.winner = "spy"
-            previewRoom.questionPhase = nil
+            if room.fanSettings.isEnabled {
+                previewRoom.voteRequests = room.activePlayers.map(\.email)
+                previewRoom.detectiveVoteRoundID = "preview-final-vote"
+            } else {
+                previewRoom.status = "finished"
+                previewRoom.winner = "spy"
+                previewRoom.questionPhase = nil
+            }
             guard let currentRoom = appState.activeRoom,
                   OnlineAuthoritativeRoomPolicy.canAdopt(
                       candidate: previewRoom,
@@ -11691,7 +11712,7 @@ struct GameView: View {
         }
         guard detectiveVoteCancellationPresentation == nil,
               !room.isGamePaused,
-              !isTimeExpired(room) else { return }
+              (room.fanSettings.isEnabled || !isTimeExpired(room)) else { return }
         guard let user = appState.user else { return }
         guard let castScope = DetectiveVoteCastScope(
             room: room,
@@ -11699,6 +11720,11 @@ struct GameView: View {
             targetEmail: targetEmail
         ) else { return }
         if appState.shouldUsePreviewData {
+            var previewRoom = room
+            previewRoom.detectiveVotes = room.detectiveVotesList + [
+                VoteRecord(voterEmail: user.email, votedForEmail: targetEmail)
+            ]
+            appState.activeRoom = previewRoom
             status = copy.voteLockedStatus
             HapticManager.shared.fire(.notification(.success))
             return

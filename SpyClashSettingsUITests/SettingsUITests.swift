@@ -255,8 +255,8 @@ final class LobbyFeedbackUITests: XCTestCase {
 @MainActor
 final class FanVotingUITests: XCTestCase {
     private var app: XCUIApplication!
-    private let choiceIDs = ["player", "no_spies", "all_spies"]
-    private let choiceLabels = ["Голосовать за игрока", "Шпионов нет", "Все шпионы"]
+    private let choiceIDs = ["player"]
+    private let choiceLabels = ["Голосовать за игрока"]
     private let rowPrefix = "fanMode.vote.players."
     private let selfEmail = "operative.preview@spyclash.local"
 
@@ -269,11 +269,11 @@ final class FanVotingUITests: XCTestCase {
         app.terminate()
     }
 
-    func testThreeChoicesStayVisibleAndPlayerListIsSeparateForEveryRosterSize() {
+    func testOnlyPlayerChoiceIsVisibleAndAllPlayersAreReachableForEveryRosterSize() {
         for playerCount in [3, 4, 8, 12] {
             launchBallot(playerCount: playerCount)
             assertMenuIsVisibleAndUnsubmitted()
-            attachScreenshot("fan-\(playerCount)-players-three-choices")
+            attachScreenshot("fan-\(playerCount)-players-single-choice")
 
             app.buttons["fanMode.vote.player"].tap()
             let close = app.buttons["fanMode.vote.players.close"]
@@ -318,22 +318,67 @@ final class FanVotingUITests: XCTestCase {
         }
     }
 
-    func testRecordedPlayerAndConceptVotesLockAllThreeChoices() {
+    func testRecordedPlayerVoteLocksTheBallot() {
         for selected in choiceIDs {
             launchBallot(playerCount: 4, recordedVote: selected)
             for id in choiceIDs {
                 let choice = app.buttons["fanMode.vote.\(id)"]
                 XCTAssertTrue(choice.exists)
-                XCTAssertFalse(choice.isEnabled, "A recorded vote must lock every answer")
+                XCTAssertFalse(choice.isEnabled, "A recorded vote must lock the ballot")
                 XCTAssertEqual(choice.isSelected, id == selected)
                 assertFullyVisible(choice)
             }
             XCTAssertFalse(app.buttons["fanMode.vote.players.close"].exists)
-            attachScreenshot("fan-recorded-\(selected)-all-choices-locked")
+            attachScreenshot("fan-recorded-\(selected)-ballot-locked")
         }
     }
 
-    private func launchBallot(playerCount: Int, recordedVote: String? = nil) {
+    func testExpiredFanTimerStillAllowsPlayerVoting() {
+        launchBallot(playerCount: 4, expired: true)
+        assertMenuIsVisibleAndUnsubmitted()
+        XCTAssertTrue(app.staticTexts["ФИНАЛЬНОЕ ГОЛОСОВАНИЕ"].exists)
+        app.buttons["fanMode.vote.player"].tap()
+        let candidate = app.buttons[rowPrefix + "cipher@spyclash.local"]
+        XCTAssertTrue(candidate.waitForExistence(timeout: 5))
+        XCTAssertTrue(candidate.isEnabled)
+        candidate.tap()
+        let playerChoice = app.buttons["fanMode.vote.player"]
+        XCTAssertTrue(playerChoice.waitForExistence(timeout: 5))
+        XCTAssertFalse(playerChoice.isEnabled)
+        XCTAssertTrue(playerChoice.isSelected)
+    }
+
+    func testBothAnomaliesRevealAPlayfulDrawForHostAndGuest() {
+        for scenario in ["all_spies", "no_spies"] {
+            for guest in [false, true] {
+                app.terminate()
+                app.launchArguments = [
+                    "--spyclash-ui-preview", "--spyclash-preview-tab=game",
+                    "--spyclash-preview-room=finished", "--spyclash-preview-lang=ru",
+                    "--spyclash-preview-player-count=4", "--spyclash-preview-fan-mode",
+                    "--spyclash-preview-fan-draw=\(scenario)",
+                    "--spyclash-preview-vote-cancellation"
+                ]
+                if guest { app.launchArguments.append("--spyclash-preview-guest") }
+                app.launch()
+                let result = app.otherElements["fanMode.result.draw"]
+                XCTAssertTrue(result.waitForExistence(timeout: 10))
+                let revealedScenario = app.staticTexts["fanMode.result.scenario"]
+                let expectedScenario = scenario == "all_spies" ? "ВСЕ БЫЛИ ШПИОНАМИ" : "ШПИОНОВ НЕ БЫЛО"
+                let revealed = XCTNSPredicateExpectation(
+                    predicate: NSPredicate(format: "label == %@", expectedScenario), object: revealedScenario
+                )
+                XCTAssertEqual(XCTWaiter.wait(for: [revealed], timeout: 6), .completed)
+                XCTAssertEqual(app.staticTexts["fanMode.result.title"].label, "ВЕСЁЛАЯ НИЧЬЯ")
+                XCTAssertFalse(app.staticTexts["СИСТЕМА ПОБЕДИЛА"].exists)
+                XCTAssertFalse(app.buttons["fanMode.vote.no_spies"].exists)
+                XCTAssertFalse(app.buttons["fanMode.vote.all_spies"].exists)
+                attachScreenshot("fan-draw-\(scenario)-\(guest ? "guest" : "host")")
+            }
+        }
+    }
+
+    private func launchBallot(playerCount: Int, recordedVote: String? = nil, expired: Bool = false) {
         app.terminate()
         app.launchArguments = [
             "--spyclash-ui-preview", "--spyclash-preview-tab=game",
@@ -343,18 +388,21 @@ final class FanVotingUITests: XCTestCase {
         if let recordedVote {
             app.launchArguments.append("--spyclash-preview-fan-vote=\(recordedVote)")
         }
+        if expired { app.launchArguments.append("--spyclash-preview-fan-expired") }
         app.launch()
         XCTAssertTrue(app.buttons["fanMode.vote.player"].waitForExistence(timeout: 10))
     }
 
     private func assertMenuIsVisibleAndUnsubmitted() {
+        XCTAssertFalse(app.buttons["fanMode.vote.no_spies"].exists)
+        XCTAssertFalse(app.buttons["fanMode.vote.all_spies"].exists)
         for (id, label) in zip(choiceIDs, choiceLabels) {
             let choice = app.buttons["fanMode.vote.\(id)"]
             XCTAssertEqual(choice.label, label)
             XCTAssertTrue(choice.isEnabled)
             XCTAssertFalse(choice.isSelected)
             assertFullyVisible(choice)
-            XCTAssertTrue(choice.isHittable, "All three choices must be usable without scrolling")
+            XCTAssertTrue(choice.isHittable, "The player choice must be usable without scrolling")
         }
         XCTAssertFalse(app.buttons["fanMode.vote.players.close"].exists)
     }

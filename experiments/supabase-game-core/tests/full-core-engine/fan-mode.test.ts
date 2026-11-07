@@ -10,6 +10,9 @@ import {
   FAN_NO_SPIES_TARGET,
   fanSettings,
 } from "../../supabase/functions/full-game-core/rules/fan-mode-policy.ts";
+import { aggregateCompetitiveStats, aggregateCompetitiveRoleStats, competitiveRatingDelta } from "../../supabase/functions/full-game-core/rules/competitive-stats.ts";
+import { aggregateAchievementStats } from "../../supabase/functions/app-services/policies/achievements.ts";
+import { assertRankedTerminalRoom, deriveExpiredGameWinner } from "../../supabase/functions/full-game-core/rules/room-result-policy.ts";
 import { lobbyStateFromRoom } from "../../supabase/functions/full-game-core/rules/lobby-state-policy.ts";
 const actors: GameActor[] = Array.from(
   { length: 12 },
@@ -19,7 +22,7 @@ const actors: GameActor[] = Array.from(
     full_name: `Agent ${i}`,
   }),
 );
-const caps = ["multi_spy_v1", "fan_mode_v1"];
+const caps = ["multi_spy_v1", "fan_mode_v1", "fan_mode_v2"];
 class Mission {
   room: GameRecord | null = null;
   now = Date.parse("2026-11-05T12:00:00Z");
@@ -186,70 +189,80 @@ Deno.test("FAN sampling freezes all/no/standard roles, no auto-win or secret con
     );
   }
 });
-Deno.test("FAN requires every active vote for concept, archives cooperative win once and replays fresh", () => {
-  const m = new Mission().lobby().start();
-  const round = m.open();
-  for (let i = 0; i < 3; i++) {
-    m.vote(i, FAN_ALL_SPIES_TARGET, round);
-    assert.equal(m.room!.status, "playing");
+Deno.test("FAN first player ejection draws for every participant, archives once and replays fresh", () => {
+  for (const [all, none, scenario] of [[99, 0, "all_spies"], [0, 99, "no_spies"]] as const) {
+    const m = new Mission().lobby(all, none).start();
+    const round = m.open();
+    for (const i of [1, 2]) {
+      m.vote(i, actors[0].email, round);
+      assert.equal(m.room!.status, "playing");
+      assert.equal(projectGame(m.room!, actors[0]).fan_scenario, undefined);
+    }
+    m.vote(3, actors[0].email, round);
+    assert.equal(m.room!.winner, "draw");
+    assert.equal(m.room!.fan_result_reason, "player_ejected");
+    assert.deepEqual(m.room!.eliminated_emails, [actors[0].email]);
+    assert.deepEqual(m.room!.spectators, [actors[0].email]);
+    assert.equal(m.history.length, 4);
+    assert.ok(m.history.every((h) => h.won === null && h.winner === "draw" && !h.ranked && h.fan_scenario === scenario));
+    for (const actor of actors.slice(0, 4)) {
+      const view = projectGame(m.room!, actor);
+      assert.equal(view.fan_scenario, scenario);
+      assert.equal(view.winner, "draw");
+      assert.deepEqual(view.eliminated_emails, [actors[0].email]);
+    }
+    m.send("finish_room");
+    assert.equal(m.history.length, 4);
+    const source = m.room!.match_id;
+    m.random = .999;
+    for (let i = 0; i < 4; i++) m.send("vote_play_again", i, { expected_match_id: source });
+    assert.equal(m.room!.status, "roulette");
+    assert.equal(m.room!.fan_scenario, "standard");
+    assert.equal(m.room!.fan_result_reason, "");
+    assert.equal(m.room!.spy_emails.length, 1);
+    assert.deepEqual(m.room!.eliminated_emails, []);
   }
-  m.vote(3, FAN_ALL_SPIES_TARGET, round);
-  assert.equal(m.room!.winner, "all");
-  assert.equal(m.room!.fan_result_reason, "correct_concept");
-  assert.equal(m.history.length, 4);
-  assert.ok(
-    m.history.every((h) =>
-      h.won && !h.ranked && h.fan_scenario === "all_spies"
-    ),
-  );
-  assert.equal(projectGame(m.room!, actors[0]).fan_scenario, "all_spies");
-  m.send("finish_room");
-  assert.equal(m.history.length, 4);
-  const source = m.room!.match_id;
-  m.random = .99;
-  for (let i = 0; i < 4; i++) {
-    m.send("vote_play_again", i, { expected_match_id: source });
-  }
-  assert.equal(m.room!.status, "roulette");
-  assert.equal(m.room!.fan_scenario, "standard");
-  assert.equal(m.room!.fan_result_reason, "");
-  assert.equal(m.room!.spy_emails.length, 1);
 });
-Deno.test("wrong unanimous concept loses to system including normal scenario", () => {
-  for (const [all, none] of [[99, 0], [0, 0]]) {
+Deno.test("FAN rejects both retired concept choices in every scenario", () => {
+  for (const [all, none] of [[99, 0], [0, 99], [0, 0]]) {
     const m = new Mission().lobby(all, none).start();
     m.open();
-    for (let i = 0; i < 4; i++) m.vote(i, FAN_NO_SPIES_TARGET);
-    assert.equal(m.room!.winner, "system");
-    assert.equal(m.room!.fan_result_reason, "wrong_concept");
-    assert.ok(m.history.every((h) => !h.won && !h.ranked));
+    for (const target of [FAN_ALL_SPIES_TARGET, FAN_NO_SPIES_TARGET, actors[0].email, actors[4].email]) {
+      rejects(() => m.vote(0, target), "detective_vote_target_invalid");
+    }
+    assert.equal(m.room!.status, "playing");
+    assert.deepEqual(m.room!.detective_votes, []);
+    assert.equal(m.history.length, 0);
   }
 });
-Deno.test("mixed FAN votes cancel safely and cannot overwrite or replay an earlier ballot", () => {
+Deno.test("mixed player votes cancel safely and cannot overwrite or replay an earlier ballot", () => {
   const m = new Mission().lobby().start();
   const old = m.open();
-  m.vote(0, FAN_ALL_SPIES_TARGET);
-  rejects(() => m.vote(0, FAN_NO_SPIES_TARGET), "detective_vote_already_cast");
-  m.vote(1, FAN_NO_SPIES_TARGET);
-  assert.equal(m.room!.detective_vote_round_id, old);
-  m.vote(2, FAN_ALL_SPIES_TARGET);
-  m.vote(3, FAN_NO_SPIES_TARGET);
+  m.vote(0, actors[1].email);
+  rejects(() => m.vote(0, actors[2].email), "detective_vote_already_cast");
+  m.vote(1, actors[0].email);
+  m.vote(2, actors[3].email);
+  m.vote(3, actors[2].email);
   assert.equal(m.room!.status, "playing");
   assert.equal(m.room!.detective_vote_round_id, "");
   assert.deepEqual(m.room!.eliminated_emails, []);
   m.open();
   assert.notEqual(m.room!.detective_vote_round_id, old);
-  assert.throws(() => m.vote(2, FAN_ALL_SPIES_TARGET, old));
+  assert.throws(() => m.vote(2, actors[0].email, old));
 });
-Deno.test("accusing a player in anomalous round loses to system without revealing intermediate roles", () => {
-  for (const [all, none] of [[99, 0], [0, 99]]) {
-    const m = new Mission().lobby(all, none).start();
-    m.open();
-    for (let i = 1; i < 4; i++) m.vote(i, actors[0].email);
-    assert.equal(m.room!.winner, "system");
-    assert.equal(m.room!.fan_result_reason, "wrong_accusation");
-    assert.deepEqual(m.room!.eliminated_emails, []);
-  }
+Deno.test("resumed FAN ballots discard old concept votes and duplicate voters", () => {
+  const m = new Mission().lobby().start();
+  m.open();
+  m.room!.detective_votes = [
+    { voter_email: actors[0].email, voted_for_email: FAN_ALL_SPIES_TARGET },
+    { voter_email: actors[1].email, voted_for_email: actors[0].email },
+    { voter_email: actors[1].email, voted_for_email: actors[0].email },
+  ];
+  m.vote(2, actors[0].email);
+  assert.equal(m.room!.status, "playing");
+  assert.equal(m.room!.detective_votes.length, 2);
+  m.vote(3, actors[0].email);
+  assert.equal(m.room!.winner, "draw");
 });
 Deno.test("standard FAN preserves normal accusation victory and excludes competitive rating", () => {
   const m = new Mission().lobby(0, 0).start();
@@ -261,55 +274,118 @@ Deno.test("standard FAN preserves normal accusation victory and excludes competi
   assert.ok(m.history.every((h) => !h.ranked));
   assert.equal(m.history.filter((h) => h.won).length, 3);
 });
-Deno.test("FAN timeout and departures cannot accidentally turn no/all-spies into team win", () => {
-  for (const [all, none] of [[99, 0], [0, 99]]) {
+Deno.test("every FAN scenario opens a final player ballot at timeout instead of finishing", () => {
+  for (const [all, none] of [[99, 0], [0, 99], [0, 0]]) {
     const m = new Mission().lobby(all, none).start();
+    rejects(() => m.send("finalize_expired_room", 1), "invalid_ranked_terminal");
     m.now += 60000;
+    rejects(() => deriveExpiredGameWinner(m.room!, m.now), "invalid_ranked_terminal");
     m.send("finalize_expired_room", 1);
-    assert.equal(m.room!.winner, "system");
-    assert.equal(m.room!.fan_result_reason, "timeout");
+    assert.equal(m.room!.status, "playing");
+    assert.equal(m.room!.winner, "");
+    assert.equal(m.history.length, 0);
+    const round = m.room!.detective_vote_round_id;
+    assert.ok(round);
+    assert.equal(m.room!.vote_requests.length, 4);
+    assert.equal(projectGame(m.room!, actors[0]).fan_scenario, undefined);
+    const target = m.room!.fan_scenario === "standard" ? m.room!.spy_email : actors[0].email;
+    const voters = actors.slice(0, 4).flatMap((a, i) => a.email === target ? [] : [i]);
+    m.vote(voters[0], target, round);
+    m.send("finalize_expired_room", 2);
+    assert.equal(m.room!.detective_vote_round_id, round);
+    assert.equal(m.room!.detective_votes.length, 1);
+    m.vote(voters[1], target, round);
+    m.vote(voters[2], target, round);
+    assert.equal(m.room!.winner, m.room!.fan_scenario === "standard" ? "detectives" : "draw");
+  }
+});
+Deno.test("FAN deadline preserves a live ballot and split votes reopen voting without revealing roles", () => {
+  const m = new Mission().lobby().start();
+  const round = m.open();
+  m.vote(0, actors[1].email);
+  m.now += 60000;
+  m.send("finalize_expired_room", 1);
+  assert.equal(m.room!.detective_vote_round_id, round);
+  assert.equal(m.room!.detective_votes.length, 1);
+  m.vote(1, actors[0].email);
+  m.vote(2, actors[3].email);
+  m.vote(3, actors[2].email);
+  assert.equal(m.room!.status, "playing");
+  assert.ok(m.room!.detective_vote_round_id);
+  assert.notEqual(m.room!.detective_vote_round_id, round);
+  assert.equal(m.room!.vote_requests.length, 4);
+  assert.equal(m.history.length, 0);
+  assert.equal(projectGame(m.room!, actors[0]).fan_scenario, undefined);
+  for (let i = 1; i < 4; i++) m.vote(i, actors[0].email);
+  assert.equal(m.room!.winner, "draw");
+});
+Deno.test("FAN departures preserve hidden roles and abandon an undersized match without a result", () => {
+  for (const [all, none] of [[99, 0], [0, 99]]) {
     const d = new Mission().lobby(all, none).start();
     d.open();
-    d.vote(0, FAN_ALL_SPIES_TARGET);
+    d.vote(0, actors[1].email);
     d.send("leave_room", 3);
     assert.equal(d.room!.status, "playing");
     assert.equal(d.room!.detective_vote_round_id, "");
     assert.deepEqual(projectGame(d.room!, actors[0]).revealed_spy_emails, []);
     d.send("leave_room", 2);
-    assert.equal(d.room!.winner, "system");
-    assert.equal(d.room!.fan_result_reason, "insufficient_players");
+    assert.equal(d.room!.status, "ended");
+    assert.equal(d.room!.winner, "");
+    assert.equal(d.history.length, 0);
     const pre = new Mission().lobby(all, none);
-    pre.send("arm_roulette", 0, {
-      expected_lobby_revision: pre.room!.lobby_revision,
-    });
+    pre.send("arm_roulette", 0, { expected_lobby_revision: pre.room!.lobby_revision });
     pre.send("leave_room", 3);
     assert.equal(pre.room!.status, "waiting");
     assert.equal(pre.room!.fan_scenario, "");
   }
 });
-Deno.test("FAN refuses legacy participants when enabled and legacy joins/restores", () => {
+Deno.test("draw cannot be archived for a normal match or without a FAN ejection", () => {
+  const m = new Mission().lobby().start();
+  const finished = { ...m.room!, status: "finished", winner: "draw", fan_result_reason: "player_ejected" };
+  rejects(() => assertRankedTerminalRoom(finished, "draw"), "invalid_ranked_terminal");
+  rejects(() => assertRankedTerminalRoom({ ...finished, eliminated_emails: [actors[0].email], fan_scenario: "standard" }, "draw"), "invalid_ranked_terminal");
+});
+Deno.test("FAN draws are neutral for rating, wins, losses, role statistics and achievements", () => {
+  const m = new Mission().lobby().start();
+  m.open();
+  for (let i = 1; i < 4; i++) m.vote(i, actors[0].email);
+  assert.equal(aggregateCompetitiveStats(m.history).size, 0);
+  assert.equal(aggregateCompetitiveRoleStats(m.history).size, 0);
+  assert.equal(aggregateAchievementStats(m.history).size, 0);
+  assert.ok(m.history.every((h) => competitiveRatingDelta(h) === 0));
+  const corrupted = m.history.map((h) => ({ ...h, ranked: true, spy_count: 1, won: true }));
+  assert.equal(aggregateCompetitiveStats(corrupted).size, 0);
+  assert.equal(aggregateCompetitiveRoleStats(corrupted).size, 0);
+  assert.equal(aggregateAchievementStats(corrupted).size, 0);
+});
+Deno.test("FAN v2 refuses old concept clients and lets an upgraded participant rejoin", () => {
   const m = new Mission().lobby();
-  rejects(
-    () => m.send("join_room", 4, { client_capabilities: ["multi_spy_v1"] }),
-    "client_update_required",
-  );
-  m.room!.players[1].client_capabilities = [];
-  rejects(
-    () =>
-      m.send("arm_roulette", 0, {
-        expected_lobby_revision: m.room!.lobby_revision,
-      }),
-    "client_update_required",
-  );
+  rejects(() => m.send("join_room", 4, { client_capabilities: ["multi_spy_v1", "fan_mode_v1"] }), "client_update_required");
+  m.room!.players[1].client_capabilities = ["multi_spy_v1", "fan_mode_v1"];
+  rejects(() => m.send("arm_roulette", 0, { expected_lobby_revision: m.room!.lobby_revision }), "client_update_required");
   rejects(() => projectGame(m.room!, actors[1]), "client_update_required");
+  m.send("join_room", 1);
+  assert.ok(projectGame(m.room!, actors[1]));
+  m.start();
+  m.room!.players[1].client_capabilities = ["multi_spy_v1", "fan_mode_v1"];
+  m.now += 60000;
+  m.send("join_room", 1);
+  assert.ok(projectGame(m.room!, actors[1]));
   m.room!.fan_mode_enabled = false;
-  rejects(
-    () =>
-      m.send("update_lobby_state", 0, {
-        mutation_id: m.uuid(),
-        expected_revision: m.room!.lobby_revision,
-        state: { ...lobbyStateFromRoom(m.room!), fan_mode_enabled: true },
-      }),
-    "client_update_required",
-  );
+  m.room!.status = "waiting";
+  m.room!.players[1].client_capabilities = [];
+  rejects(() => m.send("update_lobby_state", 0, {
+    mutation_id: m.uuid(), expected_revision: m.room!.lobby_revision,
+    state: { ...lobbyStateFromRoom(m.room!), fan_mode_enabled: true },
+  }), "client_update_required");
+});
+
+Deno.test("updated FAN client restores a stored v1 room and refreshes its own capabilities on action", () => {
+  const m = new Mission().lobby().start();
+  for (const p of m.room!.players) p.client_capabilities = ["multi_spy_v1", "fan_mode_v1"];
+  assert.equal(projectGame(m.room!, actors[1], caps).status, "playing");
+  rejects(() => projectGame(m.room!, actors[1], ["multi_spy_v1", "fan_mode_v1"]), "client_update_required");
+  m.send("request_vote", 1);
+  assert.ok(m.room!.players[1].client_capabilities.includes("fan_mode_v2"));
+  assert.ok(!m.room!.players[0].client_capabilities.includes("fan_mode_v2"));
 });

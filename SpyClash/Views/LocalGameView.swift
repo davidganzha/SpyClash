@@ -20,15 +20,16 @@ enum LocalInputPresentationPolicy {
 
 enum LocalGameDeadlineOutcome: Equatable {
     case continuePlaying(remainingSeconds: Int)
+    case finalVote
     case spyWins
 }
 
 enum LocalGameDeadlinePolicy {
-    static func outcome(afterTickFrom currentSeconds: Int) -> LocalGameDeadlineOutcome {
+    static func outcome(afterTickFrom currentSeconds: Int, fanEnabled: Bool = false) -> LocalGameDeadlineOutcome {
         let remainingSeconds = max(currentSeconds - 1, 0)
-        return remainingSeconds == 0
-            ? .spyWins
-            : .continuePlaying(remainingSeconds: remainingSeconds)
+        guard remainingSeconds == 0 else { return .continuePlaying(remainingSeconds: remainingSeconds) }
+        // Every FAN match enters the same final ballot, keeping the assignment secret.
+        return fanEnabled ? .finalVote : .spyWins
     }
 }
 
@@ -61,6 +62,7 @@ enum LocalGameAccusationPolicy {
         case continuePlaying
         case spyWins
         case detectivesWin
+        case draw
         case invalidAccusation
     }
 
@@ -75,11 +77,15 @@ enum LocalGameAccusationPolicy {
     static func outcome(
         accusing index: Int,
         spyFlags: [Bool],
-        eliminatedIndices: Set<Int> = []
+        eliminatedIndices: Set<Int> = [],
+        fanEnabled: Bool = false,
+        fanScenario: FanScenario = .standard
     ) -> Outcome {
         guard spyFlags.indices.contains(index), !eliminatedIndices.contains(index) else {
             return .invalidAccusation
         }
+
+        if fanEnabled && fanScenario != .standard { return .draw }
 
         let remainingIndices = spyFlags.indices.filter {
             $0 != index && !eliminatedIndices.contains($0)
@@ -3383,7 +3389,7 @@ struct LocalGameView: View {
                     SpyWordmark(fontSize: 22)
                         .dynamicTypeSize(...DynamicTypeSize.large)
                     Spacer(minLength: 8)
-                    if localPrivateVotes.isEmpty {
+                    if canCancelLocalVote {
                         Button(action: cancelLocalVoteBeforeFirstCast) {
                             Image(systemName: "xmark")
                                 .font(.system(size: 13, weight: .black))
@@ -3436,7 +3442,6 @@ struct LocalGameView: View {
                         stage: localVoteStage,
                         selectedTargetIndex: pendingLocalVoteTargetIndex,
                         language: appState.language,
-                        fanEnabled: session.fanEnabled,
                         onConfirmHandoff: confirmLocalVoteHandoff,
                         onSelectTarget: selectLocalVoteTarget,
                         onConfirmVote: { confirmLocalVote(in: session) }
@@ -3448,7 +3453,7 @@ struct LocalGameView: View {
             .privacySensitive()
             .accessibilityIdentifier("localGame.voting")
             .accessibilityAction(.escape) {
-                if localPrivateVotes.isEmpty {
+                if canCancelLocalVote {
                     cancelLocalVoteBeforeFirstCast()
                 }
             }
@@ -3461,37 +3466,36 @@ struct LocalGameView: View {
         if let session, let winner {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 18) {
-                    MissionRoleCard(
-                        role: winner == .spy ? .spy : .detective(word: session.word),
-                        category: session.category,
-                        theme: localCardTheme,
-                        accent: localCardAccent,
-                        language: appState.language,
-                        isRevealed: true,
-                        size: .compact
-                    )
-                    .dynamicTypeSize(...DynamicTypeSize.large)
-                    .frame(width: 146)
-                    .spyWebEntrance(delay: 0.04, duration: 0.56, y: 34, scale: 0.78)
+                    if winner == .draw {
+                        FanDrawRevealView(scenario: session.fanScenario, language: appState.language)
+                    } else {
+                        MissionRoleCard(
+                            role: winner == .spy ? .spy : .detective(word: session.word),
+                            category: session.category,
+                            theme: localCardTheme,
+                            accent: localCardAccent,
+                            language: appState.language,
+                            isRevealed: true,
+                            size: .compact
+                        )
+                        .dynamicTypeSize(...DynamicTypeSize.large)
+                        .frame(width: 146)
+                        .spyWebEntrance(delay: 0.04, duration: 0.56, y: 34, scale: 0.78)
 
-                    Text(localWinnerTitle(winner, session: session))
-                        .font(SpyTheme.brandFont(size: 44))
-                        .tracking(2.0)
-                        .foregroundStyle(winner == .spy ? SpyTheme.red : .white)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.52)
-                        .spyWebEntrance(delay: 0.10, duration: 0.52, y: 18)
+                        Text(localWinnerTitle(winner, session: session))
+                            .font(SpyTheme.brandFont(size: 44))
+                            .tracking(2.0)
+                            .foregroundStyle(winner == .spy ? SpyTheme.red : .white)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.52)
+                            .spyWebEntrance(delay: 0.10, duration: 0.52, y: 18)
 
-                    if session.fanEnabled {
-                        Text(session.fanScenario.title(appState.language))
-                            .font(SpyTheme.micro).foregroundStyle(SpyTheme.amber)
-                            .accessibilityIdentifier("fanMode.result.scenario")
                     }
                     localResultWordPanel(session)
                         .spyWebEntrance(delay: 0.16, duration: 0.50, y: 16)
 
-                    if !session.spyPlayers.isEmpty {
+                    if winner != .draw && !session.spyPlayers.isEmpty {
                         VStack(spacing: 6) {
                             Text(localized(en: "SPIES WERE", ru: "ШПИОНАМИ БЫЛИ", es: "LOS ESPÍAS ERAN", uk: "ШПИГУНАМИ БУЛИ"))
                                 .font(.system(size: 9, weight: .black, design: .monospaced))
@@ -4313,7 +4317,11 @@ struct LocalGameView: View {
     private func startLocalTimerLoop() {
         timerTask?.cancel()
         timerTask = nil
-        guard phase == .playing, !isLocalGamePaused, secondsRemaining > 0 else { return }
+        guard phase == .playing, !isLocalGamePaused else { return }
+        guard secondsRemaining > 0 else {
+            finishLocalGameAtDeadline()
+            return
+        }
 
         timerTask = Task { @MainActor in
             while !Task.isCancelled {
@@ -4325,10 +4333,10 @@ struct LocalGameView: View {
                 }
                 try? await Task.sleep(for: .seconds(1))
                 guard !Task.isCancelled, phase == .playing, !isLocalGamePaused else { return }
-                switch LocalGameDeadlinePolicy.outcome(afterTickFrom: secondsRemaining) {
+                switch LocalGameDeadlinePolicy.outcome(afterTickFrom: secondsRemaining, fanEnabled: session?.fanEnabled == true) {
                 case let .continuePlaying(remainingSeconds):
                     secondsRemaining = remainingSeconds
-                case .spyWins:
+                case .finalVote, .spyWins:
                     finishLocalGameAtDeadline()
                     return
                 }
@@ -4408,7 +4416,7 @@ struct LocalGameView: View {
               localVoteStage == .ballot,
               let voterIndex = localVoteVoterOrder[safe: localVoteVoterCursor],
               voterIndex != targetIndex,
-              (localVoteVoterOrder.contains(targetIndex) || (session?.fanEnabled == true && FanScenario(localTarget: targetIndex) != nil)) else { return }
+              localVoteVoterOrder.contains(targetIndex) else { return }
         pendingLocalVoteTargetIndex = targetIndex
         HapticManager.shared.fire(.tabSelection)
     }
@@ -4437,12 +4445,6 @@ struct LocalGameView: View {
         let decision: LocalPrivateVoteDecision
         if session.fanEnabled {
             switch FanVotePolicy.decision(active: localVoteVoterOrder, votes: nextVotes) {
-            case let .concept(concept):
-                clearLocalVoteRound()
-                winner = concept == session.fanScenario ? .all : .system
-                setLocalPhase(.results)
-                HapticManager.shared.fire(.notification(winner == .all ? .success : .warning))
-                return
             case let .player(index): decision = .eject(index: index, threshold: localVoteThreshold(in: session))
             case .cancelled: decision = .cancel(threshold: localVoteThreshold(in: session))
             case .pending: decision = .continueVoting(threshold: localVoteThreshold(in: session), viableCandidateIndices: localVoteVoterOrder)
@@ -4486,8 +4488,12 @@ struct LocalGameView: View {
         }
     }
 
+    private var canCancelLocalVote: Bool {
+        localPrivateVotes.isEmpty && !(session?.fanEnabled == true && secondsRemaining <= 0)
+    }
+
     private func cancelLocalVoteBeforeFirstCast() {
-        guard phase == .voting, localPrivateVotes.isEmpty else { return }
+        guard phase == .voting, canCancelLocalVote else { return }
         clearLocalVoteRound()
         setLocalPhase(.playing)
         startLocalTimerLoop()
@@ -4634,6 +4640,7 @@ struct LocalGameView: View {
     }
 
     private func finishLocalGameAtDeadline() {
+        guard phase == .playing else { return }
         timerTask?.cancel()
         timerTask = nil
         isLocalGamePaused = false
@@ -4648,7 +4655,11 @@ struct LocalGameView: View {
         clearLocalVoteRound()
         accusedIndex = nil
         spyGuess = nil
-        winner = session?.fanEnabled == true && session?.fanScenario != .standard ? .system : .spy
+        if session?.fanEnabled == true {
+            startLocalVote()
+            return
+        }
+        winner = .spy
         setLocalPhase(.results)
         HapticManager.shared.fire(.notification(.warning))
     }
@@ -4801,20 +4812,14 @@ struct LocalGameView: View {
     }
 
     private func resolveAccusation(_ index: Int, session: LocalSession) {
-        if session.fanEnabled && session.fanScenario != .standard {
-            accusedIndex = index
-            winner = .system
-            timerTask?.cancel()
-            setLocalPhase(.results)
-            HapticManager.shared.fire(.notification(.warning))
-            return
-        }
         accusedIndex = index
         spyGuess = nil
         let outcome = LocalGameAccusationPolicy.outcome(
             accusing: index,
             spyFlags: session.players.map(\.isSpy),
-            eliminatedIndices: eliminatedPlayerIndices
+            eliminatedIndices: eliminatedPlayerIndices,
+            fanEnabled: session.fanEnabled,
+            fanScenario: session.fanScenario
         )
 
         guard outcome != .invalidAccusation else { return }
@@ -4858,6 +4863,11 @@ struct LocalGameView: View {
             winner = .detectives
             setLocalPhase(.results)
             HapticManager.shared.fire(.notification(.success))
+        case .draw:
+            timerTask?.cancel()
+            winner = .draw
+            setLocalPhase(.results)
+            HapticManager.shared.fire(.milestone)
         case .invalidAccusation:
             break
         }
@@ -4988,7 +4998,7 @@ struct LocalGameView: View {
     }
 
     private func localWinnerTitle(_ winner: LocalWinner, session: LocalSession) -> String {
-        if winner == .all || winner == .system { return FanModeCopy(language: appState.language).result(won: winner == .all) }
+        if winner == .draw { return FanModeCopy(language: appState.language).drawTitle }
         guard winner == .spy, session.spyPlayers.count > 1 else {
             return winner.title(copy)
         }
@@ -5118,14 +5128,26 @@ struct LocalGameView: View {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
         let basePreview = LocalSession.preview
+        let requestedFanScenario = previewArgumentValue(prefix: "--spyclash-preview-local-fan-scenario=")
+            .flatMap(FanScenario.init(rawValue:))
+        let previewFanScenario = requestedFanScenario ?? (normalized == "fan-draw" ? .allSpies : .standard)
+        let previewFanEnabled = requestedFanScenario != nil || normalized == "fan-draw"
+        let previewPlayers = basePreview.players.map { player in
+            LocalPlayer(
+                id: player.id, name: player.name, avatar: player.avatar,
+                isSpy: previewFanScenario == .allSpies || (previewFanScenario == .standard && player.isSpy)
+            )
+        }
         let preview = LocalSession(
             word: basePreview.word,
             category: basePreview.category,
-            spyIndices: basePreview.spyIndices,
+            spyIndices: previewPlayers.indices.filter { previewPlayers[$0].isSpy },
             pool: basePreview.pool,
-            players: basePreview.players,
+            players: previewPlayers,
             mode: previewLocalMode ?? basePreview.mode,
-            spiesKnowEachOther: basePreview.spiesKnowEachOther
+            spiesKnowEachOther: basePreview.spiesKnowEachOther,
+            fanEnabled: previewFanEnabled,
+            fanScenario: previewFanScenario
         )
 
         players = preview.players.map(\.name)
@@ -5258,6 +5280,9 @@ struct LocalGameView: View {
             phase = .results
             winner = .spy
             spyGuess = preview.word
+        case "fan-draw":
+            phase = .results
+            winner = .draw
         default:
             phase = .setup
             session = nil
@@ -6008,14 +6033,13 @@ private enum LocalPhase: Hashable {
 private enum LocalWinner {
     case spy
     case detectives
-    case all
-    case system
+    case draw
 
     func title(_ copy: LocalGameCopy) -> String {
         switch self {
         case .spy: copy.spyWins
-        case .detectives, .all: copy.detectivesWin
-        case .system: "SYSTEM WINS"
+        case .detectives: copy.detectivesWin
+        case .draw: "DRAW"
         }
     }
 }

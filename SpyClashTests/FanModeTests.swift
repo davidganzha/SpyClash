@@ -13,27 +13,30 @@ final class FanModeTests: XCTestCase {
         XCTAssertEqual(FanModeSettings(isEnabled: true, allSpiesChance: 0, noSpiesChance: 0).scenario(roll: 0), .standard)
     }
 
-    func testConceptNeedsEveryEligibleVoterAndSplitBallotContinues() {
-        let all = FanScenario.allSpies.localTarget
-        let no = FanScenario.noSpies.localTarget
-        let firstTwo = [LocalPrivateVote(voterIndex: 0, targetIndex: all), LocalPrivateVote(voterIndex: 1, targetIndex: all)]
-        XCTAssertEqual(FanVotePolicy.decision(active: [0, 1, 2], votes: firstTwo), .pending)
-        XCTAssertEqual(FanVotePolicy.decision(active: [0, 1, 2], votes: firstTwo + [.init(voterIndex: 2, targetIndex: all)]), .concept(.allSpies))
-        XCTAssertEqual(FanVotePolicy.decision(active: [0, 1, 2], votes: firstTwo + [.init(voterIndex: 2, targetIndex: no)]), .cancelled)
-        XCTAssertNil(FanVotePolicy.appending(voter: 0, target: no, active: [0, 1, 2], votes: firstTwo))
-        XCTAssertNil(FanVotePolicy.appending(voter: 4, target: no, active: [0, 1, 2], votes: []))
-        XCTAssertNil(FanVotePolicy.appending(voter: 0, target: 0, active: [0, 1, 2], votes: []))
+    func testOnlyPlayersCanReceiveVotes() {
+        for invalidTarget in [-1, -2, 0, 9] {
+            XCTAssertNil(FanVotePolicy.appending(voter: 0, target: invalidTarget, active: [0, 1, 2], votes: []))
+        }
+        let votes = [LocalPrivateVote(voterIndex: 0, targetIndex: 2)]
+        XCTAssertNil(FanVotePolicy.appending(voter: 0, target: 1, active: [0, 1, 2], votes: votes))
+        XCTAssertNil(FanVotePolicy.appending(voter: 4, target: 1, active: [0, 1, 2], votes: []))
+        XCTAssertEqual(FanVotePolicy.decision(active: [0, 1, 2], votes: votes), .pending)
+        XCTAssertEqual(FanVotePolicy.decision(active: [0, 1, 2], votes: votes + [.init(voterIndex: 1, targetIndex: 2)]), .player(2))
     }
 
-    func testPlayerAccusationAndInvalidVotesDoNotResolveAConcept() {
-        let votes = [LocalPrivateVote(voterIndex: 0, targetIndex: 2), LocalPrivateVote(voterIndex: 1, targetIndex: 2)]
-        XCTAssertEqual(FanVotePolicy.decision(active: [0, 1, 2], votes: votes), .player(2))
-        let invalid = [LocalPrivateVote(voterIndex: 9, targetIndex: -1), .init(voterIndex: 0, targetIndex: -1), .init(voterIndex: 0, targetIndex: -1)]
-        XCTAssertEqual(FanVotePolicy.decision(active: [0, 1, 2], votes: invalid), .pending)
+    func testSplitBallotContinuesAndLegacyConceptVotesCannotEndGame() {
+        let split = [LocalPrivateVote(voterIndex: 0, targetIndex: 1), .init(voterIndex: 1, targetIndex: 2), .init(voterIndex: 2, targetIndex: 0)]
+        XCTAssertEqual(FanVotePolicy.decision(active: [0, 1, 2], votes: split), .cancelled)
+        for target in [-1, -2] {
+            let legacyVotes = (0..<3).map { LocalPrivateVote(voterIndex: $0, targetIndex: target) }
+            XCTAssertEqual(FanVotePolicy.decision(active: [0, 1, 2], votes: legacyVotes), .pending)
+        }
+        let duplicates = [LocalPrivateVote(voterIndex: 0, targetIndex: 2), .init(voterIndex: 0, targetIndex: 2), .init(voterIndex: 9, targetIndex: 2)]
+        XCTAssertEqual(FanVotePolicy.decision(active: [0, 1, 2], votes: duplicates), .pending)
     }
 
     @MainActor
-    func testLobbySettingsRoundTripAndConceptRecoveryScope() throws {
+    func testLobbySettingsRoundTripAndConceptVotesAreRejected() throws {
         var room = GameRoom.previewRoom(status: "playing")
         room.fanModeEnabled = true
         room.fanAllSpiesChance = 99
@@ -41,9 +44,9 @@ final class FanModeTests: XCTestCase {
         room.matchID = "fan-test-match"
         room.detectiveVoteRoundID = "fan-vote"
         let actor = try XCTUnwrap(room.activePlayers.first?.email)
-        XCTAssertNotNil(DetectiveVoteCastScope(room: room, actorEmail: actor, targetEmail: FanScenario.noSpies.voteTarget))
+        XCTAssertNil(DetectiveVoteCastScope(room: room, actorEmail: actor, targetEmail: "__fan_no_spies__"))
         room.fanModeEnabled = false
-        XCTAssertNil(DetectiveVoteCastScope(room: room, actorEmail: actor, targetEmail: FanScenario.noSpies.voteTarget))
+        XCTAssertNil(DetectiveVoteCastScope(room: room, actorEmail: actor, targetEmail: "__fan_no_spies__"))
         room.fanModeEnabled = true
         let encoded = try JSONEncoder().encode(room)
         let decoded = try JSONDecoder().decode(GameRoom.self, from: encoded)

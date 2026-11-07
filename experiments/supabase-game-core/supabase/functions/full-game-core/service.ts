@@ -35,12 +35,12 @@ function member(room, actor) {
   return Array.isArray(room?.players) && room.players.some(p => p.user_id === actor.id && p.email === actor.email)
     && !(room.departed_player_emails || []).includes(actor.email);
 }
-function visible(room, actor) {
+function visible(room, actor, currentCapabilities) {
   if (!room || room.closed === true || ['ended', 'closed'].includes(room.status) || !member(room, actor)) return null;
-  return projectGame(room, actor);
+  return projectGame(room, actor, currentCapabilities);
 }
-function roomResponse(room, actor, receipt = undefined) {
-  return { room: visible(room, actor), revision: Number(room?.room_revision || 0), ...(receipt ? { receipt } : {}) };
+function roomResponse(room, actor, receipt = undefined, currentCapabilities = undefined) {
+  return { room: visible(room, actor, currentCapabilities), revision: Number(room?.room_revision || 0), ...(receipt ? { receipt } : {}) };
 }
 function validUUID(value, label) {
   if (!uuidPattern.test(String(value || ''))) throw new GameServiceError('invalid_' + label, label + ' must be a UUID.');
@@ -228,7 +228,7 @@ async function readGame(db, actor, body) {
     if (!member(stored.state, actor)) throw new GameServiceError('not_member', 'You are no longer a member of this room.', 403);
   }
   if (stored) assertFanCapablePlayer(stored.state, { client_capabilities: body.client_capabilities });
-  return { status: 200, body: roomResponse(stored?.state, actor) };
+  return { status: 200, body: roomResponse(stored?.state, actor, undefined, body.client_capabilities) };
 }
 async function mutatePack(tx, actor, body) {
   const action = body.action;

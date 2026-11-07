@@ -17,7 +17,8 @@ struct DetectiveVoteCancellationEvent: Equatable, Identifiable {
         let eventID = Self.clean(room.detectiveVoteCancellationEventID)
         let roundID = Self.clean(room.detectiveVoteCancellationRoundID)
         let reason = Self.clean(room.detectiveVoteCancellationReason).lowercased()
-        guard !roomID.isEmpty,
+        guard room.normalizedStatus == "playing",
+              !roomID.isEmpty,
               !eventID.isEmpty,
               !roundID.isEmpty,
               reason == Self.supportedReason,

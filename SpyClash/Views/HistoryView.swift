@@ -129,7 +129,7 @@ struct HistoryView: View {
 
     private var metricsHistory: [GameHistory] {
         appState.shouldUsePreviewData
-            ? sortedHistory
+            ? sortedHistory.filter { !$0.isDraw }
             : sortedHistory.filter(\.isOnlineCompetitiveMatch)
     }
 
@@ -221,7 +221,7 @@ struct HistoryView: View {
     }
 
     private var currentWinStreak: Int {
-        sortedHistory.prefix { $0.won == true }.count
+        sortedHistory.filter { !$0.isDraw }.prefix { $0.won == true }.count
     }
 
     private var averageLobbySize: String {
@@ -243,7 +243,7 @@ struct HistoryView: View {
     private func historyRow(_ item: GameHistory, index: Int) -> some View {
         let won = item.won == true
         let role = copy.roleLabel(item.role).uppercased()
-        let accent = won ? SpyTheme.green : SpyTheme.red
+        let accent = item.isDraw ? SpyTheme.amber : won ? SpyTheme.green : SpyTheme.red
 
         return SpyPanel(accent: accent, motionDelay: 0, animatesEntrance: false) {
             HStack(alignment: .center, spacing: 14) {
@@ -291,7 +291,7 @@ struct HistoryView: View {
 
                 Spacer()
 
-                Text(copy.resultLabel(won: won))
+                Text(item.isDraw ? localized(en: "DRAW", ru: "НИЧЬЯ", es: "EMPATE", uk: "НІЧИЯ") : copy.resultLabel(won: won))
                     .font(.system(size: 11, weight: .black, design: .default))
                     .tracking(0.04)
                     .foregroundStyle(accent)

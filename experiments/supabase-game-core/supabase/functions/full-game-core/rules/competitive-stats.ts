@@ -34,6 +34,7 @@ export function isRankedOnlineHistory(
   // email-only rows remain visible to their owner but do not affect mirrors,
   // role rates, or the public leaderboard.
   if (!clean(record?.player_user_id)) return false;
+  if (clean(record?.winner).toLowerCase() === "draw") return false;
   if (!hasSingleSpy(record)) return false;
 
   const matchType = clean(record?.match_type).toLocaleLowerCase();
@@ -80,6 +81,7 @@ export function deduplicateCompetitiveHistory(
 export function competitiveRatingDelta(
   record: Entity,
 ): number {
+  if (clean(record?.winner).toLowerCase() === "draw") return 0;
   const detective = clean(record?.role).toLocaleLowerCase() === "detective";
   if (record?.won === true) return detective ? 30 : 60;
   return detective ? -20 : -40;
