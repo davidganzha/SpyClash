@@ -12,6 +12,7 @@ struct RewardedGenerationAdConfiguration {
     let adUnitID: String
     let isConfigured: Bool
     let isTestConfiguration: Bool
+    let isOwnedSimulatorTestConfiguration: Bool
 
     init(infoDictionary: [String: Any], isDebugBuild: Bool, isSimulator: Bool = false) {
         appID = (infoDictionary["GADApplicationIdentifier"] as? String ?? "")
@@ -27,9 +28,9 @@ struct RewardedGenerationAdConfiguration {
         let isSamplePublisher = appID.hasPrefix("ca-app-pub-3940256099942544") || adUnitID.hasPrefix("ca-app-pub-3940256099942544")
         let validOwnedPair = validApp && validUnit && samePublisher && !isSamplePublisher
         let ownedSimulatorTestEnabled = Self.isEnabled(infoDictionary["SpyClashOwnedAdMobSimulatorTestEnabled"])
+        isOwnedSimulatorTestConfiguration = isDebugBuild && isSimulator && ownedSimulatorTestEnabled && enabled && validOwnedPair
         if isDebugBuild {
-            let allowsOwnedSimulatorTest = isSimulator && ownedSimulatorTestEnabled
-            isConfigured = isTestConfiguration || (enabled && allowsOwnedSimulatorTest && validOwnedPair)
+            isConfigured = isTestConfiguration || isOwnedSimulatorTestConfiguration
         } else {
             // A local test configuration must fail closed if used to archive.
             isConfigured = enabled && validOwnedPair && !ownedSimulatorTestEnabled

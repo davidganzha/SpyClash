@@ -1,0 +1,54 @@
+{
+  "app_id": "69a0e57fa939f578082f8091",
+  "function": "generationRewardAction",
+  "baseline_deployment_id": "0fc7dbca7aae4f298debacbac5ff4c8f",
+  "live_source_matches_prior_published": true,
+  "runtime_files": [
+    {
+      "name": "admob-ssv.ts",
+      "sha256": "3363c7a2428ef786fff41f45ab4bbdb23be72623f75be9799182cc291b45e315",
+      "baseline_sha256": "3363c7a2428ef786fff41f45ab4bbdb23be72623f75be9799182cc291b45e315"
+    },
+    {
+      "name": "base44-context.ts",
+      "sha256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de",
+      "baseline_sha256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de"
+    },
+    {
+      "name": "billing-identity-lifecycle.ts",
+      "sha256": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25",
+      "baseline_sha256": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25"
+    },
+    {
+      "name": "entry.ts",
+      "sha256": "59225d2affcef1967f5183eebfebfa391f7a94078d14d91095f2cdf3c99c4776",
+      "baseline_sha256": "d1e45ed18c67316185c31d4a888c9acae50700fa8cc665e0f447796e77044786"
+    },
+    {
+      "name": "generation-rewards.ts",
+      "sha256": "f690b2f1a5e512e399e2d793673a75263fb6426f6562b4947281788f3c5a2c8b",
+      "baseline_sha256": "9e9ed71cc3ed57da819ad63af92334939a1ad870b06db8f31a21c58dd142bc74"
+    },
+    {
+      "name": "generation-write-lifecycle.ts",
+      "sha256": "0b50f5159baf5271e085ca8363d030be840039e3a1b1ba236ad9f4d4e4e6179f",
+      "baseline_sha256": "0b50f5159baf5271e085ca8363d030be840039e3a1b1ba236ad9f4d4e4e6179f"
+    },
+    {
+      "name": "membership.ts",
+      "sha256": "c0ca269c61ef4df2a65646c4d8c0b033a06e218d6f44d6b3c2dc98ccd6090df4",
+      "baseline_sha256": "c0ca269c61ef4df2a65646c4d8c0b033a06e218d6f44d6b3c2dc98ccd6090df4"
+    },
+    {
+      "name": "quota.ts",
+      "sha256": "4b77aeff53148483316fd5d443b2bbc03b6ff2fcf13b19acc90609f42c2c36be",
+      "baseline_sha256": "4b77aeff53148483316fd5d443b2bbc03b6ff2fcf13b19acc90609f42c2c36be"
+    }
+  ],
+  "changed_files": [
+    "entry.ts",
+    "generation-rewards.ts"
+  ],
+  "production_deployed": false,
+  "target_account_identified": false
+}

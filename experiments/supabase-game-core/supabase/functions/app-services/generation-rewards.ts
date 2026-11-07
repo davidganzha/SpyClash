@@ -2,7 +2,7 @@ import {AppServiceError,requireUUID,type AppActor,type AppContext} from './contr
 import {accountGate} from './account-gate.ts';
 import {nativeGameCenterAccount,resolveNativeGameCenterAccount} from './native-game-center.ts';
 import {verifyLegacyCredential,boundedLegacyJSON} from './legacy-provider.ts';
-import {lockGenerationQuota,nativeRewardStatus,rewardedAdUnit,rewardedGenerationEnabled,type RewardConfig} from './generation-reward-ledger.ts';
+import {lockGenerationQuota,nativeRewardStatus,rewardedAdUnit,type RewardConfig} from './generation-reward-ledger.ts';
 import {verifyAdMobCallback,AdMobVerificationError} from './admob-ssv.ts';
 const evidenceSet=new WeakSet<object>();
 const actions=new Set(['status','prepare','claim_status']);
@@ -63,9 +63,10 @@ export async function dispatchGenerationRewards(ctx:AppContext,body:Record<strin
   }
   const requestID=requireUUID(body.request_id,'request_id');
   const [existing]=await ctx.tx`select * from game_center_private.generation_reward_attempts where user_id=${ctx.actor.id} and attempt_id=${requestID}`;
-  if(!existing&&(status.unlimited||(status.free_remaining||0)>0||status.bonus_credits>0))
+  const testOffer=!status.enabled&&'test_ad_available' in status&&status.test_ad_available===true;
+  if(!existing&&!testOffer&&(status.unlimited||(status.free_remaining||0)>0||status.bonus_credits>0))
     throw new AppServiceError('reward_not_needed','A generation is already available. Refresh your allowance to continue.',409);
-  if(!rewardedGenerationEnabled(ctx.config)||!status.ad_available)throw new AppServiceError('reward_unavailable','A rewarded ad is not available right now.',409);
+  if(!status.ad_available&&!testOffer)throw new AppServiceError('reward_unavailable','A rewarded ad is not available right now.',409);
   const attempt=existing||{attempt_id:requestID,custom_data:requestID+'.native.'+randomToken(),ad_unit_id:rewardedAdUnit(ctx.config)!};
   if(!existing)await ctx.tx`insert into game_center_private.generation_reward_attempts(user_id,attempt_id,custom_data,ad_unit_id)
     values(${ctx.actor.id},${attempt.attempt_id},${attempt.custom_data},${attempt.ad_unit_id})`;

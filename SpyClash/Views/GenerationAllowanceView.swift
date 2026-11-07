@@ -13,7 +13,9 @@ struct GenerationAllowanceView: View {
 
     var body: some View {
         Group {
-            if let status = store.snapshot, status.enabled {
+            if let status = store.snapshot, store.showsTestAdControls {
+                testAdControls(status)
+            } else if let status = store.snapshot, status.enabled {
                 VStack(alignment: .leading, spacing: 10) {
                     if status.unlimited {
                         Label(copy.unlimited, systemImage: "infinity")
@@ -87,6 +89,41 @@ struct GenerationAllowanceView: View {
             watchTask?.cancel()
             store.cancelPresentation()
         }
+    }
+
+    private func testAdControls(_ status: GenerationRewardStatus) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(copy.testTitle)
+            Text(copy.bonus(status.bonusCredits))
+                .foregroundStyle(SpyTheme.green)
+                .accessibilityIdentifier("generation.bonusCredits")
+            Text(copy.testDisclosure).foregroundStyle(SpyTheme.muted)
+            if store.isAwaitingReward {
+                Label(copy.notice(.confirming), systemImage: "clock").foregroundStyle(SpyTheme.amber)
+            } else if status.testAdAvailable {
+                Button {
+                    watchTask?.cancel()
+                    watchTask = Task { await store.watch(testAd: true) }
+                } label: {
+                    Label(store.isWatching ? copy.preparing : copy.testWatch, systemImage: "play.rectangle")
+                        .frame(maxWidth: .infinity)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .buttonStyle(SpyButtonStyle(variant: .outline))
+                .disabled(isGenerating || !store.canWatchTestAd)
+                .accessibilityIdentifier("generation.watchTestAd")
+            }
+            if let notice = store.notice, notice != .confirming {
+                Text(copy.notice(notice))
+                    .foregroundStyle(notice == .earned ? SpyTheme.green : SpyTheme.muted)
+                    .accessibilityIdentifier("generation.notice")
+            }
+        }
+        .font(SpyTheme.mono)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(SpyTheme.panel, in: CutCornerShape(cut: 10))
+        .overlay(CutCornerShape(cut: 10).stroke(SpyTheme.stroke, lineWidth: 1))
     }
 }
 

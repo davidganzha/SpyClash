@@ -39,7 +39,7 @@ const generate = (requestID = crypto.randomUUID()) =>
     prefer_fresh: true,
   });
 const reward = (body: any) => invoke(captured[1], body);
-async function earnBonus() {
+async function earnBonus(options: { beforeDelivery?: () => void; repeat?: number } = {}) {
   const prepared = await reward({
     action: "prepare",
     request_id: crypto.randomUUID(),
@@ -82,21 +82,26 @@ async function earnBonus() {
       Response.json({ keys: [{ keyId: 123, base64: publicKey }] }),
     )) as typeof fetch;
   try {
-    const result = await captured[1](
-      new Request(
-        `https://example.test/function?${query}&signature=${signature}&key_id=123`,
-        // Google sends no user authentication or Base44 routing headers.
-        {},
-      ),
-    );
-    assert(result.status === 200, await result.text());
+    options.beforeDelivery?.();
+    for (let i = 0; i < (options.repeat || 1); i++) {
+      const result = await captured[1](
+        new Request(
+          `https://example.test/function?${query}&signature=${signature}&key_id=123`,
+          // Google sends no user authentication or Base44 routing headers.
+          {},
+        ),
+      );
+      assert(result.status === 200, await result.text());
+    }
   } finally {
     globalThis.fetch = originalFetch;
   }
+  return prepared.value;
 }
 function enabled() {
   resetFixture();
   Deno.env.set("SPYCLASH_REWARDED_GENERATION_ENABLED", "true");
+  Deno.env.delete("SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS");
   Deno.env.set(
     "ADMOB_REWARDED_AD_UNIT_ID",
     "ca-app-pub-1111111111111111/1234567890",
@@ -158,6 +163,85 @@ Deno.test("disabling rollout retains prior universal access without advertising"
   Deno.env.set("SPYCLASH_REWARDED_GENERATION_ENABLED", "false");
   for (let i = 0; i < 4; i++) assert((await generate()).status === 200);
   assert(!(await reward({ action: "status" })).value.enabled);
+});
+Deno.test("test allowlist belongs to authenticated exact owner, never request fields or email", async () => {
+  enabled();
+  Deno.env.set("SPYCLASH_REWARDED_GENERATION_ENABLED", "false");
+  for (const value of ["", "*", "fixture", fixture.user.email, "FIXTURE-USER", "another-owner"]) {
+    Deno.env.set("SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS", value);
+    const status = await reward({action: "status", user_id: value, test_ad_available: true, testUser: true});
+    assert(status.status === 200 && !status.value.enabled && status.value.bonus_credits === 0);
+    assert(!("test_ad_available" in status.value));
+    const prepared = await reward({action: "prepare", request_id: crypto.randomUUID(), user_id: value, test_ad_available: true});
+    assert(prepared.status === 503);
+  }
+  Deno.env.set("SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS", " , " + fixture.user.id + " ,another-owner, ");
+  const own = await reward({action: "status"});
+  assert(own.value.test_ad_available === true && own.value.enabled === false && own.value.ad_available === false);
+  fixture.user = {id: "non-target", email: "fixture@example.test", testUser: true};
+  assert(!("test_ad_available" in (await reward({action: "status", user_id: "fixture-user"})).value));
+  assert((await reward({action: "prepare", request_id: crypto.randomUUID(), user_id: "fixture-user"})).status === 503);
+  assert(entity("GenerationReward").rows.length === 0);
+});
+Deno.test("target test ad earns one real credit while existing universal generation access stays unchanged", async () => {
+  enabled();
+  Deno.env.set("SPYCLASH_REWARDED_GENERATION_ENABLED", "false");
+  Deno.env.set("SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS", fixture.user.id);
+  const before = await reward({action: "status"});
+  assert(before.value.enabled === false && before.value.free_remaining === null && before.value.bonus_credits === 0);
+  const prepared = await earnBonus({repeat: 3});
+  const claim = await reward({action: "claim_status", attempt_id: prepared.attempt_id});
+  assert(claim.value.state === "earned" && claim.value.bonus_credits === 1 && claim.value.enabled === false);
+  assert(entity("GenerationReward").rows.length === 1);
+  assert((await reward({action: "prepare", request_id: crypto.randomUUID()})).status === 200);
+  for (let i = 0; i < 4; i++) {
+    const generated = await generate();
+    assert(generated.status === 200 && generated.value.ai_remaining === null);
+  }
+  assert((await reward({action: "status"})).value.bonus_credits === 1);
+  assert(entity("GenerationReward").rows.find(row => row.attempt_id === prepared.attempt_id).state === "earned");
+  fixture.user = {id: "non-target", email: "other@example.test"};
+  for (let i = 0; i < 4; i++) assert((await generate()).status === 200);
+  const other = await reward({action: "status"});
+  assert(other.value.enabled === false && other.value.bonus_credits === 0 && !("test_ad_available" in other.value));
+});
+Deno.test("test offer preserves paid LIMITLESS and cannot bypass the normal activated offer rules", async () => {
+  enabled();
+  Deno.env.set("SPYCLASH_REWARDED_GENERATION_ENABLED", "false");
+  Deno.env.set("SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS", fixture.user.id);
+  await entity("Entitlement").create({user_id: fixture.user.id, provider: "apple", source_key: "apple:fixture", status: "active", expires_at: new Date(Date.now() + 86400000).toISOString()});
+  await earnBonus();
+  const status = await reward({action: "status"});
+  assert(status.value.unlimited && status.value.test_ad_available && status.value.bonus_credits === 1);
+  assert((await generate()).value.ai_remaining === null);
+  Deno.env.set("SPYCLASH_REWARDED_GENERATION_ENABLED", "true");
+  const normal = await reward({action: "status"});
+  assert(normal.value.enabled && !("test_ad_available" in normal.value));
+  assert((await reward({action: "prepare", request_id: crypto.randomUUID()})).value.code === "reward_not_needed");
+});
+Deno.test("revoking test access blocks new offers but settles an already issued signed event once", async () => {
+  enabled();
+  Deno.env.set("SPYCLASH_REWARDED_GENERATION_ENABLED", "false");
+  Deno.env.set("SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS", fixture.user.id);
+  const prepared = await earnBonus({beforeDelivery: () => Deno.env.delete("SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS"), repeat: 2});
+  assert((await reward({action: "prepare", request_id: crypto.randomUUID()})).status === 503);
+  const hidden = await reward({action: "claim_status", attempt_id: prepared.attempt_id});
+  assert(hidden.value.state === "earned" && hidden.value.bonus_credits === 0 && !("test_ad_available" in hidden.value));
+  Deno.env.set("SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS", fixture.user.id);
+  assert((await reward({action: "status"})).value.bonus_credits === 1);
+});
+Deno.test("test mode still rejects unsigned grants, client claims and missing or demo ad configuration", async () => {
+  enabled();
+  Deno.env.set("SPYCLASH_REWARDED_GENERATION_ENABLED", "false");
+  Deno.env.set("SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS", fixture.user.id);
+  assert((await reward({action: "claim", earned: true})).status === 400);
+  assert((await captured[1](new Request("https://example.test/function?user_id=fixture-user&reward_amount=1"))).status === 400);
+  for (const unit of ["", "invalid", "ca-app-pub-3940256099942544/1712485313"]) {
+    Deno.env.set("ADMOB_REWARDED_AD_UNIT_ID", unit);
+    assert((await reward({action: "status"})).value.test_ad_available === false);
+    assert((await reward({action: "prepare", request_id: crypto.randomUUID()})).status === 503);
+  }
+  assert(entity("GenerationReward").rows.length === 0);
 });
 Deno.test("definitive AI quality failure restores reserved bonus exactly once", async () => {
   enabled();

@@ -1,0 +1,2 @@
+Check supabase/functions/app-services/index.ts
+Check tests/game-center/rewarded-generation-integration.ts

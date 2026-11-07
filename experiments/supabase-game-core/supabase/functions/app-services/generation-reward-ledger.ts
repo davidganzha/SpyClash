@@ -4,6 +4,11 @@ import {nativeGameCenterHasMembership} from './native-game-center.ts';
 export type RewardConfig=Record<string,string|undefined>;
 export const REWARDED_AI_DAILY_LIMIT=3;
 export const rewardedGenerationEnabled=(config:RewardConfig)=>config.SPYCLASH_REWARDED_GENERATION_ENABLED==='true';
+/** Pass only the authenticated, server-owned account ID. This test capability
+ * never enables the generation quota or changes membership benefits. */
+export function isGenerationRewardTester(config:RewardConfig,userID:string):boolean {
+  return Boolean(userID)&&Boolean(config.SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS?.split(',').some(id=>id.trim()===userID));
+}
 export function rewardedAdUnit(config:RewardConfig):string|null {
   const unit=config.ADMOB_REWARDED_AD_UNIT_ID?.trim()||'';
   // Google's demo units cannot deliver SSV to our own backend. Never pretend
@@ -18,7 +23,13 @@ export async function nativeRewardStatus(tx:any,userID:string,config:RewardConfi
   const [{today,resets_at}]=await tx`select (clock_timestamp() at time zone 'UTC')::date::text as today,
     (((clock_timestamp() at time zone 'UTC')::date+1)::timestamp at time zone 'UTC') as resets_at`;
   const enabled=rewardedGenerationEnabled(config);
-  if(!enabled)return {enabled:false,unlimited,daily_limit:REWARDED_AI_DAILY_LIMIT,free_remaining:null,bonus_credits:0,resets_at:new Date(resets_at).toISOString(),ad_available:false};
+  if(!enabled){
+    const tester=isGenerationRewardTester(config,userID);
+    const [{credits}]=tester?await tx`select count(*)::int as credits from game_center_private.generation_reward_attempts
+      where user_id=${userID} and state='earned' and consumed_request_id is null`:[{credits:0}];
+    return {enabled:false,unlimited,daily_limit:REWARDED_AI_DAILY_LIMIT,free_remaining:null,bonus_credits:credits,
+      resets_at:new Date(resets_at).toISOString(),ad_available:false,...(tester?{test_ad_available:Boolean(rewardedAdUnit(config))}:{})};
+  }
   const [{used}]=await tx`select count(*)::int as used from game_center_private.generation_requests
     where user_id=${userID} and usage_date=${today} and charged and charge_source in ('legacy','free')`;
   const [{credits}]=await tx`select count(*)::int as credits from game_center_private.generation_reward_attempts

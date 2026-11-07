@@ -15,6 +15,7 @@ import {
   GenerationRewardError,
   generationRewardStatus,
   grantVerifiedGenerationReward,
+  isGenerationRewardTester,
   prepareRewardAttempt,
   rewardAttempt,
   rewardedGenerationEnabled,
@@ -114,6 +115,7 @@ Deno.serve(async (req) => {
             userID: user.id,
             unlimited: membership.active,
             enabled,
+            testUser: !enabled && isGenerationRewardTester(user.id),
             adUnit,
           });
           if (body.action === "status") return status;
@@ -140,7 +142,9 @@ Deno.serve(async (req) => {
               attempt_id: row.attempt_id,
             };
           }
-          if (!enabled || !adUnit) {
+          const testOffer = !enabled && "test_ad_available" in status &&
+            status.test_ad_available === true;
+          if ((!enabled && !testOffer) || !adUnit) {
             throw new GenerationRewardError(
               "reward_ads_unavailable",
               "Rewarded ads are not available yet.",
@@ -148,8 +152,8 @@ Deno.serve(async (req) => {
             );
           }
           if (
-            membership.active || (status.free_remaining ?? 0) > 0 ||
-            status.bonus_credits > 0
+            !testOffer && (membership.active || (status.free_remaining ?? 0) > 0 ||
+              status.bonus_credits > 0)
           ) {
             throw new GenerationRewardError(
               "reward_not_needed",

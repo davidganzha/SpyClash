@@ -36,6 +36,7 @@ final class RewardedGenerationAdPresenter: NSObject {
     var isConfigured: Bool { configuration.isConfigured }
     var canOfferAds: Bool { isConfigured && !isBusy }
     var isTestConfiguration: Bool { configuration.isTestConfiguration }
+    var isOwnedSimulatorTestConfiguration: Bool { configuration.isOwnedSimulatorTestConfiguration }
     var configuredAdUnitID: String { configuration.adUnitID }
 
     @ObservationIgnored private let configuration: RewardedGenerationAdConfiguration

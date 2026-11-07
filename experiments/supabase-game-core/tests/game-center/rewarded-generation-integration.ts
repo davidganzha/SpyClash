@@ -4,7 +4,7 @@ import postgres from 'postgres';
 import {executeApp,validateCommand} from '../../supabase/functions/app-services/dispatcher.ts';
 import {prepareNativeGeneration} from '../../supabase/functions/app-services/native-generation.ts';
 import {createGenerationRewardSSVHandler,prepareGenerationRewards} from '../../supabase/functions/app-services/generation-rewards.ts';
-import {nativeRewardStatus} from '../../supabase/functions/app-services/generation-reward-ledger.ts';
+import {isGenerationRewardTester,nativeRewardStatus} from '../../supabase/functions/app-services/generation-reward-ledger.ts';
 import {createNativeAIRelayHandler} from '../../supabase/functions/app-services/native-ai-relay.ts';
 import {relayHeaders} from '../../supabase/functions/app-services/native-ai-relay-protocol.ts';
 import {AppServiceError} from '../../supabase/functions/app-services/contracts.ts';
@@ -33,8 +33,8 @@ const actor=async()=>{
 };
 const status=async(a:any,c=config)=>await db.begin(async(tx:any)=>await nativeRewardStatus(tx,a.id,c));
 const app=async(a:any,body:any,c=config,evidence?:any)=>await executeApp(db,a,body,c,evidence);
-const prepare=async(a:any,id:string=crypto.randomUUID())=>{
-  const response=await app(a,{service:'generation_rewards',action:'prepare',request_id:id});
+const prepare=async(a:any,id:string=crypto.randomUUID(),c=config)=>{
+  const response=await app(a,{service:'generation_rewards',action:'prepare',request_id:id},c);
   assert.equal(response.status,200,JSON.stringify(response));return response.body;
 };
 const keys=generateKeyPairSync('ec',{namedCurve:'prime256v1'});
@@ -84,6 +84,70 @@ try{
     assert.equal((await status(a,off)).enabled,false);assert.equal((await app(a,{service:'generation_rewards',action:'prepare',request_id:crypto.randomUUID()},off)).status,409);
     assert.equal((await status(a,{...config,ADMOB_REWARDED_AD_UNIT_ID:'ca-app-pub-3940256099942544/1712485313'})).ad_available,false);
     const result=await generate(a,crypto.randomUUID(),provider,off);assert.equal(result.body.ai_limit,10);
+  });
+  await check('test allowlist matches only an exact authenticated account and never enables the quota',async()=>{
+    const a=await actor(),other=await actor();
+    const c={...config,SPYCLASH_REWARDED_GENERATION_ENABLED:'false',SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS:' , '+a.id+' ,another-canonical-id, '};
+    assert.equal(isGenerationRewardTester(c,a.id),true);
+    for(const value of ['',other.id,'ANOTHER-CANONICAL-ID',a.id.slice(0,-1),a.id+'@example.test'])assert.equal(isGenerationRewardTester(c,value),false);
+    assert.equal(isGenerationRewardTester({...c,SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS:'*'},a.id),false);
+    assert.equal(isGenerationRewardTester({...c,SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS:''},a.id),false);
+    const allowed=await status(a,c);assert.equal(allowed.enabled,false);assert.ok('test_ad_available' in allowed);assert.equal(allowed.test_ad_available,true);
+    other.metadata={user_id:a.id,is_generation_reward_tester:true};
+    const snapshot=await app(other,{service:'generation_rewards',action:'status',user_id:a.id,test_ad_available:true},c);
+    assert.equal(snapshot.status,200);assert.equal(snapshot.body.enabled,false);assert.equal(snapshot.body.bonus_credits,0);
+    assert.equal('test_ad_available' in snapshot.body,false);
+    assert.equal((await app(other,{service:'generation_rewards',action:'prepare',request_id:crypto.randomUUID(),user_id:a.id,test_ad_available:true},c)).status,409);
+    const [{count}]=await db`select count(*)::int as count from game_center_private.generation_reward_attempts where user_id=${other.id}`;assert.equal(count,0);
+  });
+  await check('test offer grants one real signed credit without consuming or changing the existing free quota',async()=>{
+    const a=await actor(),other=await actor();
+    const c={...config,SPYCLASH_REWARDED_GENERATION_ENABLED:'false',SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS:a.id};
+    const attempt=await prepare(a,crypto.randomUUID(),c),url=signed(attempt);
+    assert.equal(attempt.enabled,false);assert.equal(attempt.free_remaining,null);assert.equal(attempt.bonus_credits,0);
+    assert.equal(attempt.ssv_user_id,a.id);assert.equal((await status(a,c)).bonus_credits,0);
+    const callbacks=await Promise.all([ssv(new Request(url)),ssv(new Request(url))]);assert.ok(callbacks.every(r=>r.status===200));
+    const claim=await app(a,{service:'generation_rewards',action:'claim_status',attempt_id:attempt.attempt_id},c);
+    assert.equal(claim.body.state,'earned');assert.equal(claim.body.enabled,false);assert.equal(claim.body.bonus_credits,1);
+    assert.equal((await prepare(a,crypto.randomUUID(),c)).bonus_credits,1);
+    for(const account of [a,other]){
+      for(let i=0;i<10;i++){
+        const result=await generate(account,crypto.randomUUID(),provider,c);assert.equal(result.status,200);assert.equal(result.body.ai_limit,10);
+      }
+      assert.equal((await generate(account,crypto.randomUUID(),provider,c)).status,429);
+    }
+    assert.equal((await status(a,c)).bonus_credits,1);
+    const [credit]=await db`select consumed_request_id from game_center_private.generation_reward_attempts where user_id=${a.id} and attempt_id=${attempt.attempt_id}`;
+    assert.equal(credit.consumed_request_id,null);
+  });
+  await check('allowlisted LIMITLESS test preserves unlimited generation and never needs entitlement changes',async()=>{
+    const a=await actor();await db`insert into app_private.membership_grants values(${a.id},true,clock_timestamp()+interval '1 day')`;
+    const c={...config,SPYCLASH_REWARDED_GENERATION_ENABLED:'false',SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS:a.id};
+    const before=await status(a,c);assert.equal(before.unlimited,true);assert.ok('test_ad_available' in before);assert.equal(before.test_ad_available,true);assert.equal(before.ad_available,false);
+    const attempt=await prepare(a,crypto.randomUUID(),c);assert.equal((await ssv(new Request(signed(attempt)))).status,200);
+    const result=await generate(a,crypto.randomUUID(),provider,c);assert.equal(result.status,200);assert.equal(result.body.ai_limit,null);
+    const after=await status(a,c);assert.equal(after.unlimited,true);assert.equal(after.enabled,false);assert.equal(after.bonus_credits,1);
+  });
+  await check('removing test access blocks new offers but preserves issued late callbacks and credit recovery',async()=>{
+    const a=await actor(),off={...config,SPYCLASH_REWARDED_GENERATION_ENABLED:'false'};
+    const c={...off,SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS:a.id},attempt=await prepare(a,crypto.randomUUID(),c);
+    assert.equal((await app(a,{service:'generation_rewards',action:'prepare',request_id:crypto.randomUUID()},off)).status,409);
+    const publicSSV=createRewardedGenerationSSVGateway({config:off,fetch:googleKeys,native:ssv});
+    assert.equal((await publicSSV(new Request(signed(attempt)))).status,200);
+    const hidden=await status(a,off);assert.equal(hidden.enabled,false);assert.equal(hidden.bonus_credits,0);assert.equal('test_ad_available' in hidden,false);
+    assert.equal((await app(a,{service:'generation_rewards',action:'claim_status',attempt_id:attempt.attempt_id},off)).body.state,'earned');
+    assert.equal((await status(a,c)).bonus_credits,1);
+    const normal={...c,SPYCLASH_REWARDED_GENERATION_ENABLED:'true'};
+    assert.equal('test_ad_available' in await status(a,normal),false);
+    assert.equal((await app(a,{service:'generation_rewards',action:'prepare',request_id:crypto.randomUUID()},normal)).status,409);
+  });
+  await check('test allowlist cannot offer a missing or Google demo unit',async()=>{
+    const a=await actor();
+    for(const unit of ['', 'invalid','ca-app-pub-3940256099942544/1712485313']){
+      const c={...config,SPYCLASH_REWARDED_GENERATION_ENABLED:'false',SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS:a.id,ADMOB_REWARDED_AD_UNIT_ID:unit};
+      const snapshot=await status(a,c);assert.ok('test_ad_available' in snapshot);assert.equal(snapshot.test_ad_available,false);
+      assert.equal((await app(a,{service:'generation_rewards',action:'prepare',request_id:crypto.randomUUID()},c)).status,409);
+    }
   });
   await check('valid signed SSV earns exactly one bonus across concurrent duplicate callbacks',async()=>{
     const a=await actor();await exhaust(a);const attempt=await prepare(a),same=await prepare(a,attempt.attempt_id);assert.equal(attempt.custom_data,same.custom_data);

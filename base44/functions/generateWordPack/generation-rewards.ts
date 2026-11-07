@@ -8,6 +8,18 @@ export function rewardedGenerationEnabled(): boolean {
     return false;
   }
 }
+/** The caller supplies auth.me().id, never a request-body ID or email. This
+ * capability only offers a supervised ad test; generation quotas stay off. */
+export function isGenerationRewardTester(userID: string): boolean {
+  try {
+    return Boolean(userID) && Boolean(
+      Deno.env.get("SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS")?.split(",")
+        .some((id) => id.trim() === userID),
+    );
+  } catch {
+    return false;
+  }
+}
 export function configuredRewardAdUnit(): string | null {
   let value = "";
   try {
@@ -109,6 +121,7 @@ export async function generationRewardStatus(
     userID: string;
     unlimited: boolean;
     enabled: boolean;
+    testUser?: boolean;
     adUnit: string | null;
     now?: Date;
   },
@@ -123,9 +136,12 @@ export async function generationRewardStatus(
       unlimited: input.unlimited,
       daily_limit: 3,
       free_remaining: null,
-      bonus_credits: 0,
+      bonus_credits: input.testUser
+        ? await availableRewardCredits(input.rewardStore, input.userID)
+        : 0,
       resets_at: resetsAt,
       ad_available: false,
+      ...(input.testUser ? { test_ad_available: Boolean(input.adUnit) } : {}),
     };
   }
   const [usage, bonus] = await Promise.all([

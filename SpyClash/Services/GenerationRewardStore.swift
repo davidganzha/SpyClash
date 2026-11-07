@@ -13,8 +13,13 @@ extension Base44Client: GenerationRewardsClientProtocol {}
 @MainActor
 protocol GenerationRewardAdPresenting: AnyObject {
     var canOfferAds: Bool { get }
+    var isOwnedSimulatorTestConfiguration: Bool { get }
     func present(adUnitID: String, userID: String, customData: String, onEarned: @escaping @MainActor () -> Void) async throws -> Bool
     func cancelPendingPresentation()
+}
+
+extension GenerationRewardAdPresenting {
+    var isOwnedSimulatorTestConfiguration: Bool { false }
 }
 
 extension RewardedGenerationAdPresenter: GenerationRewardAdPresenting {}
@@ -44,6 +49,16 @@ final class GenerationRewardStore {
     var canWatch: Bool {
         guard let snapshot else { return false }
         return snapshot.enabled && !snapshot.unlimited && snapshot.needsReward && snapshot.adAvailable && ads.canOfferAds && !isWatching && !isAwaitingReward
+    }
+
+    var showsTestAdControls: Bool {
+        !isPreview && scope.isAuthenticated && ads.isOwnedSimulatorTestConfiguration
+            && snapshot?.testAdAvailable == true
+    }
+
+    var canWatchTestAd: Bool {
+        showsTestAdControls && snapshot?.testAdAvailable == true && ads.canOfferAds
+            && !isWatching && !isAwaitingReward
     }
 
     func bind(_ scope: MembershipScope, preview: GenerationRewardStatus? = nil) {
@@ -80,8 +95,8 @@ final class GenerationRewardStore {
     func reportLimitReached() { notice = .limitReached }
     func generationDidComplete() { notice = nil }
 
-    func watch() async {
-        guard canWatch, let accountID = scope.userID else { return }
+    func watch(testAd: Bool = false) async {
+        guard (testAd ? canWatchTestAd : canWatch), let accountID = scope.userID else { return }
         let account = scope, id = UUID()
         watchID = id; isWatching = true; notice = nil
         defer { if watchID == id { isWatching = false; watchID = nil } }

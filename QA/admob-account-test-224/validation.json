@@ -1,0 +1,34 @@
+{
+  "xcode_tests": {
+    "passed": 22,
+    "failed": 0,
+    "skipped": 0,
+    "suites": [
+      "GenerationRewardStoreTests",
+      "RewardedGenerationAdConfigurationTests"
+    ],
+    "xcresult": "/Users/davidganzha/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/result-bundles/test_sim_2026-11-07T19-43-14-974Z_pid66901_36eb34be.xcresult"
+  },
+  "runtime_ad_completed": false,
+  "real_credit_confirmed": false,
+  "runtime_install": {
+    "build": "224",
+    "backend": "base44",
+    "signed_identity_validated": true,
+    "bundle_sha256": "9e675c01d47a8a8c37267919ebd7224928b6b682a683c5647a83c2fc43ff28a5"
+  },
+  "runtime_ad_configuration": {
+    "GADApplicationIdentifier": "ca-app-pub-5081830513960558~9442838104",
+    "SpyClashAdsEnabled": "YES",
+    "SpyClashRewardedAdUnitID": "ca-app-pub-5081830513960558/6816674766",
+    "SpyClashOwnedAdMobSimulatorTestEnabled": "YES"
+  },
+  "google_provider_in_app": "accounts.google.com sign-in form, fresh attempt after broker patch",
+  "backend_candidate_checks": {
+    "base44_route": 16,
+    "base44_ledger_and_ssv": 14,
+    "native_supabase_db": 23,
+    "production_test_capability_published": false,
+    "allowlisted_account": null
+  }
+}

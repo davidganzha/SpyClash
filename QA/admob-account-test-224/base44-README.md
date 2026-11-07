@@ -1,0 +1,13 @@
+# Base44 test-offer preparation — not deployed
+
+Fresh read-only pull of generationRewardAction in app 69a0e57fa939f578082f8091 matched all 8 files of published deployment 0fc7dbca7aae4f298debacbac5ff4c8f. The candidate changes only entry.ts (repository main.ts) and generation-rewards.ts. Six other runtime files are identical. The repository's generateWordPack helper copy is synchronized for source consistency; its generator logic is unchanged and does not need publication for this test. Neither native Supabase app-services nor the existing public SSV gateway needs to be deployed for the normal Debug client's Base44 path.
+
+A separate exact allowlist, SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS, is read only after auth.me() supplies the canonical owner ID. With SPYCLASH_REWARDED_GENERATION_ENABLED=false, only the allowlisted account gets test_ad_available and its actual unused bonus balance. enabled/ad_available stay false and free_remaining stays null. Status and behavior for all other accounts remain unchanged; request-body IDs, client flags, email and wildcards confer no access. Existing CASADA/LIMITLESS generation access, quotas and memberships stay unchanged for the test account too.
+
+Test preparation intentionally permits existing free access, LIMITLESS and existing bonus credits. The same server-issued UUID.legacy.token and real Google SSV validation/ledger grant are used; no synthetic/local credits or signed-callback bypass exist. Revoking the allowlist blocks new offers while preserving already-issued callbacks and stored rewards. The normal global-off generator does not consume the stored test bonus.
+
+The planned operation is one supervised ad, verify +1 against authoritative status, then revoke this test allowlist. There is no permanent one-view cap: while explicitly allowlisted, the tester can request another test. Do not enable the global flag or change quota, balances, entitlements, schemas or callback settings for this trial.
+
+Validation uses the exact 8-file runtime candidate with an offline SDK fixture and the existing generator: 16 actual-route tests (11 previous +5 test cases) and 14 ledger/SSV tests passed. Deno typechecking is included in these test invocations. No provider/AdMob/cloud endpoint was contacted by tests; the only live operation here was the read-only source pull. Production publication and account configuration are pending separate parent coordination after the authenticated account is identified; no guessed identifier is included in this package.
+
+RUNTIME-SHA256.json identifies every runtime byte and LIVE-TO-CANDIDATE.diff contains the exact two-file patch. Root owns release version, commit and final approval/activation sequence.

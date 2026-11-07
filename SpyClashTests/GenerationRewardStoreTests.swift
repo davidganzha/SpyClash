@@ -142,6 +142,114 @@ final class GenerationRewardStoreTests: XCTestCase {
         let unknown = try JSONDecoder().decode(GenerationRewardStatus.self, from: Data(#"{"enabled":true,"unlimited":false}"#.utf8))
         XCTAssertFalse(unknown.canGenerate)
         XCTAssertFalse(unknown.adAvailable)
+        XCTAssertFalse(unknown.testAdAvailable)
+        let test = try JSONDecoder().decode(GenerationRewardStatus.self, from: Data(#"{"enabled":false,"unlimited":true,"bonus_credits":2,"test_ad_available":true}"#.utf8))
+        XCTAssertTrue(test.testAdAvailable)
+        XCTAssertTrue(test.canGenerate)
+        XCTAssertFalse(test.needsReward)
+        XCTAssertEqual(test.bonusCredits, 2)
+    }
+
+    func testOwnedAdRequiresServerEligibilityAndDoesNotChangeRegularAllowance() async {
+        let client = RewardClientMock(status: .init(enabled: false, unlimited: true, freeRemaining: nil, adAvailable: false))
+        let ads = RewardAdMock()
+        ads.isOwnedSimulatorTestConfiguration = true
+        let store = GenerationRewardStore(client: client, ads: ads, defaults: storage())
+        store.bind(owner)
+        _ = await store.refresh()
+        await store.watch(testAd: true)
+        XCTAssertFalse(store.showsTestAdControls)
+        XCTAssertFalse(store.canWatchTestAd)
+        XCTAssertEqual(client.prepareCount, 0)
+        XCTAssertEqual(ads.presentCount, 0)
+
+        client.status = .init(enabled: false, unlimited: true, freeRemaining: nil, bonusCredits: 2, adAvailable: false, testAdAvailable: true)
+        _ = await store.refresh()
+        XCTAssertTrue(store.showsTestAdControls)
+        XCTAssertTrue(store.canWatchTestAd)
+        XCTAssertFalse(store.canWatch)
+        XCTAssertTrue(store.snapshot?.canGenerate == true)
+        await store.watch()
+        XCTAssertEqual(client.prepareCount, 0, "Test capability must not authorize the ordinary ad action.")
+        XCTAssertEqual(store.snapshot?.bonusCredits, 2)
+    }
+
+    func testSampleOrNonTestBuildAndPreviewCannotUseServerTestCapability() async {
+        let status = GenerationRewardStatus(enabled: false, unlimited: false, freeRemaining: 3, adAvailable: false, testAdAvailable: true)
+        let client = RewardClientMock(status: status), ads = RewardAdMock()
+        let store = GenerationRewardStore(client: client, ads: ads, defaults: storage())
+        store.bind(owner)
+        _ = await store.refresh()
+        await store.watch(testAd: true)
+        XCTAssertFalse(store.canWatchTestAd)
+        XCTAssertFalse(store.showsTestAdControls)
+        XCTAssertEqual(client.prepareCount, 0)
+        ads.isOwnedSimulatorTestConfiguration = true
+        store.bind(owner, preview: status)
+        await store.watch(testAd: true)
+        XCTAssertFalse(store.canWatchTestAd)
+        XCTAssertEqual(client.prepareCount, 0)
+        XCTAssertEqual(ads.presentCount, 0)
+    }
+
+    func testOwnedAdUsesRealPrepareAndWaitsForServerBonusWithoutSpendingFreeCredits() async {
+        let status = GenerationRewardStatus(enabled: false, unlimited: true, freeRemaining: 3, bonusCredits: 2, adAvailable: false, testAdAvailable: true)
+        let client = RewardClientMock(status: status), ads = RewardAdMock(), saved = storage()
+        ads.isOwnedSimulatorTestConfiguration = true
+        let store = GenerationRewardStore(client: client, ads: ads, defaults: saved, sleep: { _ in throw CancellationError() })
+        store.bind(owner)
+        _ = await store.refresh()
+        await store.watch(testAd: true)
+        XCTAssertEqual(client.prepareCount, 1)
+        XCTAssertEqual(ads.presentCount, 1)
+        XCTAssertEqual(ads.presentedUserID, "server-reward-owner")
+        XCTAssertEqual(ads.presentedCustomData, "opaque-server-issued-data")
+        XCTAssertEqual(store.snapshot?.bonusCredits, 2, "An SDK reward callback cannot award a real test credit.")
+        XCTAssertEqual(store.snapshot?.freeRemaining, 3)
+        XCTAssertTrue(store.snapshot?.unlimited == true)
+        XCTAssertTrue(store.isAwaitingReward)
+        XCTAssertFalse(store.canWatchTestAd)
+
+        client.claimState = "earned"
+        client.status = .init(enabled: false, unlimited: true, freeRemaining: 3, bonusCredits: 3, adAvailable: false, testAdAvailable: true)
+        await store.recoverPending()
+        XCTAssertEqual(store.snapshot?.bonusCredits, 3)
+        XCTAssertEqual(store.snapshot?.freeRemaining, 3)
+        XCTAssertTrue(store.snapshot?.unlimited == true)
+        XCTAssertEqual(store.notice, .earned)
+        XCTAssertTrue(store.showsTestAdControls)
+        XCTAssertNil(store.pendingAttemptID)
+        XCTAssertEqual(ads.presentCount, 1)
+
+        client.status = .init(enabled: false, unlimited: true, freeRemaining: nil, adAvailable: false)
+        _ = await store.refresh()
+        XCTAssertFalse(store.showsTestAdControls, "Revoking the server capability must remove all test controls.")
+        XCTAssertFalse(store.canWatchTestAd)
+        store.bind(.init(userID: "another", accessToken: "another-token"))
+        XCTAssertFalse(store.showsTestAdControls)
+        XCTAssertFalse(store.canWatchTestAd)
+    }
+
+    func testOwnedTestRewardRecoversAfterRelaunchWithoutReplayingAd() async {
+        let status = GenerationRewardStatus(enabled: false, unlimited: true, freeRemaining: nil, adAvailable: false, testAdAvailable: true)
+        let client = RewardClientMock(status: status), ads = RewardAdMock(), saved = storage()
+        ads.isOwnedSimulatorTestConfiguration = true
+        let store = GenerationRewardStore(client: client, ads: ads, defaults: saved, sleep: { _ in throw CancellationError() })
+        store.bind(owner)
+        _ = await store.refresh()
+        await store.watch(testAd: true)
+        client.claimState = "earned"
+        client.status = .init(enabled: false, unlimited: true, freeRemaining: nil, bonusCredits: 1, adAvailable: false, testAdAvailable: true)
+        let restored = GenerationRewardStore(client: client, ads: ads, defaults: saved)
+        restored.bind(owner)
+        XCTAssertTrue(restored.isAwaitingReward)
+        _ = await restored.refresh()
+        XCTAssertEqual(restored.snapshot?.bonusCredits, 1)
+        XCTAssertEqual(restored.notice, .earned)
+        XCTAssertTrue(restored.showsTestAdControls)
+        XCTAssertNil(restored.pendingAttemptID)
+        XCTAssertEqual(client.prepareCount, 1)
+        XCTAssertEqual(ads.presentCount, 1)
     }
 }
 
@@ -149,6 +257,7 @@ final class GenerationRewardStoreTests: XCTestCase {
     var status: GenerationRewardStatus
     var claimState = "pending"
     var claimCount = 0
+    var prepareCount = 0
     var statusHandler: (() async throws -> GenerationRewardStatus)?
     init(status: GenerationRewardStatus) { self.status = status }
     func generationRewardStatus() async throws -> GenerationRewardStatus {
@@ -156,7 +265,8 @@ final class GenerationRewardStoreTests: XCTestCase {
         return status
     }
     func prepareGenerationReward(requestID: UUID) async throws -> GenerationRewardAttempt {
-        .init(attemptID: requestID, customData: "opaque-server-issued-data", adUnitID: "test", userID: "owner")
+        prepareCount += 1
+        return .init(attemptID: requestID, customData: "opaque-server-issued-data", adUnitID: "test", userID: "server-reward-owner")
     }
     func generationRewardClaim(attemptID: UUID) async throws -> GenerationRewardClaim {
         claimCount += 1
@@ -166,13 +276,18 @@ final class GenerationRewardStoreTests: XCTestCase {
 
 @MainActor private final class RewardAdMock: GenerationRewardAdPresenting {
     var canOfferAds = true
+    var isOwnedSimulatorTestConfiguration = false
     var earned = true
     var failure: Error?
     var presentCount = 0
     var earlyEarned = false
+    var presentedUserID: String?
+    var presentedCustomData: String?
     var handler: (() async throws -> Bool)?
     func present(adUnitID: String, userID: String, customData: String, onEarned: @escaping @MainActor () -> Void) async throws -> Bool {
         presentCount += 1
+        presentedUserID = userID
+        presentedCustomData = customData
         if earlyEarned { onEarned() }
         if let handler {
             let result = try await handler()

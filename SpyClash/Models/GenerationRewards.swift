@@ -10,6 +10,7 @@ struct GenerationRewardStatus: Decodable, Equatable {
     let bonusCredits: Int
     let resetsAt: Date?
     let adAvailable: Bool
+    let testAdAvailable: Bool
 
     var canGenerate: Bool { !enabled || unlimited || (freeRemaining ?? 0) > 0 || bonusCredits > 0 }
     var needsReward: Bool { enabled && !unlimited && !canGenerate }
@@ -18,12 +19,14 @@ struct GenerationRewardStatus: Decodable, Equatable {
         case enabled, unlimited
         case dailyLimit = "daily_limit", freeRemaining = "free_remaining"
         case bonusCredits = "bonus_credits", resetsAt = "resets_at", adAvailable = "ad_available"
+        case testAdAvailable = "test_ad_available"
     }
 
-    init(enabled: Bool, unlimited: Bool, dailyLimit: Int = 3, freeRemaining: Int?, bonusCredits: Int = 0, resetsAt: Date? = nil, adAvailable: Bool) {
+    init(enabled: Bool, unlimited: Bool, dailyLimit: Int = 3, freeRemaining: Int?, bonusCredits: Int = 0, resetsAt: Date? = nil, adAvailable: Bool, testAdAvailable: Bool = false) {
         self.enabled = enabled; self.unlimited = unlimited; self.dailyLimit = dailyLimit
         self.freeRemaining = freeRemaining; self.bonusCredits = bonusCredits
         self.resetsAt = resetsAt; self.adAvailable = adAvailable
+        self.testAdAvailable = testAdAvailable
     }
 
     init(from decoder: Decoder) throws {
@@ -34,6 +37,7 @@ struct GenerationRewardStatus: Decodable, Equatable {
         freeRemaining = try values.decodeIfPresent(Int.self, forKey: .freeRemaining).map { max(0, $0) }
         bonusCredits = max(0, try values.decodeIfPresent(Int.self, forKey: .bonusCredits) ?? 0)
         adAvailable = try values.decodeIfPresent(Bool.self, forKey: .adAvailable) ?? false
+        testAdAvailable = try values.decodeIfPresent(Bool.self, forKey: .testAdAvailable) ?? false
         if let raw = try values.decodeIfPresent(String.self, forKey: .resetsAt) {
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -76,6 +80,9 @@ struct GenerationRewardCopy {
     var title: String { text("YOUR OWN THEMES", "ТВОИ ТЕМЫ", "TUS PROPIOS TEMAS", "ТВОЇ ТЕМИ") }
     var watch: String { text("Watch an ad → +1 generation", "Посмотреть рекламу → +1 генерация", "Ver anuncio → +1 generación", "Переглянути рекламу → +1 генерація") }
     var preparing: String { text("Preparing the ad…", "Подготавливаем рекламу…", "Preparando el anuncio…", "Готуємо рекламу…") }
+    var testWatch: String { text("Test an ad → +1 generation", "Проверить рекламу → +1 генерация", "Probar anuncio → +1 generación", "Перевірити рекламу → +1 генерація") }
+    var testTitle: String { text("AD TEST", "ПРОВЕРКА РЕКЛАМЫ", "PRUEBA DE ANUNCIO", "ПЕРЕВІРКА РЕКЛАМИ") }
+    var testDisclosure: String { text("Ad test for this account. Free generations and LIMITLESS access stay unchanged. The bonus appears after server confirmation.", "Тест рекламы для этого аккаунта. Бесплатные генерации и LIMITLESS не меняются. Бонус появится после подтверждения сервера.", "Prueba de anuncio para esta cuenta. Las generaciones gratis y LIMITLESS no cambian. El bono aparece tras la confirmación del servidor.", "Тест реклами для цього акаунта. Безкоштовні генерації та LIMITLESS не змінюються. Бонус з’явиться після підтвердження сервера.") }
     var unlimited: String { text("LIMITLESS · Unlimited generations", "LIMITLESS · Генерации без лимита", "LIMITLESS · Generaciones ilimitadas", "LIMITLESS · Генерації без ліміту") }
     var alternative: String { text("Saved packs and manual word entry remain free.", "Готовые наборы и ручной ввод слов остаются бесплатными.", "Los paquetes guardados y las palabras manuales siguen siendo gratis.", "Готові набори й ручне введення слів залишаються безкоштовними.") }
     var disclosure: String { text("Complete one rewarded ad to get one additional generation. The bonus stays until you use it.", "Заверши просмотр одной рекламы, чтобы получить одну дополнительную генерацию. Бонус сохранится до использования.", "Completa un anuncio con recompensa para obtener una generación adicional. El bono se conserva hasta usarlo.", "Заверши перегляд однієї реклами, щоб отримати одну додаткову генерацію. Бонус збережеться до використання.") }

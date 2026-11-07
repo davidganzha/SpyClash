@@ -85,6 +85,22 @@ final class RewardedGenerationAdConfigurationTests: XCTestCase {
         XCTAssertTrue(make(debug: false, app: liveApp, unit: liveUnit, ownedSimulatorTest: "NO").isConfigured)
     }
 
+    func testOwnedTestingCapabilityRequiresEveryBuildAndConfigurationGate() {
+        XCTAssertTrue(make(debug: true, app: liveApp, unit: liveUnit, simulator: true, ownedSimulatorTest: true).isOwnedSimulatorTestConfiguration)
+        for configuration in [
+            make(debug: true, app: liveApp, unit: liveUnit, simulator: true),
+            make(debug: true, app: liveApp, unit: liveUnit, simulator: true, ownedSimulatorTest: false),
+            make(debug: true, app: liveApp, unit: liveUnit, simulator: false, ownedSimulatorTest: true),
+            make(debug: true, app: liveApp, unit: liveUnit, enabled: "NO", simulator: true, ownedSimulatorTest: true),
+            make(debug: true, app: RewardedGenerationAdConfiguration.testAppID, unit: RewardedGenerationAdConfiguration.testAdUnitID, simulator: true, ownedSimulatorTest: true),
+            make(debug: false, app: liveApp, unit: liveUnit, simulator: true, ownedSimulatorTest: true),
+            make(debug: false, app: liveApp, unit: liveUnit, simulator: false, ownedSimulatorTest: "NO"),
+            make(debug: true, app: liveApp, unit: "ca-app-pub-9999999999999999/0987654321", simulator: true, ownedSimulatorTest: true),
+        ] {
+            XCTAssertFalse(configuration.isOwnedSimulatorTestConfiguration)
+        }
+    }
+
     private func make(debug: Bool, app: String, unit: String, enabled: String = "YES", simulator: Bool = false, ownedSimulatorTest: Any? = nil) -> RewardedGenerationAdConfiguration {
         var infoDictionary: [String: Any] = [
             "GADApplicationIdentifier": app,
