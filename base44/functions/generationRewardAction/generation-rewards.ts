@@ -170,7 +170,7 @@ export async function prepareRewardAttempt(
     const prepared: RewardRecord = {
       user_id: input.userID,
       attempt_id: attemptID,
-      custom_data: `${attemptID}.${nonce}`,
+      custom_data: `${attemptID}.legacy.${nonce}`,
       ad_unit_id: input.adUnit,
       issued_at: (input.now || new Date()).toISOString(),
       state: "pending",
@@ -220,7 +220,7 @@ export async function grantVerifiedGenerationReward(
       "Invalid generation reward callback.",
       400,
     );
-  const match = /^([0-9a-f-]{36})\.([0-9a-f]{64})$/.exec(c.customData);
+  const match = /^([0-9a-f-]{36})(?:\.legacy)?\.([0-9a-f]{64})$/.exec(c.customData);
   if (!match) throw invalid();
   const row = await rewardAttempt(input.store, c.userID, rewardUUID(match[1]));
   if (

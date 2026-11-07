@@ -190,3 +190,7 @@ verify_jwt = false
 # The endpoint independently verifies the certificate, signature and replay key.
 [functions.game-center-session]
 verify_jwt = false
+
+# Only this signed Google webhook is public. app-services retains its JWT gate.
+[functions.rewarded-generation-ssv]
+verify_jwt = false

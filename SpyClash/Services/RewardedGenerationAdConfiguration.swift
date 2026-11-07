@@ -1,7 +1,9 @@
 import Foundation
 
 /// An explicit, build-time gate. A server response cannot enable advertising or
-/// replace the configured ad unit. Debug builds can only request Google's test ad.
+/// replace the configured ad unit. Debug defaults to Google's sample pair. An
+/// explicit local gate permits owned IDs on Simulator, which Google treats as
+/// a test device. Physical Debug builds remain limited to the sample pair.
 struct RewardedGenerationAdConfiguration {
     static let testAppID = "ca-app-pub-3940256099942544~1458002511"
     static let testAdUnitID = "ca-app-pub-3940256099942544/1712485313"
@@ -11,32 +13,38 @@ struct RewardedGenerationAdConfiguration {
     let isConfigured: Bool
     let isTestConfiguration: Bool
 
-    init(infoDictionary: [String: Any], isDebugBuild: Bool) {
+    init(infoDictionary: [String: Any], isDebugBuild: Bool, isSimulator: Bool = false) {
         appID = (infoDictionary["GADApplicationIdentifier"] as? String ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         adUnitID = (infoDictionary["SpyClashRewardedAdUnitID"] as? String ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let enabled: Bool
-        if let value = infoDictionary["SpyClashAdsEnabled"] as? String {
-            enabled = ["YES", "TRUE", "1"].contains(value.uppercased())
-        } else {
-            enabled = (infoDictionary["SpyClashAdsEnabled"] as? Bool) == true
-        }
+        let enabled = Self.isEnabled(infoDictionary["SpyClashAdsEnabled"])
         let isTest = appID == Self.testAppID && adUnitID == Self.testAdUnitID
         isTestConfiguration = isDebugBuild && enabled && isTest
+        let validApp = appID.range(of: #"^ca-app-pub-[0-9]{16}~[0-9]{10}$"#, options: .regularExpression) != nil
+        let validUnit = adUnitID.range(of: #"^ca-app-pub-[0-9]{16}/[0-9]{10}$"#, options: .regularExpression) != nil
+        let samePublisher = appID.split(separator: "~").first == adUnitID.split(separator: "/").first
+        let isSamplePublisher = appID.hasPrefix("ca-app-pub-3940256099942544") || adUnitID.hasPrefix("ca-app-pub-3940256099942544")
+        let validOwnedPair = validApp && validUnit && samePublisher && !isSamplePublisher
+        let ownedSimulatorTestEnabled = Self.isEnabled(infoDictionary["SpyClashOwnedAdMobSimulatorTestEnabled"])
         if isDebugBuild {
-            isConfigured = isTestConfiguration
+            let allowsOwnedSimulatorTest = isSimulator && ownedSimulatorTestEnabled
+            isConfigured = isTestConfiguration || (enabled && allowsOwnedSimulatorTest && validOwnedPair)
         } else {
-            let validApp = appID.range(of: #"^ca-app-pub-[0-9]{16}~[0-9]{10}$"#, options: .regularExpression) != nil
-            let validUnit = adUnitID.range(of: #"^ca-app-pub-[0-9]{16}/[0-9]{10}$"#, options: .regularExpression) != nil
-            let samePublisher = appID.split(separator: "~").first == adUnitID.split(separator: "/").first
-            let isSamplePublisher = appID.hasPrefix("ca-app-pub-3940256099942544") || adUnitID.hasPrefix("ca-app-pub-3940256099942544")
-            isConfigured = enabled && validApp && validUnit && samePublisher && !isSamplePublisher
+            // A local test configuration must fail closed if used to archive.
+            isConfigured = enabled && validOwnedPair && !ownedSimulatorTestEnabled
         }
     }
 
     func permits(adUnitID: String) -> Bool {
         isConfigured && adUnitID == self.adUnitID
+    }
+
+    private static func isEnabled(_ value: Any?) -> Bool {
+        if let string = value as? String {
+            return ["YES", "TRUE", "1"].contains(string.uppercased())
+        }
+        return (value as? Bool) == true
     }
 
     static var current: Self {
@@ -45,6 +53,11 @@ struct RewardedGenerationAdConfiguration {
         #else
         let isDebugBuild = false
         #endif
-        return Self(infoDictionary: Bundle.main.infoDictionary ?? [:], isDebugBuild: isDebugBuild)
+        #if targetEnvironment(simulator)
+        let isSimulator = true
+        #else
+        let isSimulator = false
+        #endif
+        return Self(infoDictionary: Bundle.main.infoDictionary ?? [:], isDebugBuild: isDebugBuild, isSimulator: isSimulator)
     }
 }

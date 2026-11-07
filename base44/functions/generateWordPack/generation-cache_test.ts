@@ -95,19 +95,23 @@ Deno.test("cache keys exactly normalize user, theme, language, and prompt versio
   );
 });
 
-Deno.test("current single-pass theme-language prompt bypasses cached v4 variants", async () => {
+Deno.test("whole-item generation bypasses both older cache versions", async () => {
   const legacy = await request({
     promptVersion: "word-pack-2026-08-29-v4-gpt_5_4",
   });
   const current = await request({ promptVersion: WORD_PACK_CACHE_VERSION });
+  const splitItems = await request({
+    promptVersion: "word-pack-2026-08-29-v5-gpt_5_4-single-pass-theme-language",
+  });
 
   assertEquals(WORD_PACK_PROMPT_VERSION, "word-pack-2026-08-29-v5");
   assertEquals(BASE44_WORD_PACK_MODEL, "gpt_5_4");
   assertEquals(
     WORD_PACK_CACHE_VERSION,
-    "word-pack-2026-08-29-v5-gpt_5_4-single-pass-theme-language",
+    "word-pack-2026-08-29-v5-gpt_5_4-whole-items-v2",
   );
   assertNotEquals(current.cacheKey, legacy.cacheKey);
+  assertNotEquals(current.cacheKey, splitItems.cacheKey);
 });
 
 Deno.test("legacy theme-auto cache cannot collide with an explicit English locale", async () => {

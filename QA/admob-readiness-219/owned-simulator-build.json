@@ -1,0 +1,10 @@
+{
+  "CFBundleIdentifier": "com.spyclash.ios",
+  "CFBundleShortVersionString": "1.0.4",
+  "CFBundleVersion": "219",
+  "GADApplicationIdentifier": "ca-app-pub-5081830513960558~9442838104",
+  "SpyClashRewardedAdUnitID": "ca-app-pub-5081830513960558/6816674766",
+  "SpyClashOwnedAdMobSimulatorTestEnabled": "YES",
+  "SpyClashAdsEnabled": "YES",
+  "DTPlatformName": "iphonesimulator"
+}

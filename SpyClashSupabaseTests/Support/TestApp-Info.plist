@@ -47,6 +47,8 @@
 	<string>Measure the distance to nearby SpyClash players so the radar can show precise proximity.</string>
 	<key>SpyClashAdsEnabled</key>
 	<string>$(SPYCLASH_ADS_ENABLED)</string>
+	<key>SpyClashOwnedAdMobSimulatorTestEnabled</key>
+	<string>$(SPYCLASH_OWNED_ADMOB_SIMULATOR_TEST_ENABLED)</string>
 	<key>SpyClashRewardedAdUnitID</key>
 	<string>$(SPYCLASH_REWARDED_AD_UNIT_ID)</string>
 	<key>UIAppFonts</key>

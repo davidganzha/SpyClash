@@ -61,11 +61,12 @@ export async function dispatchGenerationRewards(ctx:AppContext,body:Record<strin
     // a delayed, valid signed event can still credit the general balance later.
     return {...status,state:attempt.state==='earned'?'earned':new Date(attempt.expires_at).getTime()+300_000<=ctx.now.getTime()?'expired':'pending'};
   }
-  const [existing]=await ctx.tx`select * from game_center_private.generation_reward_attempts where user_id=${ctx.actor.id} and attempt_id=${body.request_id}`;
+  const requestID=requireUUID(body.request_id,'request_id');
+  const [existing]=await ctx.tx`select * from game_center_private.generation_reward_attempts where user_id=${ctx.actor.id} and attempt_id=${requestID}`;
   if(!existing&&(status.unlimited||(status.free_remaining||0)>0||status.bonus_credits>0))
     throw new AppServiceError('reward_not_needed','A generation is already available. Refresh your allowance to continue.',409);
   if(!rewardedGenerationEnabled(ctx.config)||!status.ad_available)throw new AppServiceError('reward_unavailable','A rewarded ad is not available right now.',409);
-  const attempt=existing||{attempt_id:body.request_id,custom_data:body.request_id+'.'+randomToken(),ad_unit_id:rewardedAdUnit(ctx.config)!};
+  const attempt=existing||{attempt_id:requestID,custom_data:requestID+'.native.'+randomToken(),ad_unit_id:rewardedAdUnit(ctx.config)!};
   if(!existing)await ctx.tx`insert into game_center_private.generation_reward_attempts(user_id,attempt_id,custom_data,ad_unit_id)
     values(${ctx.actor.id},${attempt.attempt_id},${attempt.custom_data},${attempt.ad_unit_id})`;
   return {...status,attempt_id:attempt.attempt_id,custom_data:attempt.custom_data,ad_unit_id:attempt.ad_unit_id,user_id:ctx.actor.id,ssv_user_id:ctx.actor.id};

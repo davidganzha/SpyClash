@@ -11,10 +11,11 @@ configs:
   SupabasePublicRelease: release
 settings:
   base:
-    CURRENT_PROJECT_VERSION: 218
+    CURRENT_PROJECT_VERSION: 219
     MARKETING_VERSION: 1.0.4
     SWIFT_VERSION: 6.0
     SPYCLASH_ADS_ENABLED: "NO"
+    SPYCLASH_OWNED_ADMOB_SIMULATOR_TEST_ENABLED: "NO"
     # The linked SDK validates its app ID at launch even with ads disabled.
     # Keep a valid Google sample bootstrap ID until owned release IDs are configured.
     # Ads stay disabled and Release rejects all Google sample advertising IDs.
@@ -80,6 +81,7 @@ targets:
         GADApplicationIdentifier: "$(SPYCLASH_ADMOB_APP_ID)"
         GADDelayAppMeasurementInit: true
         SpyClashAdsEnabled: "$(SPYCLASH_ADS_ENABLED)"
+        SpyClashOwnedAdMobSimulatorTestEnabled: "$(SPYCLASH_OWNED_ADMOB_SIMULATOR_TEST_ENABLED)"
         SpyClashRewardedAdUnitID: "$(SPYCLASH_REWARDED_AD_UNIT_ID)"
         SKAdNetworkItems:
           - SKAdNetworkIdentifier: cstr6suwn9.skadnetwork
@@ -181,6 +183,7 @@ targets:
         GADApplicationIdentifier: "$(SPYCLASH_ADMOB_APP_ID)"
         GADDelayAppMeasurementInit: true
         SpyClashAdsEnabled: "$(SPYCLASH_ADS_ENABLED)"
+        SpyClashOwnedAdMobSimulatorTestEnabled: "$(SPYCLASH_OWNED_ADMOB_SIMULATOR_TEST_ENABLED)"
         SpyClashRewardedAdUnitID: "$(SPYCLASH_REWARDED_AD_UNIT_ID)"
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
@@ -246,6 +249,7 @@ targets:
         GADApplicationIdentifier: "$(SPYCLASH_ADMOB_APP_ID)"
         GADDelayAppMeasurementInit: true
         SpyClashAdsEnabled: "$(SPYCLASH_ADS_ENABLED)"
+        SpyClashOwnedAdMobSimulatorTestEnabled: "$(SPYCLASH_OWNED_ADMOB_SIMULATOR_TEST_ENABLED)"
         SpyClashRewardedAdUnitID: "$(SPYCLASH_REWARDED_AD_UNIT_ID)"
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"

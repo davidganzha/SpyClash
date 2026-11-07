@@ -8,7 +8,7 @@ import {nativeRewardStatus} from '../../supabase/functions/app-services/generati
 import {createNativeAIRelayHandler} from '../../supabase/functions/app-services/native-ai-relay.ts';
 import {relayHeaders} from '../../supabase/functions/app-services/native-ai-relay-protocol.ts';
 import {AppServiceError} from '../../supabase/functions/app-services/contracts.ts';
-import {createAppRouter} from '../../supabase/functions/app-services/router.ts';
+import {createRewardedGenerationSSVGateway} from '../../supabase/functions/rewarded-generation-ssv/handler.ts';
 
 // Creates and destroys only its own isolated local database. No provider, Auth,
 // AdMob or cloud endpoint is contacted: every external response is a fixture.
@@ -33,7 +33,7 @@ const actor=async()=>{
 };
 const status=async(a:any,c=config)=>await db.begin(async(tx:any)=>await nativeRewardStatus(tx,a.id,c));
 const app=async(a:any,body:any,c=config,evidence?:any)=>await executeApp(db,a,body,c,evidence);
-const prepare=async(a:any,id=crypto.randomUUID())=>{
+const prepare=async(a:any,id:string=crypto.randomUUID())=>{
   const response=await app(a,{service:'generation_rewards',action:'prepare',request_id:id});
   assert.equal(response.status,200,JSON.stringify(response));return response.body;
 };
@@ -87,6 +87,7 @@ try{
   });
   await check('valid signed SSV earns exactly one bonus across concurrent duplicate callbacks',async()=>{
     const a=await actor();await exhaust(a);const attempt=await prepare(a),same=await prepare(a,attempt.attempt_id);assert.equal(attempt.custom_data,same.custom_data);
+    assert.match(attempt.custom_data,new RegExp('^'+attempt.attempt_id+'\\.native\\.[0-9a-f]{64}$'));
     assert.equal((await status(a)).bonus_credits,0);
     const url=signed(attempt),responses=await Promise.all(Array.from({length:8},()=>ssv(new Request(url))));
     assert.equal(responses.every(r=>r.status===200),true);assert.equal((await status(a)).bonus_credits,1);
@@ -103,13 +104,18 @@ try{
     assert.equal((await ssv(new Request(signed(second,{transaction_id:tx})))).status,409);
     assert.equal((await app(other,{service:'generation_rewards',action:'claim_status',attempt_id:attempt.attempt_id})).status,404);
   });
+  await check('uppercase native request IDs issue canonical tokens accepted by the public gateway',async()=>{
+    const a=await actor();await exhaust(a);const id=crypto.randomUUID();const attempt=await prepare(a,id.toUpperCase());
+    assert.equal(attempt.attempt_id,id);assert.ok(attempt.custom_data.startsWith(id+'.native.'));
+    const publicSSV=createRewardedGenerationSSVGateway({config,fetch:googleKeys,native:ssv});
+    assert.equal((await publicSSV(new Request(signed(attempt)))).status,200);assert.equal((await status(a)).bonus_credits,1);
+  });
   await check('late delivery honors a signed event in its issued window and routes without user auth',async()=>{
     const a=await actor();await exhaust(a);const attempt=await prepare(a);
     await db`update game_center_private.generation_reward_attempts set created_at=clock_timestamp()-interval '2 days',expires_at=clock_timestamp()-interval '1 day' where user_id=${a.id}`;
     const request=new Request(signed(attempt,{timestamp:String(Date.now()-129600000)}));
-    const other=async()=>{throw new Error('SSV must not enter bearer auth');};
-    const router=createAppRouter({app:other,maintenance:other,nativeAIRelay:other,generationRewardSSV:ssv});
-    assert.equal((await router(request)).status,200);assert.equal((await status(a)).bonus_credits,1);
+    const publicSSV=createRewardedGenerationSSVGateway({config,fetch:googleKeys,native:ssv});
+    assert.equal((await publicSSV(request)).status,200);assert.equal((await status(a)).bonus_credits,1);
   });
   await check('legacy rewards proxy verifies account mapping and keeps Base44 as the only credit owner',async()=>{
     const a=await actor();await db`delete from game_center_private.accounts where user_id=${a.id}`;

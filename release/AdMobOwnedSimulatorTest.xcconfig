@@ -1,0 +1,8 @@
+// Explicit opt-in for Debug / SupabaseDebug on an iOS Simulator only.
+// Supply with xcodebuild -xcconfig; no project configuration includes this file.
+// The runtime gate rejects this override on physical devices and Release builds.
+// Google automatically treats iOS Simulators as test devices.
+SPYCLASH_ADS_ENABLED = YES
+SPYCLASH_OWNED_ADMOB_SIMULATOR_TEST_ENABLED = YES
+SPYCLASH_ADMOB_APP_ID = ca-app-pub-5081830513960558~9442838104
+SPYCLASH_REWARDED_AD_UNIT_ID = ca-app-pub-5081830513960558/6816674766

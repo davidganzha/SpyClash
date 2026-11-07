@@ -177,6 +177,17 @@ plist_add "$disabled_admob/Info.plist" \
 expect_pass "disabled Google Mobile Ads still has a valid startup application ID" \
   "$gate" --signed "$disabled_admob"
 
+plist_add "$disabled_admob/Info.plist" 'Add :SpyClashOwnedAdMobSimulatorTestEnabled string NO'
+expect_pass "disabled owned-unit test override is distributable" \
+  "$gate" --signed "$disabled_admob"
+plist_add "$disabled_admob/Info.plist" 'Set :SpyClashOwnedAdMobSimulatorTestEnabled YES'
+expect_fail_with "owned-unit Simulator test override cannot be distributed" \
+  'Owned AdMob Simulator testing must be disabled' "$gate" --signed "$disabled_admob"
+plist_add "$disabled_admob/Info.plist" 'Delete :SpyClashOwnedAdMobSimulatorTestEnabled'
+plist_add "$disabled_admob/Info.plist" 'Add :SpyClashOwnedAdMobSimulatorTestEnabled bool true'
+expect_fail_with "boolean owned-unit Simulator test override cannot be distributed" \
+  'Owned AdMob Simulator testing must be disabled' "$gate" --signed "$disabled_admob"
+
 missing_admob_id=$(make_disabled_admob_fixture "$test_root/admob-missing-id" iphoneos true)
 expect_fail_with "disabled Google Mobile Ads rejects a missing application ID" \
   'requires a valid GADApplicationIdentifier even when advertising is disabled' \

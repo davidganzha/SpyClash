@@ -236,6 +236,13 @@ case "$internal_only" in
   *) fail "An internal-only TestFlight bundle cannot pass the public release gate." ;;
 esac
 
+# A local owned-unit test override must never become a distribution artifact.
+owned_admob_test=$(/usr/libexec/PlistBuddy -c 'Print :SpyClashOwnedAdMobSimulatorTestEnabled' "$app/Info.plist" 2>/dev/null || true)
+case "$owned_admob_test" in
+  ''|NO|no|false|FALSE|0) ;;
+  *) fail "Owned AdMob Simulator testing must be disabled in a release bundle." ;;
+esac
+
 # The embedded SDK validates its application ID during normal app startup,
 # before our advertising feature switch can prevent an explicit SDK start.
 if [ -d "$app/Frameworks/GoogleMobileAds.framework" ]; then

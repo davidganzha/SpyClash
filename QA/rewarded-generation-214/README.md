@@ -1,5 +1,7 @@
 # Rewarded generation — build 214
 
+Historical checkpoint. See [build 219 readiness](../admob-readiness-219/README.md) for the verified AdMob account state, safe owned-unit testing and dedicated SSV callback preparation. Build 218 also replaced the empty Release app ID with a valid sample bootstrap ID while keeping ads disabled.
+
 Prepared on 2026-11-05 from build 213 (`440a5438`). Marketing version remains 1.0.3. This checkpoint does not deploy or activate any production environment.
 
 ## Player behavior

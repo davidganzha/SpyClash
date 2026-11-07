@@ -113,7 +113,29 @@ Deno.test("reward preparation retries a lost create acknowledgement without dupl
     now,
   });
   assert(a.custom_data === b.custom_data && store.rows.length === 1);
+  assert(new RegExp(`^${requestID}\\.legacy\\.[0-9a-f]{64}$`).test(a.custom_data));
   assert(a.user_id === userID);
+});
+Deno.test("previously issued unnamespaced attempt remains recoverable and earns once", async () => {
+  const store = new Store();
+  const input = { store, guard, userID, requestID, adUnit, now };
+  const prepared = await prepareRewardAttempt(input);
+  const oldToken = prepared.custom_data.replace(".legacy.", ".");
+  store.rows[0].custom_data = oldToken;
+  const recovered = await prepareRewardAttempt(input);
+  assert(recovered.custom_data === oldToken && store.rows.length === 1);
+  const callback = {
+    transactionID: "previous-format",
+    customData: recovered.custom_data,
+    userID,
+    adUnit,
+    rewardAmount: 1,
+    rewardItem: "generation",
+    timestamp: now.getTime() + 1000,
+  };
+  await grantVerifiedGenerationReward({ store, guard, callback, now });
+  await grantVerifiedGenerationReward({ store, guard, callback, now });
+  assert(await availableRewardCredits(store, userID) === 1);
 });
 Deno.test("verified reward duplicate and lost write acknowledgement mint one credit", async () => {
   const store = new Store();
@@ -133,6 +155,7 @@ Deno.test("reward rejects other owner, token, ad unit, amount, item and impossib
     const patch of [
       { userID: "other" },
       { customData: f.callback.customData + "0" },
+      { customData: f.callback.customData.replace(".legacy.", ".native.") },
       { adUnit: "9999999999" },
       { rewardAmount: 2 },
       { rewardItem: "coins" },

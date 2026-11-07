@@ -1,0 +1,82 @@
+PASS: auto accepts an unsigned Simulator bundle
+PASS: explicit Simulator mode stays backward compatible
+PASS: signed mode rejects an unsigned Simulator bundle
+PASS: signed main candidate cannot distribute the test backend
+PASS: explicit public Supabase package passes signed checks
+PASS: public package result does not claim backend readiness
+PASS: public Supabase package can be inspected without signing in Simulator mode
+PASS: disabled Google Mobile Ads still has a valid startup application ID
+PASS: disabled owned-unit test override is distributable
+PASS: owned-unit Simulator test override cannot be distributed
+PASS: boolean owned-unit Simulator test override cannot be distributed
+PASS: disabled Google Mobile Ads rejects a missing application ID
+PASS: disabled Google Mobile Ads rejects invalid application ID 1
+PASS: disabled Google Mobile Ads rejects invalid application ID 2
+PASS: disabled Google Mobile Ads rejects invalid application ID 3
+PASS: disabled Google Mobile Ads rejects invalid application ID 4
+PASS: disabled Google Mobile Ads rejects invalid application ID 5
+PASS: disabled Google Mobile Ads rejects a non-string application ID
+PASS: public Supabase requires its explicit resource
+PASS: public Supabase rejects malformed configuration
+PASS: public Supabase rejects an unintended backend
+PASS: public Supabase rejects a secret key
+PASS: public Supabase retains the candidate backend credential
+PASS: public Supabase cannot disable account deletion
+PASS: public Supabase requires a boolean deletion capability
+PASS: public Supabase retains appleSignInEnabled
+PASS: public Supabase retains googleSignInEnabled
+PASS: public Supabase retains gameCenterSignInEnabled
+PASS: public Supabase retains permitsLegacyBilling
+PASS: public Supabase does not silently enable unverified push
+PASS: public Supabase preserves six-digit email verification
+PASS: public Supabase config must match reviewed source bytes
+PASS: public Supabase retains the original callback scheme
+PASS: public Supabase rejects nested SupabaseMainCandidateConfiguration.json
+PASS: public Supabase rejects nested SupabaseAppConfiguration.json
+PASS: public Supabase rejects nested BackendAllowlist.json
+PASS: public Supabase rejects an internal-only TestFlight artifact
+PASS: legacy public gate also rejects internal-only TestFlight artifacts
+PASS: unknown backend mode cannot bypass either public route
+PASS: legacy Base44 remains isolated from the new public configuration
+PASS: Simulator Debug checks the application dylib instead of the launch shim
+PASS: auto validates effective entitlements for iphoneos
+PASS: signed Release rejects development APNs entitlement
+PASS: signed Release rejects Apple Development identity
+PASS: signed iphoneos rejects an ad-hoc signature
+PASS: signed mode resolves an xcarchive
+PASS: signed iphoneos rejects missing APNs entitlement
+PASS: signed Release rejects get-task-allow=true
+PASS: signed Release rejects a debuggable widget
+PASS: gate rejects an artifact that does not match project.yml
+PASS: gate rejects mismatched app and widget versions
+PASS: signed iphoneos rejects missing Sign in with Apple
+PASS: public signed iphoneos rejects missing Game Center
+PASS: signed iphoneos rejects an invalid widget signature
+PASS: signed iphoneos rejects a widget without an embedded profile
+PASS: signed iphoneos rejects a differently signed widget
+PASS: signed iphoneos rejects an archive from the old Apple team
+PASS: gate rejects a leaked StoreKit configuration
+PASS: gate rejects missing StoreKit framework linkage
+PASS: gate rejects missing native IAP product
+PASS: gate requires Purchase History for Apple IAP
+PASS: gate rejects Purchase History in a nested privacy manifest
+PASS: gate rejects retired commerce marker 1
+PASS: gate rejects retired commerce marker 2
+PASS: gate rejects retired commerce marker 3
+PASS: gate rejects retired commerce marker 4
+PASS: gate rejects retired commerce marker 5
+PASS: gate rejects retired commerce marker 6
+PASS: gate rejects retired commerce marker 7
+PASS: gate rejects retired commerce marker 8
+PASS: gate rejects retired commerce marker 9
+PASS: gate rejects retired commerce marker 10
+PASS: gate rejects retired commerce marker 11
+PASS: gate rejects retired commerce marker 12
+PASS: gate rejects retired commerce marker 13
+PASS: gate rejects retired commerce marker 14
+PASS: gate rejects retired commerce marker 15
+PASS: gate rejects retired commerce marker 16
+PASS: gate rejects retired commerce marker 17
+PASS: gate allows non-commerce subscription and plan identifiers
+PASS: gate fails closed when commerce-copy inspection errors
+81 passed, 0 failed

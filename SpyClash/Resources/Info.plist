@@ -75,6 +75,8 @@
 	<string>$(SPYCLASH_ADS_ENABLED)</string>
 	<key>SpyClashBackendMode</key>
 	<string>$(SPYCLASH_BACKEND_MODE)</string>
+	<key>SpyClashOwnedAdMobSimulatorTestEnabled</key>
+	<string>$(SPYCLASH_OWNED_ADMOB_SIMULATOR_TEST_ENABLED)</string>
 	<key>SpyClashRewardedAdUnitID</key>
 	<string>$(SPYCLASH_REWARDED_AD_UNIT_ID)</string>
 	<key>UIAppFonts</key>

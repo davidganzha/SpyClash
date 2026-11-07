@@ -77,6 +77,7 @@ function matches(row: Row, query: Row): boolean {
 class GenerationHTTPStore {
   tables = new Map<string, Row[]>();
   providerCalls = 0;
+  providerWords = WORDS;
   quotaReservations = 0;
   journalStateAtProvider: string[] = [];
   legacyReadUnavailable = false;
@@ -157,7 +158,7 @@ class GenerationHTTPStore {
         );
       }
       const count = body.response_json_schema.properties.draft_words.maxItems;
-      const words = WORDS.slice(0, count);
+      const words = this.providerWords.slice(0, count);
       if (this.deleteAccountAfterProvider) {
         this.tables.set("AiWordPackOperation", []);
         for (const lifecycle of this.rows("BillingIdentityLifecycle")) {
@@ -339,7 +340,10 @@ Deno.test("actual generation handler preserves durable operation recovery across
     // Exercise real quota reservation while using only local fake credentials.
     // No real environment secret is read, and the direct provider is disabled.
     Deno.env.get = (name) =>
-      name === "SPYCLASH_LIMITLESS_ENABLED" ? "true" : undefined;
+      name === "SPYCLASH_LIMITLESS_ENABLED" ||
+        name === "SPYCLASH_REWARDED_GENERATION_ENABLED"
+        ? "true"
+        : undefined;
     axios.defaults.adapter = (config) => db.handle(config);
     globalThis.fetch = (() => {
       unexpectedNetworkCalls += 1;
@@ -363,6 +367,37 @@ Deno.test("actual generation handler preserves durable operation recovery across
       assertEquals(replay.status, 200);
       assertEquals((await replay.json()).words, payload.words);
       expectNoNewEffects(1, 1);
+    });
+
+    await test.step("generation and durable replay preserve commas and semicolons within each AI entry", async () => {
+      db = new GenerationHTTPStore();
+      db.providerWords = ["Piano, grand", "Drums; electronic", ...WORDS.slice(2)];
+      const first = await invoke();
+      assertEquals(first.status, 200);
+      const expected = db.providerWords.slice(0, 12);
+      assertEquals((await first.json()).words, expected);
+      const replay = await invoke();
+      assertEquals(replay.status, 200);
+      assertEquals((await replay.json()).words, expected);
+      expectNoNewEffects(1, 1);
+    });
+
+    await test.step("disabled reward rollout preserves live unlimited access with the global LIMITLESS flag enabled", async () => {
+      db = new GenerationHTTPStore();
+      const enabledEnvironment = Deno.env.get;
+      Deno.env.get = (name) =>
+        name === "SPYCLASH_LIMITLESS_ENABLED" ? "true" : undefined;
+      try {
+        const first = await invoke();
+        assertEquals(first.status, 200);
+        const payload = await first.json();
+        assertEquals(payload.protocol, "casada");
+        assertEquals(payload.ai_limit, null);
+        assertEquals(payload.active, true);
+        expectNoNewEffects(1, 0);
+      } finally {
+        Deno.env.get = enabledEnvironment;
+      }
     });
 
     await test.step("lost provider result leaves running and retry cannot call provider or reserve quota again", async () => {

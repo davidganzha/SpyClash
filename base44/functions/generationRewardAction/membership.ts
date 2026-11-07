@@ -1,4 +1,3 @@
-import { limitlessEnabled } from "./limitless-rollout.ts";
 import { rewardedGenerationEnabled, REWARDED_FREE_DAILY_LIMIT } from "./generation-rewards.ts";
 
 // CASADA is universal access; LIMITLESS resolves verified provider/admin access.
@@ -48,7 +47,8 @@ export const CASADA_BENEFITS: MembershipBenefits = Object.freeze({
 // CASADA deliberately makes generation and every previously paid capability
 // available to every authenticated user. Provider records remain historical
 // billing compatibility data, not an access gate.
-export const CASADA_PROTOCOL_ENABLED = !limitlessEnabled();
+// Preserve the deployed generation access until its own reward rollout is enabled.
+export const CASADA_PROTOCOL_ENABLED = true;
 export const CASADA_COMPATIBILITY_EXPIRY = "9999-12-31T23:59:59Z";
 
 const ACCESS_GRANTING_STATUSES = new Set([
