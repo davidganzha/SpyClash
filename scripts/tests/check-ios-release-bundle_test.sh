@@ -98,6 +98,14 @@ make_public_fixture() {
   printf '%s\n' "$public_app"
 }
 
+make_disabled_admob_fixture() {
+  admob_app=$(make_public_fixture "$@")
+  mkdir -p "$admob_app/Frameworks/GoogleMobileAds.framework"
+  touch "$admob_app/Frameworks/GoogleMobileAds.framework/GoogleMobileAds"
+  plist_add "$admob_app/Info.plist" 'Add :SpyClashAdsEnabled string NO'
+  printf '%s\n' "$admob_app"
+}
+
 change_public_config() {
   python3 - "$1/SupabasePublicConfiguration.json" "$2" "$3" <<'PY'
 import json
@@ -162,6 +170,47 @@ expect_pass "public package result does not claim backend readiness" \
 public_simulator=$(make_public_fixture "$test_root/public-simulator" iphonesimulator false)
 expect_pass "public Supabase package can be inspected without signing in Simulator mode" \
   "$gate" --simulator "$public_simulator"
+
+disabled_admob=$(make_disabled_admob_fixture "$test_root/admob-disabled" iphoneos true)
+plist_add "$disabled_admob/Info.plist" \
+  'Add :GADApplicationIdentifier string ca-app-pub-3940256099942544~1458002511'
+expect_pass "disabled Google Mobile Ads still has a valid startup application ID" \
+  "$gate" --signed "$disabled_admob"
+
+missing_admob_id=$(make_disabled_admob_fixture "$test_root/admob-missing-id" iphoneos true)
+expect_fail_with "disabled Google Mobile Ads rejects a missing application ID" \
+  'requires a valid GADApplicationIdentifier even when advertising is disabled' \
+  "$gate" --signed "$missing_admob_id"
+
+admob_case=0
+for invalid_admob_id in \
+  '' \
+  '$(SPYCLASH_ADMOB_APP_ID)' \
+  'ca-app-pub-3940256099942544/1712485313' \
+  'ca-app-pub-3940256099942544~145800251' \
+  ' ca-app-pub-3940256099942544~1458002511'
+do
+  admob_case=$((admob_case + 1))
+  invalid_admob=$(make_disabled_admob_fixture "$test_root/admob-invalid-$admob_case" iphoneos true)
+  python3 - "$invalid_admob/Info.plist" "$invalid_admob_id" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+info = plistlib.loads(path.read_bytes())
+info["GADApplicationIdentifier"] = sys.argv[2]
+path.write_bytes(plistlib.dumps(info))
+PY
+  expect_fail_with "disabled Google Mobile Ads rejects invalid application ID $admob_case" \
+    'requires a valid GADApplicationIdentifier even when advertising is disabled' \
+    "$gate" --signed "$invalid_admob"
+done
+
+wrong_type_admob=$(make_disabled_admob_fixture "$test_root/admob-wrong-type" iphoneos true)
+plist_add "$wrong_type_admob/Info.plist" 'Add :GADApplicationIdentifier integer 123'
+expect_fail_with "disabled Google Mobile Ads rejects a non-string application ID" \
+  'requires a valid GADApplicationIdentifier even when advertising is disabled' \
+  "$gate" --signed "$wrong_type_admob"
 
 missing_public_config=$(make_public_fixture "$test_root/public-missing" iphoneos true)
 rm "$missing_public_config/SupabasePublicConfiguration.json"

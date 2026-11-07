@@ -235,6 +235,22 @@ case "$internal_only" in
   ''|false) ;;
   *) fail "An internal-only TestFlight bundle cannot pass the public release gate." ;;
 esac
+
+# The embedded SDK validates its application ID during normal app startup,
+# before our advertising feature switch can prevent an explicit SDK start.
+if [ -d "$app/Frameworks/GoogleMobileAds.framework" ]; then
+  python3 - "$app/Info.plist" <<'PY'
+import plistlib
+import re
+import sys
+
+with open(sys.argv[1], "rb") as source:
+    app_id = plistlib.load(source).get("GADApplicationIdentifier")
+if not isinstance(app_id, str) or re.fullmatch(r"ca-app-pub-[0-9]{16}~[0-9]{10}", app_id) is None:
+    raise SystemExit("Bundled Google Mobile Ads SDK requires a valid GADApplicationIdentifier even when advertising is disabled.")
+PY
+fi
+
 marketing_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")
 build_number=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")
 bundle_executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")
