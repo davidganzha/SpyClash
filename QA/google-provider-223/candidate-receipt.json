@@ -1,0 +1,10 @@
+{
+  "candidate": "/Users/davidganzha/.codex/visualizations/2026/11/05/01a1add8-89ed-7a72-976b-533695c34d6f/admob-setup/apple-auth-broker-base64url-candidate-20261107T194259Z",
+  "source_files": 14,
+  "only_changed_file": "provider.ts",
+  "provider_sha256": "6f8c6ce102171970b2bf994167e6c85eeb4052a308ad83a3592b56127610765a",
+  "manifest_sha256": "f3340614a0d79115d087f31c403932d17c45e76eb3b9987b67195f5d4bccd468",
+  "tests_passed": 10,
+  "typecheck": "passed",
+  "production_deployed": false
+}

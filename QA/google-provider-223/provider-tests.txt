@@ -1,0 +1,15 @@
+Check base44/functions/appleAuthBroker/provider_test.ts
+running 10 tests from ./base44/functions/appleAuthBroker/provider_test.ts
+current Base44 Base64URL state selects Google with and without padding ... ok (4ms)
+Base64URL state preserves Apple selection when Google was not requested ... ok (451µs)
+encoded state retains exact app, HTTPS origin and single marker restrictions ... ok (6ms)
+invalid Base64URL padding, whitespace, junk and noncanonical trailing bits default to Apple ... ok (115µs)
+invalid UTF-8 in an otherwise valid state cannot select Google ... ok (1ms)
+encoded nonobjects, malformed JSON and oversized state remain rejected ... ok (604µs)
+validated Base44 from_url selects Google ... ok (70µs)
+provider query outside Base44 state cannot select Google ... ok (68µs)
+wrong app and cross-origin return URLs default to Apple ... ok (44µs)
+ambiguous, malformed, or fragment markers default to Apple ... ok (75µs)
+
+ok | 10 passed | 0 failed (15ms)
+

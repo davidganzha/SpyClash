@@ -1,0 +1,15 @@
+{
+  "length": 155,
+  "dotParts": [
+    155
+  ],
+  "prefixKind": "base64-json",
+  "decoded": {
+    "keys": [
+      "from_url",
+      "app_id"
+    ],
+    "app_id": "69a0e57fa939f578082f8091",
+    "from_url": "https://spyclash.com/MobileAuthCallback.html?auth_provider=google"
+  }
+}

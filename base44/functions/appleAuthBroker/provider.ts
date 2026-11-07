@@ -19,7 +19,24 @@ export function upstreamProviderFromBase44State(
 
   let state: Base44State;
   try {
-    const parsed = JSON.parse(rawState) as unknown;
+    let stateJSON = rawState;
+    if (!rawState.trimStart().startsWith("{")) {
+      // Base44 also sends the same JSON as Base64URL, optionally padded.
+      if (
+        !/^(?:[A-Za-z0-9_-]{4})*(?:[A-Za-z0-9_-]{2}(?:==)?|[A-Za-z0-9_-]{3}=?)?$/
+          .test(rawState)
+      ) {
+        return "apple";
+      }
+      const binary = atob(rawState.replace(/-/g, "+").replace(/_/g, "/"));
+      const canonical = btoa(binary).replace(/\+/g, "-").replace(/\//g, "_")
+        .replace(/=+$/, "");
+      if (canonical !== rawState.replace(/=+$/, "")) return "apple";
+      stateJSON = new TextDecoder("utf-8", { fatal: true }).decode(
+        Uint8Array.from(binary, (character) => character.charCodeAt(0)),
+      );
+    }
+    const parsed = JSON.parse(stateJSON) as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return "apple";
     }
