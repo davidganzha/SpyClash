@@ -3492,8 +3492,11 @@ struct LocalGameView: View {
                             .spyWebEntrance(delay: 0.10, duration: 0.52, y: 18)
 
                     }
-                    localResultWordPanel(session)
-                        .spyWebEntrance(delay: 0.16, duration: 0.50, y: 16)
+                    if winner != .draw || session.fanScenario != .allSpies {
+                        localResultWordPanel(session)
+                            .spyWebEntrance(delay: 0.16, duration: 0.50, y: 16)
+                            .accessibilityIdentifier("localGame.results.word")
+                    }
 
                     if winner != .draw && !session.spyPlayers.isEmpty {
                         VStack(spacing: 6) {

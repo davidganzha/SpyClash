@@ -6489,6 +6489,15 @@ struct GameView: View {
             if let scenario = FinishedRoomResultPolicy.fanDrawScenario(in: room) {
                 FanDrawRevealView(scenario: scenario, language: appState.language)
                     .id("fan-draw-\(room.matchID ?? room.id)")
+                if scenario == .noSpies {
+                    SpyPanel(accent: SpyTheme.green) {
+                        Text(copy.wordResult(room.displayWord))
+                            .font(.system(size: 16, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.white)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("onlineRoom.result.word")
+                    }
+                }
             } else {
                 SpyPanel(accent: (room.winner == "spy" || room.winner == "system") ? SpyTheme.red : SpyTheme.green) {
                     VStack(alignment: .leading, spacing: 16) {
