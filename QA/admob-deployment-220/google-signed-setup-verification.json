@@ -1,0 +1,26 @@
+{
+  "signed_dashboard_probe": [
+    {
+      "ad_unit": "1234567890",
+      "expected_test_data": 1,
+      "expected_test_user": 1,
+      "response_date": "Sat, 07 Nov 2026 19:14:31 GMT",
+      "reward_amount": "1",
+      "reward_item": "generation",
+      "status": "200"
+    }
+  ],
+  "ledger_after_probe": [
+    {
+      "reward_attempt_count": 0,
+      "earned_attempt_count": 0
+    }
+  ],
+  "proves": "Google-signed dashboard callback delivered and acknowledged without credits",
+  "does_not_prove": [
+    "real ad completion",
+    "real native credit grant",
+    "legacy Base44 end-to-end reward grant",
+    "advertising activation"
+  ]
+}

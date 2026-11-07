@@ -1,10 +1,15 @@
 import { verifyAdMobCallback, AdMobVerificationError } from '../app-services/admob-ssv.ts';
 import { AppServiceError } from '../app-services/contracts.ts';
+import { rewardedAdUnit } from '../app-services/generation-reward-ledger.ts';
 import { canonicalBase44Configuration, CANONICAL_BASE44_APP_ID, CANONICAL_BASE44_ORIGIN } from '../app-services/legacy-provider.ts';
 
 type Handler = (request: Request) => Promise<Response>;
 type Config = Record<string, string | undefined>;
 const tokenPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(native|legacy)\.[0-9a-f]{64}$/;
+const setupProbeUser = 'spyclash_admob_setup_probe';
+const setupProbeData = 'spyclash_setup_probe_v1';
+// Observed in the signed AdMob dashboard test on 2026-11-07; never a real ad.
+const setupProbeUnit = '1234567890';
 const reply = (body: unknown, status = 200) => Response.json(body, {status, headers: {'Cache-Control': 'no-store'}});
 
 /** The only public entry point for Google's signed callback. It owns no credit
@@ -18,6 +23,17 @@ export function createRewardedGenerationSSVGateway(dependencies: {
     if (request.method !== 'GET') return reply({code: 'method_not_allowed'}, 405);
     try {
       const event = await verifyAdMobCallback(request.url, fetcher);
+      // AdMob's dashboard tests delivery with a synthetic, signed event. These
+      // reserved values identify no player and can never enter either ledger.
+      if (event.userID === setupProbeUser || event.customData === setupProbeData) {
+        if (!rewardedAdUnit(dependencies.config)) return reply({code: 'reward_probe_unconfigured'}, 503);
+        if (event.userID !== setupProbeUser || event.customData !== setupProbeData
+          || event.adUnit !== setupProbeUnit
+          || event.rewardAmount !== 1 || event.rewardItem !== 'generation') {
+          return reply({code: 'invalid_reward_claim'}, 400);
+        }
+        return reply({received: true, setup_probe: true, reward_granted: false});
+      }
       const namespace = tokenPattern.exec(event.customData)?.[1];
       if (!namespace || event.rewardAmount !== 1 || event.rewardItem !== 'generation') {
         return reply({code: 'invalid_reward_claim'}, 400);

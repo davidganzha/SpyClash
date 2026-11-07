@@ -1,0 +1,62 @@
+{
+  "completed_utc": "2026-11-07T19:09:10+00:00",
+  "app_id": "69a0e57fa939f578082f8091",
+  "approved_scope": "new GenerationReward schema; generationRewardAction/generateWordPack/deleteAccount; two settings with reward rollout false",
+  "candidate_manifest_sha256": "98126f73495d92c19b6bcbd8c030bebe4bfb49551f42d9d7651f7bbd4ea5c86a",
+  "candidate_files_verified": 49,
+  "functions": [
+    {
+      "name": "deleteAccount",
+      "deployment_id": "0fc7dbca7aae4f298debacbac5ff4c8f",
+      "file_count": 15,
+      "sources_match_candidate": true,
+      "entry_renamed_by_cli": false
+    },
+    {
+      "name": "generateWordPack",
+      "deployment_id": "0fc7dbca7aae4f298debacbac5ff4c8f",
+      "file_count": 16,
+      "sources_match_candidate": true,
+      "entry_renamed_by_cli": true
+    },
+    {
+      "name": "generationRewardAction",
+      "deployment_id": "0fc7dbca7aae4f298debacbac5ff4c8f",
+      "file_count": 8,
+      "sources_match_candidate": true,
+      "entry_renamed_by_cli": true
+    }
+  ],
+  "other_functions_source_and_configuration_unchanged": 19,
+  "app_wide_deployment_id_changed": true,
+  "existing_schemas_unchanged": 27,
+  "new_schema_matches_candidate": true,
+  "new_schema_count": 28,
+  "settings": [
+    {
+      "name": "SPYCLASH_REWARDED_GENERATION_ENABLED",
+      "expected_sha256": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+      "set_acknowledged": true,
+      "name_present_after_set": true,
+      "runtime_value_readback": false
+    },
+    {
+      "name": "ADMOB_REWARDED_AD_UNIT_ID",
+      "expected_sha256": "104c05d010946c1ccfb0f210d488d6bb2ddb0387a41fb4a8e4884b0760a57b67",
+      "set_acknowledged": true,
+      "name_present_after_set": true,
+      "runtime_value_readback": false
+    }
+  ],
+  "reward_rollout_requested_value": "false",
+  "flag_off_generation_compatibility_verified_in_deployed_source": true,
+  "unsigned_get_checks": "HTTP400 invalid_reward_signature at both public URL forms",
+  "reward_records_after_unsigned_checks": 0,
+  "live_generation_requests": 0,
+  "signed_reward_grants": 0,
+  "limitations": [
+    "Base44 secret read API returns names/masks only; exact false and owned unit are confirmed by setter acknowledgement and input hashes, not runtime environment retrieval.",
+    "Live Google-signed callback and actual reward credit flow were not exercised.",
+    "Create-schema endpoint persists the live schema but does not update editor source files; frozen schema source exists in the reviewed GitHub checkpoint and deployment package."
+  ]
+}

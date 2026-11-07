@@ -1,0 +1,14 @@
+{
+  "supabase_callback": {
+    "status": 400,
+    "body": "{\"code\":\"invalid_reward_signature\"}"
+  },
+  "base44_callback": {
+    "status": 400,
+    "body": "{\"error\":\"invalid_reward_signature\",\"code\":\"invalid_reward_signature\",\"retryable\":false}"
+  },
+  "authenticated_app_services": {
+    "status": 401,
+    "body": "{\"code\":\"UNAUTHORIZED_NO_AUTH_HEADER\",\"message\":\"Missing authorization header\"}"
+  }
+}

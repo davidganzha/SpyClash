@@ -13,7 +13,7 @@ not a Supabase user token; the platform JWT check runs before the function handl
 See [Supabase authorization headers](https://supabase.com/docs/guides/functions/auth-headers)
 and [Google rewarded SSV](https://developers.google.com/admob/ios/ssv).
 
-The gateway checks Google's ECDSA signature, then accepts only server-issued
+For reward callbacks, the gateway checks Google's ECDSA signature, then accepts only server-issued
 `UUID.native.64hex` or `UUID.legacy.64hex` custom data and reward `1 generation`.
 Native callbacks reach the existing native handler, which independently verifies
 the signature and commits the matching issued attempt in its locked transaction.
@@ -29,6 +29,40 @@ gateway or ledger while issued rewards can still arrive. New namespaced tokens
 must be issued by both backends before using this unified URL; the gateway does
 not guess a wallet for the old unnamespaced format. Existing direct Base44/native
 handlers retain their original issued-token validation.
+
+## AdMob dashboard verification without a reward
+
+AdMob requires **Verify URL**, then **Use verified URL**, before the callback can
+be saved. Its optional User ID and Custom data fields are for that test request.
+See [AdMob callback setup](https://support.google.com/admob/answer/9603226?hl=en).
+
+Use these exact reserved values in the dashboard only:
+
+- User ID: `spyclash_admob_setup_probe`
+- Custom data: `spyclash_setup_probe_v1`
+
+After the normal Google signature check, the gateway accepts this pair only with
+the synthetic signed ad unit `1234567890`, reward amount `1`, and item `generation`.
+This exact payload was observed in the AdMob console's signed **Verify URL** request
+on 2026-11-07; it is not a documented Google compatibility guarantee. A valid owned
+`ADMOB_REWARDED_AD_UNIT_ID` must still be configured. Both reserved values must
+match together; unsigned or tampered requests still fail. Missing or sample-unit
+configuration returns 503; a mismatched signed probe returns 400. Using the actual
+owned unit, including its numeric suffix, with these reserved markers also fails.
+The successful response is HTTP 200 with
+`{"received":true,"setup_probe":true,"reward_granted":false}` and `Cache-Control: no-store`.
+It returns before either ledger handler or any Base44 forwarding, performs no
+database writes, and grants nothing even if repeated. The only external lookup is
+the existing Google public-key verification. New-offer flags remain absent/false;
+the probe does not enable offers or relax any real issued-attempt checks.
+
+These marker strings are SpyClash's contract, not Google-defined test constants.
+Google's documentation does not specify fixed dashboard test ad-unit/reward
+values. If its test payload changes, investigate the signed evidence and review
+this narrow contract rather than loosening real reward validation. Confirm the
+strict live probe result before claiming URL verification;
+do not use a real issued reward attempt as the dashboard probe. A successful
+setup probe proves signed callback delivery, not a completed ad or reward credit.
 
 ## Activation prerequisites
 
@@ -47,10 +81,13 @@ handlers retain their original issued-token validation.
 - AdMob reward `1 generation`, this callback URL, and the matching owned IDs in
   an explicitly enabled release build. Google's sample unit cannot prove SSV.
 
-Production readback on 2026-11-07 found app-services v17 with JWT verification on,
+Pre-publication readback on 2026-11-07 found app-services v17 with JWT verification on,
 no reward modules/schema migration/table/charge-source column, and neither reward
 configuration name present. A fresh readback is required immediately before any
-approved deployment. No production activation is performed by this candidate.
+approved deployment. The subsequent authorized server publication and successful
+signed no-credit Google dashboard verification are recorded in
+`QA/admob-deployment-220/README.md` at the repository root. Ads and new quotas
+remain disabled; this is not a real-view reward test.
 
 The first proposed production step is additive publication with both feature
 flags absent/false. Turning the global flag on would also impose the new quota
@@ -63,10 +100,12 @@ version-aware rollout is implemented by this change.
 
 ## Offline checks
 
-Run `deno test --config supabase/functions/rewarded-generation-ssv/deno.json
+Run `deno test --frozen --config supabase/functions/rewarded-generation-ssv/deno.json
 supabase/functions/rewarded-generation-ssv/handler_test.ts` from
 `experiments/supabase-game-core`. The tests use synthetic signing keys and injected
 fetch responses; no provider or production endpoint is contacted.
+Also run `deno check --frozen --config supabase/functions/rewarded-generation-ssv/deno.json
+supabase/functions/rewarded-generation-ssv/index.ts` to check the deployed entry point.
 
 The existing `tests/game-center/rewarded-generation-integration.ts` suite accepts
 only loopback PostgreSQL via `REWARDED_TEST_DATABASE_URL`, creates its own random

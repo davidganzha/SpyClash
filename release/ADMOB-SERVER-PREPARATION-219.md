@@ -2,6 +2,8 @@
 
 This is a reviewable publication plan, not authorization or evidence of deployment. Read [the build 219 report](../QA/admob-readiness-219/README.md) first.
 
+**Execution update, 7 November 2026:** the user subsequently approved this scope. Publication and the saved, verified AdMob callback are recorded in [the deployment 220 report](../QA/admob-deployment-220/README.md). Both reward switches remain false. The migration service assigned version `20261107190551`; read that receipt before any future migration operation.
+
 ## Proposed publication, with new offers disabled
 
 1. **Base44 app `69a0e57fa939f578082f8091` (`spyclash.com`)**: add only the `GenerationReward` entity. Publish the prepared `generationRewardAction`, `generateWordPack` and `deleteAccount` packages. Preserve every other entity and function. The package preserves live word normalization, cache version, CASADA behavior outside the reward rollout, and live deletion helpers.

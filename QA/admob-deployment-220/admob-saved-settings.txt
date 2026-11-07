@@ -1,0 +1,91 @@
+2026-11-07T19:15:12.698Z
+- button "Skip to main content":
+  - generic: Skip to main content
+- main:
+  - button "Close":
+    - img: close
+  - heading "Edit ad unit" [level=1]
+  - button "More options":
+    - img: more_vert
+  - region "SpyClash Free | iOS":
+    - generic: SpyClash
+    - generic: Free | iOS
+  - heading "Ad unit settings" [level=1]
+  - button "Implementation instructions":
+    - generic: Implementation instructions
+  - heading "Ad unit name" [level=2]:
+    - button "Ad unit name":
+      - generic "Ad unit name":
+        - text: Ad unit name
+        - button "Point to or press enter on this icon for more information about Ad unit name":
+          - img: help_outline
+        - paragraph
+      - generic: SpyClash iOS - Extra Generation
+      - img: create
+  - heading "Ad format" [level=2]:
+    - generic "Ad format":
+      - text: Ad format
+      - button "More information" [disabled]:
+        - img: help_outline
+      - paragraph
+    - generic: Rewarded
+  - heading "Ad unit ID" [level=2]:
+    - generic "Ad unit ID":
+      - text: Ad unit ID
+      - button "More information" [disabled]:
+        - img: help_outline
+      - paragraph
+    - generic: ca-app-pub-5081830513960558/6816674766
+  - heading "Reward settings" [level=2]:
+    - button "Reward settings":
+      - generic "Reward settings":
+        - text: Reward settings
+        - button "Point to or press enter on this icon for more information about Reward settings":
+          - img: help_outline
+        - paragraph
+      - generic: 1 generation
+      - img: create
+  - button "Advanced settings" [expanded]:
+    - img: expand_less
+    - text: Advanced settings
+  - heading "Ad type" [level=2]:
+    - button "Ad type":
+      - generic "Ad type":
+        - text: Ad type
+        - button "Point to or press enter on this icon for more information about Ad type":
+          - img: help_outline
+        - paragraph
+      - generic: Video | Ad pods | Interactive
+      - img: create
+  - heading "Server-side verification" [level=2]:
+    - button "Server-side verification" [active]:
+      - generic "Server-side verification":
+        - text: Server-side verification
+        - button "Point to or press enter on this icon for more information about Server-side verification":
+          - img: help_outline
+        - paragraph
+      - generic: https://bbkfsgnordtdiblgdzkg.supabase.co/functions/v1/rewarded-generation-ssv
+      - img: create
+  - heading "Frequency capping" [level=2]:
+    - button "Frequency capping":
+      - generic "Frequency capping":
+        - text: Frequency capping
+        - button "Point to or press enter on this icon for more information about Frequency capping":
+          - img: help_outline
+        - paragraph
+      - generic: Disabled
+      - img: create
+  - heading "eCPM floor" [level=2]:
+    - button "eCPM floor":
+      - generic "eCPM floor":
+        - text: eCPM floor
+        - button "Point to or press enter on this icon for more information about eCPM floor":
+          - img: help_outline
+        - paragraph
+      - generic: Google optimized (All prices)
+      - img: create
+  - text: © 2026 Google
+  - link "Privacyopen_in_new":
+    - /url: https://www.google.com/intl/en_US/policies/privacy
+  - link "Termsopen_in_new":
+    - /url: https://adsense.google.com/adsense/terms
