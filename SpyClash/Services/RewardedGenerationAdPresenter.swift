@@ -42,6 +42,7 @@ final class RewardedGenerationAdPresenter: NSObject {
     @ObservationIgnored private var initialized = false
     @ObservationIgnored private var operationID: UUID?
     @ObservationIgnored private var presentation: RewardedGenerationAdAttempt?
+    @ObservationIgnored private var contentTransition: RewardedGenerationAdTransition?
     @ObservationIgnored private var backgroundObserver: (any NSObjectProtocol)?
 
     init(configuration: RewardedGenerationAdConfiguration = .current) {
@@ -99,11 +100,26 @@ final class RewardedGenerationAdPresenter: NSObject {
             ad.serverSideVerificationOptions = options
             try ad.canPresent(from: presenter)
 
-            let attempt = RewardedGenerationAdAttempt(ad: ad, onEarned: onEarned)
-            presentation = attempt
-            // Once visible, the SDK owns dismissal. Cancellation prevents future
-            // autoplay but cannot replace an earned result with a second ad.
-            return try await attempt.present(from: presenter)
+            // Capture only app-owned content, before the SDK creates its modal.
+            // Include the sheet's presenting content so its margins fade too.
+            let transition = RewardedGenerationAdTransition(contentViews: Self.appContentViews(below: presenter))
+            contentTransition = transition
+            await transition.fadeToBlack(reduceMotion: Self.reduceMotion)
+            do {
+                // Loading and the fade both yield; neither may autoplay after
+                // the user leaves this screen or backgrounds the app.
+                try validatePendingOperation(id, presenter: presenter)
+                try ad.canPresent(from: presenter)
+                let attempt = RewardedGenerationAdAttempt(ad: ad, onEarned: onEarned)
+                presentation = attempt
+                // Once visible, the SDK owns dismissal and its entire ad UI.
+                let earned = try await attempt.present(from: presenter)
+                await transition.revealContent(reduceMotion: Self.reduceMotion, animated: Self.canReveal(presenter))
+                return earned
+            } catch {
+                await transition.revealContent(reduceMotion: Self.reduceMotion, animated: Self.canReveal(presenter))
+                throw error
+            }
         } onCancel: { [weak self] in
             Task { @MainActor in
                 guard self?.operationID == id else { return }
@@ -117,6 +133,7 @@ final class RewardedGenerationAdPresenter: NSObject {
     func cancelPendingPresentation() {
         guard presentation == nil else { return }
         operationID = nil
+        contentTransition?.remove()
     }
 
     func presentPrivacyOptions() async throws {
@@ -209,16 +226,44 @@ final class RewardedGenerationAdPresenter: NSObject {
         backgroundObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.cancelPendingPresentation() }
+            Task { @MainActor in
+                self?.cancelPendingPresentation()
+                // Never retain an opaque app overlay across backgrounding,
+                // including while an SDK-owned video is already visible.
+                self?.contentTransition?.remove()
+            }
         }
     }
 
     private func endOperation(_ id: UUID) {
         if let backgroundObserver { NotificationCenter.default.removeObserver(backgroundObserver) }
         backgroundObserver = nil
+        contentTransition?.remove()
+        contentTransition = nil
         presentation = nil
         if operationID == id { operationID = nil }
         isBusy = false
+    }
+
+    private static var reduceMotion: Bool {
+        InterfacePreferences.shared.settings.effectiveReduceMotion(system: UIAccessibility.isReduceMotionEnabled)
+    }
+
+    private static func canReveal(_ presenter: UIViewController) -> Bool {
+        UIApplication.shared.applicationState == .active &&
+        presenter.viewIfLoaded?.window != nil && !presenter.isBeingDismissed
+    }
+
+    private static func appContentViews(below presenter: UIViewController) -> [UIView] {
+        var views: [UIView] = []
+        var current: UIViewController? = presenter
+        while let controller = current {
+            var container = controller
+            while let parent = container.parent { container = parent }
+            if let view = container.viewIfLoaded { views.append(view) }
+            current = container.presentingViewController
+        }
+        return views
     }
 
     private static func visiblePresenter() -> UIViewController? {
@@ -234,6 +279,72 @@ final class RewardedGenerationAdPresenter: NSObject {
         let visible = top(root)
         guard visible.viewIfLoaded?.window != nil, !visible.isBeingDismissed else { return nil }
         return visible
+    }
+}
+
+/// These overlays stay inside existing app views, below any SDK presentation.
+/// Removing one also finishes an interrupted animation waiter exactly once.
+@MainActor
+final class RewardedGenerationAdTransition {
+    private var overlays: [UIView]
+    private var animator: UIViewPropertyAnimator?
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    init(contentViews: [UIView]) {
+        overlays = contentViews.map { content in
+            let overlay = UIView(frame: content.bounds)
+            overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            overlay.backgroundColor = .black
+            overlay.alpha = 0
+            overlay.accessibilityElementsHidden = true
+            // Briefly block the app's controls during the transition only.
+            // The SDK modal is above these views and keeps all its controls.
+            overlay.isUserInteractionEnabled = true
+            content.addSubview(overlay)
+            return overlay
+        }
+    }
+
+    func fadeToBlack(reduceMotion: Bool) async {
+        await animate(to: 1, duration: reduceMotion ? 0 : 0.22)
+    }
+
+    func revealContent(reduceMotion: Bool, animated: Bool) async {
+        await animate(to: 0, duration: animated && !reduceMotion ? 0.28 : 0)
+        remove()
+    }
+
+    func remove() {
+        let waiting = continuation
+        continuation = nil
+        animator?.stopAnimation(true)
+        animator = nil
+        overlays.forEach { $0.removeFromSuperview() }
+        overlays.removeAll()
+        waiting?.resume()
+    }
+
+    private func animate(to alpha: CGFloat, duration: TimeInterval) async {
+        guard !overlays.isEmpty else { return }
+        guard duration > 0 else {
+            overlays.forEach { $0.alpha = alpha }
+            return
+        }
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            let animator = UIViewPropertyAnimator(duration: duration, curve: .easeInOut) { [overlays] in
+                overlays.forEach { $0.alpha = alpha }
+            }
+            self.animator = animator
+            animator.addCompletion { [weak self] _ in
+                guard let self else { return }
+                self.animator = nil
+                let waiting = self.continuation
+                self.continuation = nil
+                waiting?.resume()
+            }
+            animator.startAnimation()
+        }
     }
 }
 

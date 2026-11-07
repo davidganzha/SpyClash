@@ -27,13 +27,13 @@ struct GenerationAllowanceView: View {
                                 .accessibilityIdentifier("generation.bonusCredits")
                         }
                         if let reset = status.resetsAt {
-                            Text(copy.reset(reset)).font(.footnote).foregroundStyle(SpyTheme.muted)
+                            Text(copy.reset(reset)).font(SpyTheme.micro).foregroundStyle(SpyTheme.muted)
                         }
                         if status.needsReward {
-                            Text(copy.disclosure).font(.footnote).foregroundStyle(SpyTheme.muted)
+                            Text(copy.disclosure).font(SpyTheme.mono).foregroundStyle(SpyTheme.muted)
                             if store.isAwaitingReward {
                                 Label(copy.notice(.confirming), systemImage: "clock")
-                                    .font(.footnote).foregroundStyle(SpyTheme.amber)
+                                    .font(SpyTheme.mono).foregroundStyle(SpyTheme.amber)
                             } else if status.adAvailable && RewardedGenerationAdPresenter.shared.isConfigured {
                                 Button {
                                     watchTask?.cancel()
@@ -47,23 +47,23 @@ struct GenerationAllowanceView: View {
                                 .disabled(isGenerating || !store.canWatch)
                                 .accessibilityIdentifier("generation.watchAd")
                             } else {
-                                Text(copy.notice(.unavailable)).font(.footnote).foregroundStyle(SpyTheme.muted)
+                                Text(copy.notice(.unavailable)).font(SpyTheme.mono).foregroundStyle(SpyTheme.muted)
                             }
                             if appState.membership.canPurchase {
                                 Button("LIMITLESS") { showLimitless = true }
                                     .buttonStyle(SpyButtonStyle(variant: .outline))
                                     .disabled(store.isWatching)
                             }
-                            Text(copy.alternative).font(.footnote).foregroundStyle(SpyTheme.muted)
+                            Text(copy.alternative).font(SpyTheme.micro).foregroundStyle(SpyTheme.muted)
                         }
                         if let notice = store.notice, notice != .confirming || !status.needsReward {
-                            Text(copy.notice(notice)).font(.footnote)
+                            Text(copy.notice(notice)).font(SpyTheme.mono)
                                 .foregroundStyle(notice == .earned ? SpyTheme.green : SpyTheme.muted)
                                 .accessibilityIdentifier("generation.notice")
                         }
                     }
                 }
-                .font(.system(size: 13, weight: .semibold))
+                .font(SpyTheme.mono)
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(SpyTheme.panel, in: CutCornerShape(cut: 10))

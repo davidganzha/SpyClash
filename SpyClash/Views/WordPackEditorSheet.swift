@@ -202,7 +202,7 @@ struct WordPackEditorSheet: View {
                     .lineLimit(1)
 
                 Text(headerTitle)
-                    .font(.system(size: 22, weight: .black))
+                    .font(.system(size: 22, weight: .black, design: .monospaced))
                     .tracking(0.03)
                     .foregroundStyle(.white)
                     .lineLimit(2)
@@ -308,13 +308,13 @@ struct WordPackEditorSheet: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(title)
-                        .font(.system(size: 16, weight: .black))
+                        .font(.system(size: 16, weight: .black, design: .monospaced))
                         .tracking(0.04)
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.leading)
 
                     Text(body)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(SpyTheme.mono)
                         .foregroundStyle(SpyTheme.muted)
                         .lineSpacing(2)
                         .multilineTextAlignment(.leading)
@@ -347,12 +347,12 @@ struct WordPackEditorSheet: View {
                 Text(appState.language == .ru
                      ? "AI-генератор остаётся на Base44 и требует входа в аккаунт Base44. Здесь можно создать набор вручную."
                      : "AI generation remains on Base44 and requires a Base44 account. You can create a manual pack here.")
-                    .font(.footnote).foregroundStyle(SpyTheme.muted)
+                    .font(SpyTheme.mono).foregroundStyle(SpyTheme.muted)
             } else if appState.generationRewards.snapshot?.enabled != true && appState.membership.snapshot?.isUniversal != true {
                 let copy = LimitlessCopy(language: appState.language)
                 if let remaining = appState.membership.snapshot?.aiRemaining {
                     Text("\(copy.remaining): \(remaining)")
-                        .font(.footnote).foregroundStyle(SpyTheme.muted)
+                        .font(SpyTheme.mono).foregroundStyle(SpyTheme.muted)
                 }
                 if !appState.membership.hasAccess {
                     Button("LIMITLESS") { accessSheet = LimitlessSheet() }
@@ -555,13 +555,13 @@ struct WordPackEditorSheet: View {
     private func introBlock(title: String, body: String) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(title)
-                .font(.system(size: 18, weight: .black))
+                .font(.system(size: 18, weight: .black, design: .monospaced))
                 .tracking(0.04)
                 .foregroundStyle(.white)
                 .fixedSize(horizontal: false, vertical: true)
 
             Text(body)
-                .font(.system(size: 13, weight: .semibold))
+                .font(SpyTheme.mono)
                 .foregroundStyle(SpyTheme.muted)
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
@@ -642,7 +642,7 @@ struct WordPackEditorSheet: View {
 
             if !analysis.words.isEmpty {
                 Text(wordRemovalHint)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(SpyTheme.micro)
                     .foregroundStyle(SpyTheme.muted)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -658,14 +658,14 @@ struct WordPackEditorSheet: View {
             addWordsField
 
             Text(copy.wordsInputHint)
-                .font(.system(size: 10, weight: .bold))
+                .font(SpyTheme.micro)
                 .foregroundStyle(SpyTheme.muted)
 
             if validationAttempted && wordCount < 2 {
                 validationMessage(flowCopy.twoWordsRequired)
             } else if analysis.words.isEmpty {
                 Text(copy.emptyWordsHint)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(SpyTheme.micro)
                     .foregroundStyle(SpyTheme.muted)
             }
 
@@ -703,7 +703,7 @@ struct WordPackEditorSheet: View {
         } label: {
             HStack(spacing: 8) {
                 Text(word)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .foregroundStyle(SpyTheme.bodyText)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
@@ -805,7 +805,7 @@ struct WordPackEditorSheet: View {
                 .accessibilityHidden(true)
 
             Text(text)
-                .font(.system(size: 10, weight: .bold))
+                .font(SpyTheme.micro)
                 .foregroundStyle(SpyTheme.muted)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -823,7 +823,7 @@ struct WordPackEditorSheet: View {
                 .accessibilityHidden(true)
 
             Text(message.text)
-                .font(.system(size: 11, weight: .bold))
+                .font(SpyTheme.micro)
                 .foregroundStyle(.white)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -882,7 +882,7 @@ struct WordPackEditorSheet: View {
 
             if step == .aiSetup {
                 Text(copy.aiDraftHint)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(SpyTheme.micro)
                     .foregroundStyle(SpyTheme.muted)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
