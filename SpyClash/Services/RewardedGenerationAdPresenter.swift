@@ -89,7 +89,15 @@ final class RewardedGenerationAdPresenter: NSObject {
 
             let request = Request()
             let extras = Extras()
-            extras.additionalParameters = ["npa": "1"]
+            var requestParameters = ["npa": "1"]
+#if DEBUG
+            // Compare an official test creative without changing live ad delivery.
+            if configuration.isTestConfiguration,
+               ProcessInfo.processInfo.arguments.contains("--spyclash-preview-ad-trueview") {
+                requestParameters["ft_ctype"] = "trueview"
+            }
+#endif
+            extras.additionalParameters = requestParameters
             request.register(extras)
             let ad = try await RewardedAd.load(with: adUnitID, request: request)
             try validatePendingOperation(id, presenter: presenter)
