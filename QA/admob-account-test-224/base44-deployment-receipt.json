@@ -1,0 +1,53 @@
+{
+  "completed_at": "2026-11-07T20:02:03.251372+00:00",
+  "app_id": "69a0e57fa939f578082f8091",
+  "function": "generationRewardAction",
+  "deployment_id": "07e555ad178d46c69b178c7db989df4e",
+  "runtime_files_verified": 8,
+  "changed_runtime_files": [
+    "entry.ts",
+    "generation-rewards.ts"
+  ],
+  "other_functions_unchanged": 21,
+  "entity_schemas_unchanged": true,
+  "target_spy_id": "844-010",
+  "target_user_id": "69a0e57fa939f578082f8092",
+  "test_allowlist_count": 1,
+  "test_allowlist_sha256": "42fa6d088adbb11097eb7b9b53d18e2591b8568aaab278fa1bdd92368c6f60f5",
+  "test_allowlist_setting_verified_by": "successful CLI exact-value set acknowledgement plus name readback; runtime value is not exposed by API",
+  "global_feature_flag_mutated": false,
+  "global_feature_flag_last_explicit_value": "false",
+  "global_flag_verification_limit": "Preserved prior confirmed false setting; no raw runtime environment read",
+  "ad_unit_mutated": false,
+  "production_data_mutated_by_agent": false,
+  "baseline_summary": {
+    "observed_at": "2026-11-07T20:00:39.478045+00:00",
+    "app_id": "69a0e57fa939f578082f8091",
+    "user_id": "69a0e57fa939f578082f8092",
+    "spy_id": "844-010",
+    "identity_source": "Root verified authenticated in-app /entities/User/me HTTP200 and UI profile",
+    "usage_rows_today": 0,
+    "generations_used_today": 0,
+    "reward_rows": 0,
+    "reward_states": {},
+    "bonus_credits": 0,
+    "entitlement_rows": 0,
+    "admin_grant_rows": 0,
+    "verified_paid_limitless": false,
+    "verified_admin_limitless": false,
+    "verified_limitless": false,
+    "global_off_casada_access_preserved": true,
+    "ledger_read_verification_limit": "CLI-token reads have unverified RLS visibility; zero counts are not authoritative."
+  },
+  "candidate_manifest_sha256": "d1c9f6b869085a61ddf89a38e99f381e89ede30555a8b418f995d460b13b345e",
+  "runtime_sha256": {
+    "entry.ts": "59225d2affcef1967f5183eebfebfa391f7a94078d14d91095f2cdf3c99c4776",
+    "base44-context.ts": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de",
+    "membership.ts": "c0ca269c61ef4df2a65646c4d8c0b033a06e218d6f44d6b3c2dc98ccd6090df4",
+    "generation-rewards.ts": "f690b2f1a5e512e399e2d793673a75263fb6426f6562b4947281788f3c5a2c8b",
+    "quota.ts": "4b77aeff53148483316fd5d443b2bbc03b6ff2fcf13b19acc90609f42c2c36be",
+    "generation-write-lifecycle.ts": "0b50f5159baf5271e085ca8363d030be840039e3a1b1ba236ad9f4d4e4e6179f",
+    "billing-identity-lifecycle.ts": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25",
+    "admob-ssv.ts": "3363c7a2428ef786fff41f45ab4bbdb23be72623f75be9799182cc291b45e315"
+  }
+}

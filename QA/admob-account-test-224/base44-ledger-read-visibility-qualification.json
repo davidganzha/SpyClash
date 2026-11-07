@@ -1,0 +1,7 @@
+{
+  "observed_at": "2026-11-07T20:07:26.704783+00:00",
+  "finding": "CLI-token exact-owner management and ordinary entity reads returned empty arrays. Actual iOS code prepares a durable attempt before calling Google SDK. Root observed real Google SDK account approval error; therefore empty reads conflict with expected creation order.",
+  "verification_limit": "Entity APIs apply RLS; CLI management-token app-row visibility has not been independently established. Empty arrays must not be treated as authoritative absence of attempts, balances, usage, or grants.",
+  "next_verification": "Read claim_status for the exact actual attempt through the authenticated app session, or verify account rows through an editor-authorized data surface. No additional ad view is needed.",
+  "revocation_still_verified": "Exact empty allowlist set succeeded; source snapshots/global flag/ad unit unchanged."
+}

@@ -28,7 +28,30 @@
     "base44_route": 16,
     "base44_ledger_and_ssv": 14,
     "native_supabase_db": 23,
-    "production_test_capability_published": false,
+    "production_test_capability_published": true,
     "allowlisted_account": null
-  }
+  },
+  "authenticated_account": {
+    "source": "HTTP 200 from User/me inside the active installed app session; canonical ID matched visible public SPYID",
+    "owner_sha256": "42fa6d088adbb11097eb7b9b53d18e2591b8568aaab278fa1bdd92368c6f60f5",
+    "normal_login_completed": true,
+    "restored_after_relaunch": true
+  },
+  "runtime_ad_outcome": {
+    "ad_shown": false,
+    "error": "Account not approved yet. <https://support.google.com/admob/answer/9905175#1>",
+    "error_source": "Actual GenerationRewardStore watch catch in running app",
+    "admob_dashboard": "Account not approved; app under review; payment profile complete",
+    "ssv_callbacks_in_observed_window": 0,
+    "ssv_observed_window_utc": "2026-11-07T20:02:30Z/2026-11-07T20:04:30Z",
+    "end_to_end_credit_test": "Blocked before ad display; no earned credit demonstrated"
+  },
+  "personal_test_cleanup": {
+    "allowlist_clear_acknowledged_at": "2026-11-07T20:05:19.150921+00:00",
+    "runtime_test_card_absent": true,
+    "runtime_watch_button_absent": true,
+    "existing_daily_generations_displayed": 10,
+    "global_flags_enabled": false
+  },
+  "ledger_read_limitation": "CLI entity reads returned empty arrays but row visibility is unverified. These reads do not establish absence of attempts, usage, grants or balances."
 }

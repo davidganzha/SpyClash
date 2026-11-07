@@ -1,0 +1,23 @@
+{
+  "revoked_at": "2026-11-07T20:05:19.150921+00:00",
+  "app_id": "69a0e57fa939f578082f8091",
+  "user_id": "69a0e57fa939f578082f8092",
+  "spy_id": "844-010",
+  "test_allowlist_exact_value": "",
+  "test_allowlist_count": 0,
+  "test_allowlist_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "verification": "Successful CLI set empty-value acknowledgement and secret-name readback; raw runtime value not exposed",
+  "global_flag_mutated": false,
+  "global_flag_last_explicit_value": "false",
+  "global_flag_verification_limit": "Root observed disabled status in actual app before test; no raw runtime env API access",
+  "ad_unit_mutated": false,
+  "functions_unchanged": true,
+  "records_edited_or_deleted": false,
+  "bonus_credits_after": 0,
+  "generations_used_today_after": 0,
+  "reward_rows_after": 0,
+  "usage_rows_after": 0,
+  "test_outcome": "No ad shown; Google SDK returned Account not approved yet. Actual localizedDescription captured in app catch. No earned credit demonstrated.",
+  "google_support_url": "https://support.google.com/admob/answer/9905175#1",
+  "ledger_read_verification_limit": "Zero counts come from CLI-token entity reads with unverified RLS visibility; not authoritative ledger or balance proof."
+}

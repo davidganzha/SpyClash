@@ -1,0 +1,9 @@
+{
+  "observed_at": "2026-11-07T20:05:19.150921+00:00",
+  "user_id": "69a0e57fa939f578082f8092",
+  "GenerationReward": [],
+  "AiGenerationUsage": [],
+  "bonus_credits": 0,
+  "generations_used_today": 0,
+  "ledger_read_verification_limit": "CLI-token reads have unverified RLS visibility. Empty arrays and derived zero counts do not establish authoritative absence or balances."
+}

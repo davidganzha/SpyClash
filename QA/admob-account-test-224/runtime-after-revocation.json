@@ -1,0 +1,99 @@
+{
+  "schema": "xcodebuildmcp.output.capture-result",
+  "schemaVersion": "2",
+  "didError": false,
+  "error": null,
+  "data": {
+    "summary": {
+      "status": "SUCCEEDED"
+    },
+    "artifacts": {
+      "simulatorId": "F1165ACF-09E1-4249-8732-4E9F67CB2BFE"
+    },
+    "capture": {
+      "type": "runtime-snapshot",
+      "rs": "1",
+      "screenHash": "1bq3sx0",
+      "seq": 35,
+      "count": 135,
+      "targets": [
+        "e77|tap|button|Открыть главную SpyClash||shell.header.home",
+        "e120|tap|button|Сгенерировать меньше слов||",
+        "e123|tap|button|Сгенерировать больше слов||",
+        "e100|typeText|text-field|ТЕМА|Тема на любом языке|wordPacks.editor.theme",
+        "e85|tap|button|НАЗАД||wordPacks.editor.back",
+        "e90|tap|button|Закрыть редактор||wordPacks.editor.close",
+        "e98|tap|button|LIMITLESS||",
+        "e105|tap|button|Архетипы героев||wordPacks.aiThemeSuggestions.hero-archetypes",
+        "e108|tap|button|Академия магии||wordPacks.aiThemeSuggestions.magic-academy",
+        "e111|tap|button|Страны Европы||wordPacks.aiThemeSuggestions.europe",
+        "e114|tap|button|Музыкальные инструменты||wordPacks.aiThemeSuggestions.musical-instruments",
+        "e122|tap|button|СЛОВ ДЛЯ ГЕНЕРАЦИИ|12|wordPacks.editor.wordCount",
+        "e125|tap|button|12 СЛОВ||",
+        "e126|tap|button|24 СЛОВ||",
+        "e127|tap|button|40 СЛОВ||",
+        "e128|tap|button|СГЕНЕРИРОВАТЬ СЛОВА||wordPacks.editor.generate"
+      ],
+      "scroll": [
+        "e92|swipe|scroll-view|||wordPacks.editor.form"
+      ],
+      "text": [
+        "e78|text|text|SPY||",
+        "e79|text|text|CLASH||",
+        "e80|text|text|Версия SpyClash 1.224v||",
+        "e87|text|text|ШАГ 1 ИЗ 2, AI-НАБОР||",
+        "e88|text|text|ШАГ 1 ИЗ 2||",
+        "e89|text|text|AI-НАБОР||",
+        "e94|text|text|AI-НАБОР, Опиши тему на том языке, на котором должны быть слова.||",
+        "e95|text|text|AI-НАБОР||",
+        "e27|text|text|// НАБОРЫ СЛОВ, БИБЛИОТЕКА||",
+        "e28|text|text|// НАБОРЫ СЛОВ||",
+        "e29|text|text|БИБЛИОТЕКА||",
+        "e96|text|text|Опиши тему на том языке, на котором должны быть слова.||",
+        "e97|text|text|Осталось генераций ИИ сегодня: 10||",
+        "e30|text|text|//||",
+        "e31|text|text|БИБЛИОТЕКА НАБОРОВ||",
+        "e36|text|text|Р||",
+        "e34|text|text|Б||",
+        "e32|text|text|Н||",
+        "e33|text|text|А||",
+        "e39|text|text|С||",
+        "e40|text|text|Л||",
+        "e42|text|text|В||",
+        "e35|text|text|О||",
+        "e41|text|text|О||",
+        "e37|text|text|Ы||",
+        "e43|text|text|Создай набор один раз и используй его в локальных и онлайн-играх.||",
+        "e45|text|text|00||",
+        "e46|text|text|000||",
+        "e47|text|text|00||",
+        "e99|text|text|// ТЕМА||",
+        "e48|text|text|НАБОРЫ||",
+        "e49|text|text|СЛОВА||",
+        "e50|text|text|СРЕДНЕЕ / НАБОР||",
+        "e53|text|text|ДОБАВИТЬ НАБОР||",
+        "e102|text|text|// ИДЕИ ДЛЯ ТЕМЫ||",
+        "e103|text|text|НАЖМИ, ЧТОБЫ ВСТАВИТЬ||",
+        "e107|text|text|АРХЕТИПЫ ГЕРОЕВ||",
+        "e110|text|text|АКАДЕМИЯ МАГИИ||",
+        "e113|text|text|СТРАНЫ ЕВРОПЫ||",
+        "e116|text|text|МУЗЫКАЛЬНЫЕ ИНСТРУМЕНТЫ||",
+        "e55|text|text|НЕ УДАЛОСЬ ЗАГРУЗИТЬ НАБОРЫ||",
+        "e119|text|text|12||",
+        "e56|text|text|Проверь соединение и попробуй снова. Существующие наборы не изменены.||",
+        "e118|text|text|СЛОВ ДЛЯ ГЕНЕРАЦИИ||",
+        "e59|text|text|ПОВТОРИТЬ||",
+        "e130|text|text|СГЕНЕРИРОВАТЬ СЛОВА||",
+        "e131|text|text|AI заполняет только черновик. Проверь и отредактируй перед сохранением.||"
+      ],
+      "udid": "F1165ACF-09E1-4249-8732-4E9F67CB2BFE"
+    }
+  },
+  "nextSteps": [
+    "Refresh after layout changes: snapshot_ui({ simulatorId: \"F1165ACF-09E1-4249-8732-4E9F67CB2BFE\" })",
+    "Wait for UI to settle: wait_for_ui({ simulatorId: \"F1165ACF-09E1-4249-8732-4E9F67CB2BFE\", predicate: \"settled\" })",
+    "Batch same-screen taps: batch({ simulatorId: \"F1165ACF-09E1-4249-8732-4E9F67CB2BFE\", steps: [{\"action\":\"tap\",\"elementRef\":\"e98\"},{\"action\":\"tap\",\"elementRef\":\"e105\"}] })",
+    "Tap an elementRef: tap({ simulatorId: \"F1165ACF-09E1-4249-8732-4E9F67CB2BFE\", elementRef: \"e120\" })",
+    "Scroll visible content: swipe({ simulatorId: \"F1165ACF-09E1-4249-8732-4E9F67CB2BFE\", withinElementRef: \"e92\", direction: \"up\", distance: 0.5 })"
+  ]
+}
