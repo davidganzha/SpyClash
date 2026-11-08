@@ -1,0 +1,78 @@
+{
+  "description": "Server-only AdMob viewing attempts and non-expiring generation credits. Only verified Google SSV may change pending to earned. Exact-state reservations prevent double spending; deletion removes account records.",
+  "name": "GenerationReward",
+  "properties": {
+    "ad_unit_id": {
+      "maxLength": 128,
+      "type": "string"
+    },
+    "attempt_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "custom_data": {
+      "maxLength": 256,
+      "type": "string"
+    },
+    "earned_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "generation_request_id": {
+      "maxLength": 128,
+      "type": "string"
+    },
+    "issued_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "state": {
+      "enum": [
+        "pending",
+        "earned",
+        "reserved",
+        "spent"
+      ],
+      "type": "string"
+    },
+    "transaction_id": {
+      "maxLength": 256,
+      "type": "string"
+    },
+    "user_id": {
+      "maxLength": 256,
+      "type": "string"
+    }
+  },
+  "required": [
+    "user_id",
+    "attempt_id",
+    "custom_data",
+    "ad_unit_id",
+    "issued_at",
+    "state"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "type": "object"
+}

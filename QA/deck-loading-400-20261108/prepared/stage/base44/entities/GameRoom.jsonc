@@ -1,0 +1,513 @@
+{
+  "name": "GameRoom",
+  "properties": {
+    "cards_read": {
+      "description": "Array of emails of players who have read their role card",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "category": {
+      "type": "string"
+    },
+    "close_intent": {
+      "description": "Server-owned two-phase room closure intent. Once committed, the room is logically closed; recipient signals are durably closed before physical deletion.",
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "object"
+    },
+    "code": {
+      "description": "6-char join code",
+      "type": "string"
+    },
+    "countdown_started_at": {
+      "description": "ISO timestamp when the between-questions countdown started",
+      "type": "string"
+    },
+    "current_answer": {
+      "type": "string"
+    },
+    "current_answer_feedback": {
+      "enum": [
+        "like",
+        "dislike",
+        null
+      ],
+      "type": "string"
+    },
+    "current_answerer_email": {
+      "type": "string"
+    },
+    "current_asker_email": {
+      "type": "string"
+    },
+    "departed_player_emails": {
+      "description": "Server-only identities of players who explicitly left an active match; distinguishes departure from role ejection.",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 12,
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "array"
+    },
+    "detective_vote_cancellation_event_id": {
+      "default": "",
+      "description": "Durable server-issued identity for the latest synchronized early ballot-cancellation presentation.",
+      "maxLength": 128,
+      "type": "string"
+    },
+    "detective_vote_cancellation_present_at": {
+      "default": "",
+      "description": "Server ISO timestamp at which every client should present the latest cancellation event.",
+      "type": "string"
+    },
+    "detective_vote_cancellation_reason": {
+      "default": "",
+      "description": "Machine-readable reason for the latest synchronized detective-vote cancellation.",
+      "enum": [
+        "",
+        "no_viable_candidate"
+      ],
+      "type": "string"
+    },
+    "detective_vote_cancellation_round_id": {
+      "default": "",
+      "description": "Identity of the detective ballot cancelled by the latest cancellation event.",
+      "maxLength": 128,
+      "type": "string"
+    },
+    "detective_vote_round_id": {
+      "default": "",
+      "description": "Server-issued identity for the currently active detective ballot; cleared atomically when that ballot settles.",
+      "maxLength": 128,
+      "type": "string"
+    },
+    "detective_votes": {
+      "description": "Array of {voter_email, voted_for_email}",
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "eliminated_emails": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "game_duration_seconds": {
+      "default": 900,
+      "description": "Total game duration in seconds (default 15 min)",
+      "type": "number"
+    },
+    "game_finished_event_id": {
+      "description": "Opaque server event identity for the current match terminal notification.",
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "game_mode": {
+      "default": "questions",
+      "description": "Game mode: questions or associations",
+      "enum": [
+        "questions",
+        "associations"
+      ],
+      "type": "string"
+    },
+    "game_paused_at": {
+      "description": "Server-issued timestamp for the currently active host pause.",
+      "type": "string"
+    },
+    "game_paused_total_seconds": {
+      "default": 0,
+      "description": "Accumulated completed pause duration used by the authoritative deadline.",
+      "minimum": 0,
+      "type": "number"
+    },
+    "game_started_at": {
+      "description": "ISO timestamp when all cards were read and game timer started",
+      "type": "string"
+    },
+    "game_started_event_id": {
+      "description": "Opaque server event identity for the current match start notification.",
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "host_email": {
+      "type": "string"
+    },
+    "incompatible_player_emails": {
+      "description": "Bounded server tombstones used to return client_update_required after a host selects multiple spies.",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 12,
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "array"
+    },
+    "intro_started_at": {
+      "description": "Server-issued timestamp anchoring the synchronized online intro.",
+      "type": "string"
+    },
+    "lobby_category": {
+      "maxLength": 120,
+      "type": "string"
+    },
+    "lobby_last_mutation_fingerprint": {
+      "description": "Internal fingerprint binding the latest mutation id to its canonical snapshot.",
+      "maxLength": 64,
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "lobby_last_mutation_id": {
+      "description": "Latest host mutation id used for bounded idempotent replay.",
+      "maxLength": 128,
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "lobby_revision": {
+      "default": 0,
+      "description": "Server-incremented revision for atomic host lobby snapshots.",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lobby_schema_version": {
+      "default": 2,
+      "description": "Version of the additive authoritative lobby-state contract.",
+      "minimum": 1,
+      "type": "integer"
+    },
+    "lobby_source_name": {
+      "maxLength": 120,
+      "type": "string"
+    },
+    "lobby_source_pack_id": {
+      "description": "Optional source-pack identity. Exposed only to the host by gameRoomAction projection.",
+      "maxLength": 128,
+      "type": "string"
+    },
+    "lobby_spy_count": {
+      "default": 1,
+      "description": "Host-selected public spy count, constrained by the current player count.",
+      "maximum": 3,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "lobby_theme": {
+      "maxLength": 120,
+      "type": "string"
+    },
+    "lobby_word_count": {
+      "default": 0,
+      "maximum": 200,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lobby_word_count_mode": {
+      "default": "recommended",
+      "enum": [
+        "recommended",
+        "custom"
+      ],
+      "type": "string"
+    },
+    "lobby_word_pool": {
+      "description": "Server-canonical lobby draft entries {id, word, enabled}; separate from the frozen gameplay word_pool.",
+      "items": {
+        "type": "object"
+      },
+      "maxItems": 200,
+      "type": "array"
+    },
+    "lobby_word_source": {
+      "default": "none",
+      "enum": [
+        "none",
+        "saved",
+        "ai",
+        "manual"
+      ],
+      "type": "string"
+    },
+    "match_id": {
+      "description": "Immutable server-issued identity for the current match; replaced only when a new replay starts.",
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "participant_user_ids": {
+      "description": "Stable user ids mirrored from players for authenticated lookup and lifecycle coordination",
+      "items": {
+        "type": "string"
+      },
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "array"
+    },
+    "player_feedback": {
+      "description": "Array of {email, likes, dislikes}",
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "players": {
+      "description": "Array of player objects {email, name, avatar}",
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "question_phase": {
+      "default": "asking",
+      "enum": [
+        "asking",
+        "answering",
+        "countdown",
+        "results"
+      ],
+      "type": "string"
+    },
+    "questions_in_round": {
+      "default": 0,
+      "type": "number"
+    },
+    "ready_players": {
+      "description": "Array of emails of players who are ready",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "replay_source_match_id": {
+      "description": "Finished match identity consumed by the latest server-owned replay auto-start; used only for retry reconciliation.",
+      "maxLength": 128,
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "room_last_write_token": {
+      "description": "Internal response-loss reconciliation token for the latest room write.",
+      "maxLength": 128,
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "room_revision": {
+      "default": 0,
+      "description": "Monotonic CAS revision for every shared room-state mutation.",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "roulette_target_email": {
+      "description": "Email of the player selected by roulette to go first",
+      "type": "string"
+    },
+    "round_number": {
+      "default": 1,
+      "type": "number"
+    },
+    "spectators": {
+      "description": "Array of emails of players who were eliminated but game continues — they watch only",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "spies_know_each_other": {
+      "default": false,
+      "description": "Whether active spies may see the rest of their team before the match finishes.",
+      "type": "boolean"
+    },
+    "spy_email": {
+      "type": "string"
+    },
+    "spy_emails": {
+      "description": "Frozen server-selected spy team. Projected per viewer; legacy spy_email remains the primary identity.",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 3,
+      "type": "array"
+    },
+    "spy_guess": {
+      "type": "string"
+    },
+    "status": {
+      "default": "waiting",
+      "enum": [
+        "waiting",
+        "ready_voting",
+        "roulette",
+        "playing",
+        "finished"
+      ],
+      "type": "string"
+    },
+    "terminal_intent": {
+      "description": "Immutable CAS-claimed server decision reconciled into history and final room state.",
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "object"
+    },
+    "vote_requests": {
+      "description": "Array of emails of players who voted to START the vote",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "winner": {
+      "default": "",
+      "enum": [
+        "detectives",
+        "spy",
+        ""
+      ],
+      "type": "string"
+    },
+    "word": {
+      "type": "string"
+    },
+    "word_pool": {
+      "description": "List of words for this game: [{word, enabled}]",
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "code",
+    "host_email",
+    "status"
+  ],
+  "type": "object"
+}

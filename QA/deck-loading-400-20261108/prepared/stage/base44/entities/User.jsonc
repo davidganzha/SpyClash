@@ -1,0 +1,189 @@
+{
+  "name": "User",
+  "properties": {
+    "acquisition_source": {
+      "description": "Locale-neutral self-reported acquisition channel selected during onboarding.",
+      "enum": [
+        "chatgpt",
+        "app_store_search",
+        "web_search",
+        "social_media",
+        "friends_or_family",
+        "other"
+      ],
+      "type": "string"
+    },
+    "ai_generations_today": {
+      "default": 0,
+      "description": "AI generations used today (resets daily)",
+      "type": "number"
+    },
+    "avatar": {
+      "description": "Avatar emoji or image url",
+      "type": "string"
+    },
+    "detective_games_played": {
+      "description": "Server-authoritative count of deduplicated ranked online single-spy games played as a detective.",
+      "minimum": 0,
+      "rls": {
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "integer"
+    },
+    "detective_games_won": {
+      "description": "Server-authoritative count of deduplicated ranked online single-spy games won as a detective.",
+      "minimum": 0,
+      "rls": {
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "integer"
+    },
+    "display_name": {
+      "description": "Player display name",
+      "type": "string"
+    },
+    "games_played": {
+      "default": 0,
+      "type": "number"
+    },
+    "games_won": {
+      "default": 0,
+      "type": "number"
+    },
+    "language": {
+      "default": "en",
+      "description": "User's preferred language",
+      "enum": [
+        "ru",
+        "en"
+      ],
+      "type": "string"
+    },
+    "last_ai_generation_date": {
+      "description": "ISO date of last AI generation (for daily reset)",
+      "type": "string"
+    },
+    "onboarding_completed": {
+      "description": "Whether the user explicitly completed the current account onboarding flow. Existing accounts may omit this field.",
+      "type": "boolean"
+    },
+    "onboarding_completed_at": {
+      "description": "Client completion timestamp persisted together with the onboarding answers.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "onboarding_version": {
+      "description": "Latest onboarding contract version completed by the user. Existing accounts may omit this field.",
+      "minimum": 1,
+      "type": "integer"
+    },
+    "radar_invite_policy": {
+      "description": "Player-controlled account preference for nearby Radar room invitations. Existing accounts may omit it so the iOS client can migrate its account-scoped local fallback before the first server write.",
+      "enum": [
+        "ask",
+        "automatic",
+        "blocked"
+      ],
+      "type": "string"
+    },
+    "rating": {
+      "default": 0,
+      "description": "Legacy server-authoritative profile rating mirror. Competitive leaderboard values are derived from GameHistory.",
+      "rls": {
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "integer"
+    },
+    "role": {
+      "default": "user",
+      "enum": [
+        "admin",
+        "user"
+      ],
+      "type": "string"
+    },
+    "spy_card_accent": {
+      "default": "signal_red",
+      "description": "Selected SpyCard accent identifier",
+      "enum": [
+        "signal_red",
+        "clearance_amber",
+        "verified_green"
+      ],
+      "type": "string"
+    },
+    "spy_card_badge": {
+      "default": "operative",
+      "description": "Selected SpyCard badge identifier",
+      "enum": [
+        "operative",
+        "ghost",
+        "analyst",
+        "handler"
+      ],
+      "type": "string"
+    },
+    "spy_card_theme": {
+      "default": "field",
+      "description": "Selected SpyCard visual theme identifier",
+      "enum": [
+        "field",
+        "blacksite",
+        "dossier"
+      ],
+      "type": "string"
+    },
+    "spy_games_played": {
+      "description": "Server-authoritative count of deduplicated ranked online single-spy games played as the spy.",
+      "minimum": 0,
+      "rls": {
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "integer"
+    },
+    "spy_games_won": {
+      "description": "Server-authoritative count of deduplicated ranked online single-spy games won as the spy.",
+      "minimum": 0,
+      "rls": {
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "integer"
+    },
+    "spy_id": {
+      "description": "Collision-checked public SpyClash identifier allocated by communityAction.",
+      "pattern": "^[0-9]{3}-[0-9]{3}$",
+      "rls": {
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    }
+  },
+  "required": [
+    "role"
+  ],
+  "type": "object"
+}

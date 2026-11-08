@@ -1,0 +1,201 @@
+{
+  "description": "Server-owned encrypted ActivityKit push-to-start or per-activity update token.",
+  "name": "LiveActivityRegistration",
+  "properties": {
+    "activity_id_hash": {
+      "type": "string"
+    },
+    "bundle_id": {
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "delivery_attempt_count": {
+      "default": 0,
+      "type": "number"
+    },
+    "delivery_lease_until": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "delivery_revision": {
+      "type": "string"
+    },
+    "delivery_state": {
+      "default": "idle",
+      "enum": [
+        "idle",
+        "processing",
+        "retry",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "ended_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "environment": {
+      "enum": [
+        "sandbox",
+        "production"
+      ],
+      "type": "string"
+    },
+    "installation_id_hash": {
+      "type": "string"
+    },
+    "last_apns_timestamp": {
+      "type": "number"
+    },
+    "last_error_code": {
+      "type": "string"
+    },
+    "last_revision": {
+      "description": "Latest room revision delivered to this activity token.",
+      "type": "number"
+    },
+    "last_seen_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "last_started_match_id": {
+      "description": "Legacy latest match marker retained for compatibility.",
+      "type": "string"
+    },
+    "match_id": {
+      "type": "string"
+    },
+    "next_attempt_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "pending_match_id": {
+      "type": "string"
+    },
+    "pending_room_id": {
+      "type": "string"
+    },
+    "pending_room_revision": {
+      "type": "number"
+    },
+    "provider_match_id": {
+      "description": "Current server match generation bound to this per-activity token. Prevents replay data reaching a stale activity.",
+      "type": "string"
+    },
+    "retry_requested": {
+      "default": false,
+      "type": "boolean"
+    },
+    "revoked_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "room_id": {
+      "type": "string"
+    },
+    "started_match_ids": {
+      "description": "Bounded match ledger preventing duplicate push-to-start activities across concurrent rooms.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "status": {
+      "default": "active",
+      "enum": [
+        "active",
+        "ended",
+        "revoked"
+      ],
+      "type": "string"
+    },
+    "token_ciphertext": {
+      "description": "AES-GCM encrypted ActivityKit APNs token.",
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "token_hash": {
+      "type": "string"
+    },
+    "token_iv": {
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "token_kind": {
+      "enum": [
+        "push_to_start",
+        "activity"
+      ],
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "user_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "user_id",
+    "installation_id_hash",
+    "token_kind",
+    "token_hash",
+    "token_ciphertext",
+    "token_iv",
+    "environment",
+    "bundle_id",
+    "status",
+    "last_seen_at",
+    "created_at",
+    "updated_at"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "type": "object"
+}

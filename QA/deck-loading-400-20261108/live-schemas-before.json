@@ -1,0 +1,2713 @@
+{
+  "total": 28,
+  "schemas": [
+    {
+      "entity_name": "AiGenerationQuota",
+      "entity_schema": {
+        "type": "object",
+        "name": "AiGenerationQuota",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "Date string YYYY-MM-DD"
+          },
+          "count": {
+            "type": "number",
+            "description": "Total generations on this date",
+            "default": 0
+          }
+        },
+        "required": [
+          "date"
+        ]
+      }
+    },
+    {
+      "entity_name": "AiGenerationUsage",
+      "entity_schema": {
+        "type": "object",
+        "name": "AiGenerationUsage",
+        "description": "Server-owned daily AI generation usage. User profile counters are mirrors only and are never authoritative.",
+        "properties": {
+          "quota_key": {
+            "type": "string",
+            "description": "Stable UTC-day key built from Base44 user id and YYYY-MM-DD."
+          },
+          "user_id": {
+            "type": "string",
+            "description": "Authenticated Base44 user id that owns this usage bucket."
+          },
+          "usage_date": {
+            "type": "string",
+            "description": "UTC calendar date for this usage bucket.",
+            "format": "date"
+          },
+          "generations_used": {
+            "type": "integer",
+            "description": "Number of server-reserved AI generation slots for this UTC day.",
+            "minimum": 0,
+            "default": 0
+          },
+          "last_generated_at": {
+            "type": "string",
+            "description": "Timestamp of the latest reserved generation slot.",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "quota_key",
+          "user_id",
+          "usage_date",
+          "generations_used"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "AiWordPackCacheVariant",
+      "entity_schema": {
+        "type": "object",
+        "name": "AiWordPackCacheVariant",
+        "description": "Server-owned AI word-pack cache. Each row is one reusable variant for an exact normalized theme/language/prompt-version key; raw themes are never stored.",
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "description": "Authenticated Base44 user id that exclusively owns this cache variant.",
+            "maxLength": 256
+          },
+          "cache_key": {
+            "type": "string",
+            "description": "One-way exact-match key for normalized theme, language, and prompt version.",
+            "pattern": "^awc1_[A-Za-z0-9_-]{43}$"
+          },
+          "theme_key": {
+            "type": "string",
+            "description": "One-way theme identifier suitable for telemetry; never a raw theme.",
+            "pattern": "^awt1_[A-Za-z0-9_-]{43}$"
+          },
+          "language_key": {
+            "type": "string",
+            "description": "Canonical lowercase BCP 47 language key.",
+            "maxLength": 35
+          },
+          "prompt_version": {
+            "type": "string",
+            "description": "Exact normalized prompt contract version.",
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+          },
+          "exclusion_key": {
+            "type": "string",
+            "description": "One-way exact identifier for the exclusion set used to interpret an exhausted partial; raw exclusions are never stored.",
+            "pattern": "^awe1_[A-Za-z0-9_-]{43}$"
+          },
+          "variant_key": {
+            "type": "string",
+            "description": "Content-derived identifier. Distinct generated packs remain separate variants under the same cache key.",
+            "pattern": "^awv1_[A-Za-z0-9_-]{43}$"
+          },
+          "category": {
+            "type": "string",
+            "description": "Safe display category returned with this variant.",
+            "maxLength": 120
+          },
+          "words": {
+            "type": "array",
+            "description": "Unique generated words. Exclusions are applied again when this variant is read.",
+            "items": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "minItems": 2,
+            "maxItems": 100
+          },
+          "exhausted": {
+            "type": "boolean",
+            "description": "True when the provider could not safely produce more real words for this result; callers should not attempt a futile refill."
+          },
+          "word_count": {
+            "type": "integer",
+            "description": "Number of unique words stored in this variant.",
+            "minimum": 2,
+            "maximum": 100
+          },
+          "generated_at": {
+            "type": "string",
+            "description": "When the provider result was generated.",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "description": "Hard TTL boundary. Reads ignore this row at or after the timestamp.",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "user_id",
+          "cache_key",
+          "theme_key",
+          "language_key",
+          "prompt_version",
+          "exclusion_key",
+          "variant_key",
+          "category",
+          "words",
+          "exhausted",
+          "word_count",
+          "generated_at",
+          "expires_at"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "AiWordPackOperation",
+      "entity_schema": {
+        "type": "object",
+        "name": "AiWordPackOperation",
+        "description": "Server-owned durable generation journal. Running or failed requests never restart automatically; completed requests replay their exact words. No raw theme or provider credentials are stored. Account deletion removes these records.",
+        "properties": {
+          "request_key": {
+            "type": "string",
+            "pattern": "^awr1_[A-Za-z0-9_-]{43}$"
+          },
+          "user_id": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "request_id": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "request_fingerprint": {
+            "type": "string",
+            "pattern": "^awf1_[A-Za-z0-9_-]{43}$"
+          },
+          "operation_token": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "prepared",
+              "running",
+              "completed",
+              "failed"
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "result_category": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "result_words": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "minItems": 2,
+            "maxItems": 100
+          },
+          "exhausted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "request_key",
+          "user_id",
+          "request_id",
+          "request_fingerprint",
+          "operation_token",
+          "state",
+          "updated_at"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "AiWordPackRequestResult",
+      "entity_schema": {
+        "type": "object",
+        "name": "AiWordPackRequestResult",
+        "description": "Server-owned successful AI word-pack result for idempotent replay. The request key is scoped to authenticated user plus request_id; no raw theme is stored.",
+        "properties": {
+          "request_key": {
+            "type": "string",
+            "description": "One-way key derived only from authenticated user id and normalized request_id.",
+            "pattern": "^awr1_[A-Za-z0-9_-]{43}$"
+          },
+          "user_id": {
+            "type": "string",
+            "description": "Authenticated Base44 user id owning this idempotency key.",
+            "maxLength": 256
+          },
+          "request_id": {
+            "type": "string",
+            "description": "Client-supplied opaque request id after compatibility normalization and trim.",
+            "maxLength": 128
+          },
+          "request_fingerprint": {
+            "type": "string",
+            "description": "One-way fingerprint of cache key, requested count, and sorted normalized exclusions.",
+            "pattern": "^awf1_[A-Za-z0-9_-]{43}$"
+          },
+          "result_category": {
+            "type": "string",
+            "description": "Successful category returned for every replay of this request.",
+            "maxLength": 120
+          },
+          "result_words": {
+            "type": "array",
+            "description": "Successful word list returned for every replay of this request.",
+            "items": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "minItems": 2,
+            "maxItems": 100
+          },
+          "exhausted": {
+            "type": "boolean",
+            "description": "Exact exhaustion signal replayed with the successful result."
+          },
+          "cache_variant_key": {
+            "type": "string",
+            "description": "Optional cache variant that supplied or received this result.",
+            "pattern": "^awv1_[A-Za-z0-9_-]{43}$"
+          },
+          "completed_at": {
+            "type": "string",
+            "description": "When the successful result became replayable.",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "description": "Idempotency retention boundary. Expired rows no longer replay or conflict.",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "request_key",
+          "user_id",
+          "request_id",
+          "request_fingerprint",
+          "result_category",
+          "result_words",
+          "exhausted",
+          "completed_at",
+          "expires_at"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "AppStoreAccount",
+      "entity_schema": {
+        "type": "object",
+        "name": "AppStoreAccount",
+        "description": "Server-owned binding between a SpyClash account and the stable Apple appAccountToken used for StoreKit purchases.",
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "description": "Authenticated Base44 user that owns this Apple billing identity."
+          },
+          "app_account_token": {
+            "type": "string",
+            "description": "Stable UUID passed to StoreKit and returned in Apple transaction and renewal JWS payloads.",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "description": "Time the billing identity was reserved for this account.",
+            "format": "date-time"
+          },
+          "last_used_at": {
+            "type": "string",
+            "description": "Most recent purchase preparation or verified transaction sync.",
+            "format": "date-time"
+          },
+          "reservation_state": {
+            "type": "string",
+            "description": "Internal two-phase reservation state. Pending rows are tombstone-owned until prepare safely claims them.",
+            "enum": [
+              "pending",
+              "active",
+              "deletion_sentinel"
+            ]
+          }
+        },
+        "required": [
+          "user_id",
+          "app_account_token",
+          "created_at",
+          "last_used_at"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "AppleSignInCredential",
+      "entity_schema": {
+        "type": "object",
+        "name": "AppleSignInCredential",
+        "description": "Server-owned encrypted Sign in with Apple refresh credentials used only for account-deletion revocation.",
+        "properties": {
+          "identity_key": {
+            "type": "string",
+            "description": "Keyed one-way identifier derived from Apple's verified email claim."
+          },
+          "subject_key": {
+            "type": "string",
+            "description": "Keyed one-way identifier derived from Apple's verified subject claim."
+          },
+          "user_id": {
+            "type": "string",
+            "description": "Authenticated Base44 owner, populated only after session provisioning."
+          },
+          "credential_kind": {
+            "type": "string",
+            "description": "Identifies this server-owned row as an encrypted provider credential.",
+            "enum": [
+              "token"
+            ]
+          },
+          "client_id": {
+            "type": "string",
+            "description": "Exact native App ID or web Services ID used to mint and revoke the credential."
+          },
+          "state": {
+            "type": "string",
+            "description": "Two-phase ownership and retry-safe revocation state.",
+            "enum": [
+              "pending",
+              "bound",
+              "revoking",
+              "revoked"
+            ]
+          },
+          "refresh_token_ciphertext": {
+            "type": "string",
+            "description": "AES-GCM encrypted Apple refresh token; cleared immediately after successful revocation."
+          },
+          "refresh_token_iv": {
+            "type": "string",
+            "description": "AES-GCM nonce bound to identity, subject, and client id."
+          },
+          "binding_ticket_hash": {
+            "type": "string",
+            "description": "One-way hash of a short-lived idempotent ticket used to bind this credential after Base44 authentication."
+          },
+          "binding_ticket_expires_at": {
+            "type": "string",
+            "description": "Expiry for the idempotent post-authentication binding ticket."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revoked_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "manual_revocation_required": {
+            "type": "boolean",
+            "description": "Deletion receipt indicating that Apple must be disconnected manually because no usable token was available."
+          },
+          "revision": {
+            "type": "string",
+            "description": "Opaque optimistic-concurrency revision used for exact service-role updates."
+          }
+        },
+        "required": [
+          "identity_key",
+          "subject_key",
+          "credential_kind",
+          "client_id",
+          "state",
+          "refresh_token_ciphertext",
+          "refresh_token_iv",
+          "created_at",
+          "updated_at",
+          "revision"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "BillingIdentityLifecycle",
+      "entity_schema": {
+        "type": "object",
+        "name": "BillingIdentityLifecycle",
+        "description": "Server-only deletion and writer coordination. The subject key is a one-way hash and never stores a raw user id.",
+        "properties": {
+          "subject_key": {
+            "type": "string",
+            "description": "Deterministic one-way billing lifecycle subject key."
+          },
+          "state": {
+            "type": "string",
+            "description": "Active writer coordination or irreversible account deletion.",
+            "enum": [
+              "active",
+              "deleting"
+            ]
+          },
+          "lease_until": {
+            "type": "string",
+            "description": "Bounded lease expiry.",
+            "format": "date-time"
+          },
+          "lease_token": {
+            "type": "string",
+            "description": "Opaque exact lease owner token."
+          },
+          "revision": {
+            "type": "string",
+            "description": "Opaque CAS revision changed by every lifecycle transition."
+          }
+        },
+        "required": [
+          "subject_key",
+          "state",
+          "lease_until",
+          "lease_token",
+          "revision"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "CommunityProfileSignal",
+      "entity_schema": {
+        "type": "object",
+        "name": "CommunityProfileSignal",
+        "description": "Per-user realtime wake-up hint that a public Community profile changed. Clients refetch the mediated public projection; no profile or private account data is stored here.",
+        "properties": {
+          "profile_user_id": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "recipient_user_id": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "recipient_user_id",
+          "profile_user_id",
+          "revision"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "$or": [
+              {
+                "data.recipient_user_id": "{{user.id}}"
+              },
+              {
+                "user_condition": {
+                  "role": "admin"
+                }
+              }
+            ]
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "CommunityReport",
+      "entity_schema": {
+        "type": "object",
+        "name": "CommunityReport",
+        "description": "Admin-only moderation evidence submitted through communityAction. Clients cannot read or mutate reports directly. Account deletion replaces raw account ids with stable deletion tombstones while retaining the private report and snapshot for safety, enforcement, and legal review.",
+        "properties": {
+          "reporter_user_id": {
+            "type": "string"
+          },
+          "reported_user_id": {
+            "type": "string"
+          },
+          "report_type": {
+            "type": "string",
+            "enum": [
+              "user",
+              "comment"
+            ]
+          },
+          "comment_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "harassment",
+              "hate_speech",
+              "sexual_content",
+              "violence_or_threats",
+              "spam",
+              "impersonation",
+              "other"
+            ]
+          },
+          "details": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "content_snapshot": {
+            "type": "string",
+            "description": "Private moderation snapshot of the reported content at submission time.",
+            "maxLength": 500
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "reviewing",
+              "actioned",
+              "dismissed"
+            ],
+            "default": "open"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "reporter_user_id",
+          "reported_user_id",
+          "report_type",
+          "reason",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "Entitlement",
+      "entity_schema": {
+        "type": "object",
+        "name": "Entitlement",
+        "description": "Server-verified provider source for SpyClash LIMITLESS access. Clients cannot read or write these records directly.",
+        "properties": {
+          "source_key": {
+            "type": "string",
+            "description": "Stable provider-scoped key, for example apple:<original_transaction_id> or stripe:<subscription_id>."
+          },
+          "user_id": {
+            "type": "string",
+            "description": "Authenticated Base44 user id that owns this entitlement."
+          },
+          "user_email": {
+            "type": "string",
+            "description": "Last observed account email for support and migration auditing only; never used as the durable owner key.",
+            "format": "email"
+          },
+          "provider": {
+            "type": "string",
+            "description": "Payment provider that issued this entitlement.",
+            "enum": [
+              "apple",
+              "stripe"
+            ]
+          },
+          "product_id": {
+            "type": "string",
+            "description": "Provider product identifier."
+          },
+          "price_id": {
+            "type": "string",
+            "description": "Stripe price identifier when provider is Stripe."
+          },
+          "original_transaction_id": {
+            "type": "string",
+            "description": "Apple original transaction identifier."
+          },
+          "transaction_id": {
+            "type": "string",
+            "description": "Most recently verified Apple transaction identifier."
+          },
+          "stripe_subscription_id": {
+            "type": "string",
+            "description": "Stripe subscription identifier."
+          },
+          "stripe_refund_blocked_charge_ids": {
+            "type": "array",
+            "description": "Stripe charge ids with a canonically confirmed full successful refund. Kept independently from dispute locks.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "stripe_dispute_blocked_charge_ids": {
+            "type": "array",
+            "description": "Stripe charge ids with at least one canonical active or lost dispute. Kept independently from refund locks.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "stripe_refund_event_cursors": {
+            "type": "object",
+            "description": "Latest deterministic Stripe event cursor per refund charge id.",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "stripe_dispute_event_cursors": {
+            "type": "object",
+            "description": "Latest deterministic Stripe event cursor per disputed charge id.",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "provider_customer_id": {
+            "type": "string",
+            "description": "Stripe customer identifier or another provider-side account reference."
+          },
+          "app_account_token": {
+            "type": "string",
+            "description": "Apple appAccountToken used to bind an App Store purchase to a SpyClash account.",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "description": "Last server-verified lifecycle status. Only active, trialing, and grace_period currently grant LIMITLESS access.",
+            "enum": [
+              "pending",
+              "active",
+              "trialing",
+              "grace_period",
+              "billing_retry",
+              "past_due",
+              "paused",
+              "canceled",
+              "expired",
+              "revoked",
+              "refunded",
+              "unknown"
+            ]
+          },
+          "purchased_at": {
+            "type": "string",
+            "description": "Initial provider purchase timestamp.",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "description": "End of the currently verified entitlement period.",
+            "format": "date-time"
+          },
+          "environment": {
+            "type": "string",
+            "description": "Provider environment in which the purchase was verified.",
+            "enum": [
+              "sandbox",
+              "production"
+            ]
+          },
+          "cancel_at_period_end": {
+            "type": "boolean",
+            "description": "Whether renewal is scheduled to stop after the current paid period.",
+            "default": false
+          },
+          "last_verified_at": {
+            "type": "string",
+            "description": "Timestamp of the latest successful server-side provider verification.",
+            "format": "date-time"
+          },
+          "provider_event_at": {
+            "type": "string",
+            "description": "Provider-signed event timestamp used to reject delayed out-of-order lifecycle updates.",
+            "format": "date-time"
+          },
+          "provider_event_id": {
+            "type": "string",
+            "description": "Latest provider event identifier, such as an App Store notification UUID."
+          },
+          "write_revision": {
+            "type": "string",
+            "description": "Opaque server-only CAS revision changed by every entitlement persistence or identity transition."
+          }
+        },
+        "required": [
+          "source_key",
+          "user_id",
+          "provider",
+          "product_id",
+          "status",
+          "environment",
+          "expires_at",
+          "last_verified_at"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "Friendship",
+      "entity_schema": {
+        "type": "object",
+        "name": "Friendship",
+        "description": "Server-owned SpyClash friend relationship. Clients access it only through communityAction.",
+        "properties": {
+          "requester_id": {
+            "type": "string"
+          },
+          "addressee_id": {
+            "type": "string"
+          },
+          "requester_spy_id": {
+            "type": "string",
+            "description": "Requester SPY ID in 000-000 format"
+          },
+          "addressee_spy_id": {
+            "type": "string",
+            "description": "Addressee SPY ID in 000-000 format"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "accepted",
+              "declined",
+              "blocked"
+            ],
+            "default": "pending"
+          },
+          "blocked_by_id": {
+            "type": "string",
+            "description": "User ID that created the block. Present only while status is blocked.",
+            "rls": {
+              "read": {
+                "user_condition": {
+                  "role": "admin"
+                }
+              },
+              "write": {
+                "user_condition": {
+                  "role": "admin"
+                }
+              }
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "request_event_id": {
+            "type": "string",
+            "description": "Opaque server event identity used to deduplicate the current pending request notification.",
+            "rls": {
+              "read": {
+                "user_condition": {
+                  "role": "admin"
+                }
+              },
+              "write": {
+                "user_condition": {
+                  "role": "admin"
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "requester_id",
+          "addressee_id",
+          "requester_spy_id",
+          "addressee_spy_id",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "GameHistory",
+      "entity_schema": {
+        "type": "object",
+        "name": "GameHistory",
+        "properties": {
+          "player_email": {
+            "type": "string"
+          },
+          "room_code": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "spy",
+              "detective"
+            ]
+          },
+          "word": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "winner": {
+            "type": "string",
+            "enum": [
+              "detectives",
+              "spy"
+            ]
+          },
+          "player_count": {
+            "type": "number"
+          },
+          "won": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "player_email",
+          "room_code",
+          "role",
+          "winner"
+        ]
+      }
+    },
+    {
+      "entity_name": "GameRoom",
+      "entity_schema": {
+        "type": "object",
+        "name": "GameRoom",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "6-char join code"
+          },
+          "host_email": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "waiting",
+              "ready_voting",
+              "roulette",
+              "playing",
+              "finished"
+            ],
+            "default": "waiting"
+          },
+          "players": {
+            "type": "array",
+            "description": "Array of player objects {email, name, avatar}",
+            "items": {
+              "type": "object"
+            }
+          },
+          "spectators": {
+            "type": "array",
+            "description": "Array of emails of players who were eliminated but game continues \u2014 they watch only",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ready_players": {
+            "type": "array",
+            "description": "Array of emails of players who are ready",
+            "items": {
+              "type": "string"
+            }
+          },
+          "cards_read": {
+            "type": "array",
+            "description": "Array of emails of players who have read their role card",
+            "items": {
+              "type": "string"
+            }
+          },
+          "spy_email": {
+            "type": "string"
+          },
+          "word": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "spy_guess": {
+            "type": "string"
+          },
+          "detective_votes": {
+            "type": "array",
+            "description": "Array of {voter_email, voted_for_email}",
+            "items": {
+              "type": "object"
+            }
+          },
+          "vote_requests": {
+            "type": "array",
+            "description": "Array of emails of players who voted to START the vote",
+            "items": {
+              "type": "string"
+            }
+          },
+          "winner": {
+            "type": "string",
+            "enum": [
+              "detectives",
+              "spy",
+              ""
+            ],
+            "default": ""
+          },
+          "round_number": {
+            "type": "number",
+            "default": 1
+          },
+          "current_asker_email": {
+            "type": "string"
+          },
+          "current_answerer_email": {
+            "type": "string"
+          },
+          "current_answer": {
+            "type": "string"
+          },
+          "current_answer_feedback": {
+            "type": "string",
+            "enum": [
+              "like",
+              "dislike",
+              null
+            ]
+          },
+          "player_feedback": {
+            "type": "array",
+            "description": "Array of {email, likes, dislikes}",
+            "items": {
+              "type": "object"
+            }
+          },
+          "questions_in_round": {
+            "type": "number",
+            "default": 0
+          },
+          "question_phase": {
+            "type": "string",
+            "enum": [
+              "asking",
+              "answering",
+              "countdown",
+              "results"
+            ],
+            "default": "asking"
+          },
+          "eliminated_emails": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "word_pool": {
+            "type": "array",
+            "description": "List of words for this game: [{word, enabled}]",
+            "items": {
+              "type": "object"
+            }
+          },
+          "game_started_at": {
+            "type": "string",
+            "description": "ISO timestamp when all cards were read and game timer started"
+          },
+          "game_duration_seconds": {
+            "type": "number",
+            "description": "Total game duration in seconds (default 15 min)",
+            "default": 900
+          },
+          "countdown_started_at": {
+            "type": "string",
+            "description": "ISO timestamp when the between-questions countdown started"
+          },
+          "roulette_target_email": {
+            "type": "string",
+            "description": "Email of the player selected by roulette to go first"
+          },
+          "game_mode": {
+            "type": "string",
+            "description": "Game mode: questions or associations",
+            "enum": [
+              "questions",
+              "associations"
+            ],
+            "default": "questions"
+          }
+        },
+        "required": [
+          "code",
+          "host_email",
+          "status"
+        ]
+      }
+    },
+    {
+      "entity_name": "GameRoomSignal",
+      "entity_schema": {
+        "type": "object",
+        "name": "GameRoomSignal",
+        "description": "Per-participant realtime wake-up hint for an authoritative lobby revision. Clients fetch the mediated room projection after observing a signal; no room secret or raw lobby payload is stored here.",
+        "properties": {
+          "close_completion": {
+            "type": "object",
+            "description": "Server-only tombstone written only after every participant received the exact closed signal. It carries the participant lease set needed to finish an interrupted physical deletion.",
+            "rls": {
+              "read": {
+                "user_condition": {
+                  "role": "admin"
+                }
+              },
+              "write": {
+                "user_condition": {
+                  "role": "admin"
+                }
+              }
+            }
+          },
+          "close_intent_id": {
+            "type": "string",
+            "description": "Server-only durable receipt proving that this recipient signal was closed by an authorized room close intent.",
+            "maxLength": 128,
+            "rls": {
+              "read": {
+                "user_condition": {
+                  "role": "admin"
+                }
+              },
+              "write": {
+                "user_condition": {
+                  "role": "admin"
+                }
+              }
+            }
+          },
+          "close_match_id": {
+            "type": "string",
+            "description": "Server-only match identity bound to the durable room close receipt.",
+            "maxLength": 128,
+            "rls": {
+              "read": {
+                "user_condition": {
+                  "role": "admin"
+                }
+              },
+              "write": {
+                "user_condition": {
+                  "role": "admin"
+                }
+              }
+            }
+          },
+          "lobby_revision": {
+            "type": "integer",
+            "description": "Latest committed authoritative lobby revision known to the signal writer.",
+            "minimum": 0
+          },
+          "projected_game_mode": {
+            "type": "string",
+            "description": "Safe public lobby mode projected directly to this authenticated participant.",
+            "enum": [
+              "questions",
+              "associations"
+            ]
+          },
+          "projection_committed_at": {
+            "type": "string",
+            "description": "Server timestamp captured immediately after the authoritative room CAS commits.",
+            "format": "date-time"
+          },
+          "projection_emitted_at": {
+            "type": "string",
+            "description": "Server timestamp used with projection_id for deterministic direct-signal ordering.",
+            "format": "date-time"
+          },
+          "projection_id": {
+            "type": "string",
+            "description": "Opaque server-issued identity used to order duplicate direct projections.",
+            "format": "uuid"
+          },
+          "projection_kind": {
+            "type": "string",
+            "description": "Activation discriminator for optional safe direct projections; generic wake-up hints always write none.",
+            "enum": [
+              "none",
+              "lobby_mode_v1"
+            ]
+          },
+          "room_id": {
+            "type": "string",
+            "description": "Room whose projected state should be refreshed.",
+            "maxLength": 256
+          },
+          "room_revision": {
+            "type": "integer",
+            "description": "Latest monotonic shared-room revision represented by this signal.",
+            "minimum": 0
+          },
+          "room_updated_at": {
+            "type": "string",
+            "description": "System timestamp of the latest committed room state represented by this wake-up signal.",
+            "format": "date-time"
+          },
+          "state": {
+            "type": "string",
+            "description": "Whether the client should refresh an active room or discard a closed-room subscription.",
+            "enum": [
+              "active",
+              "closed"
+            ]
+          },
+          "user_id": {
+            "type": "string",
+            "description": "Stable authenticated recipient id.",
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "user_id",
+          "room_id",
+          "lobby_revision",
+          "state"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "$or": [
+              {
+                "data.user_id": "{{user.id}}"
+              },
+              {
+                "user_condition": {
+                  "role": "admin"
+                }
+              }
+            ]
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "LiveActivityRegistration",
+      "entity_schema": {
+        "type": "object",
+        "name": "LiveActivityRegistration",
+        "description": "Server-owned encrypted ActivityKit push-to-start or per-activity update token.",
+        "properties": {
+          "user_id": {
+            "type": "string"
+          },
+          "installation_id_hash": {
+            "type": "string"
+          },
+          "token_kind": {
+            "type": "string",
+            "enum": [
+              "push_to_start",
+              "activity"
+            ]
+          },
+          "token_hash": {
+            "type": "string"
+          },
+          "token_ciphertext": {
+            "type": "string",
+            "description": "AES-GCM encrypted ActivityKit APNs token.",
+            "rls": {
+              "read": {
+                "user_condition": {
+                  "role": "admin"
+                }
+              },
+              "write": {
+                "user_condition": {
+                  "role": "admin"
+                }
+              }
+            }
+          },
+          "token_iv": {
+            "type": "string",
+            "rls": {
+              "read": {
+                "user_condition": {
+                  "role": "admin"
+                }
+              },
+              "write": {
+                "user_condition": {
+                  "role": "admin"
+                }
+              }
+            }
+          },
+          "activity_id_hash": {
+            "type": "string"
+          },
+          "room_id": {
+            "type": "string"
+          },
+          "match_id": {
+            "type": "string"
+          },
+          "environment": {
+            "type": "string",
+            "enum": [
+              "sandbox",
+              "production"
+            ]
+          },
+          "bundle_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "ended",
+              "revoked"
+            ],
+            "default": "active"
+          },
+          "last_started_match_id": {
+            "type": "string",
+            "description": "Legacy latest match marker retained for compatibility."
+          },
+          "started_match_ids": {
+            "type": "array",
+            "description": "Bounded match ledger preventing duplicate push-to-start activities across concurrent rooms.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "last_revision": {
+            "type": "number",
+            "description": "Latest room revision delivered to this activity token."
+          },
+          "provider_match_id": {
+            "type": "string",
+            "description": "Current server match generation bound to this per-activity token. Prevents replay data reaching a stale activity."
+          },
+          "delivery_state": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "processing",
+              "retry",
+              "failed"
+            ],
+            "default": "idle"
+          },
+          "delivery_revision": {
+            "type": "string"
+          },
+          "delivery_lease_until": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "delivery_attempt_count": {
+            "type": "number",
+            "default": 0
+          },
+          "next_attempt_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "retry_requested": {
+            "type": "boolean",
+            "default": false
+          },
+          "pending_room_id": {
+            "type": "string"
+          },
+          "pending_match_id": {
+            "type": "string"
+          },
+          "pending_room_revision": {
+            "type": "number"
+          },
+          "last_apns_timestamp": {
+            "type": "number"
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ended_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revoked_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_error_code": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "user_id",
+          "installation_id_hash",
+          "token_kind",
+          "token_hash",
+          "token_ciphertext",
+          "token_iv",
+          "environment",
+          "bundle_id",
+          "status",
+          "last_seen_at",
+          "created_at",
+          "updated_at"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "MembershipGrant",
+      "entity_schema": {
+        "type": "object",
+        "name": "MembershipGrant",
+        "description": "Admin-managed LIMITLESS access grants. Clients may read only grants for their own Base44 user id and cannot write them.",
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "description": "Base44 User id receiving the LIMITLESS grant."
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Whether this manual LIMITLESS grant is active.",
+            "default": true
+          },
+          "expires_at": {
+            "type": "string",
+            "description": "Optional expiry. Empty means active until an admin disables or deletes the grant.",
+            "format": "date-time"
+          },
+          "label": {
+            "type": "string",
+            "description": "Optional internal support label."
+          }
+        },
+        "required": [
+          "user_id",
+          "active"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "$or": [
+              {
+                "data.user_id": "{{user.id}}"
+              },
+              {
+                "user_condition": {
+                  "role": "admin"
+                }
+              }
+            ]
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "MembershipSignal",
+      "entity_schema": {
+        "type": "object",
+        "name": "MembershipSignal",
+        "description": "Owner-scoped realtime hint to refetch verified membership. Contains no transaction, payment or entitlement data.",
+        "properties": {
+          "change_id": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "user_id": {
+            "type": "string",
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "user_id",
+          "change_id"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "$or": [
+              {
+                "data.user_id": "{{user.id}}"
+              },
+              {
+                "user_condition": {
+                  "role": "admin"
+                }
+              }
+            ]
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "NotificationAnnouncement",
+      "entity_schema": {
+        "type": "object",
+        "name": "NotificationAnnouncement",
+        "description": "Server-owned localized global inbox announcement with an idempotent bounded fanout lease. The user inbox exposes the newest 500 retained global announcements independently from the personal window.",
+        "properties": {
+          "action_deep_link": {
+            "type": "string"
+          },
+          "body_en": {
+            "type": "string"
+          },
+          "body_es": {
+            "type": "string"
+          },
+          "body_ru": {
+            "type": "string"
+          },
+          "body_uk": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dedupe_key": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fanout_attempt_count": {
+            "type": "number",
+            "default": 0
+          },
+          "fanout_completed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fanout_cursor_registration_id": {
+            "type": "string"
+          },
+          "fanout_cutoff_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fanout_enqueued_count": {
+            "type": "number",
+            "default": 0
+          },
+          "fanout_last_error_code": {
+            "type": "string"
+          },
+          "fanout_last_failed_registration_id": {
+            "type": "string"
+          },
+          "fanout_lease_token": {
+            "type": "string"
+          },
+          "fanout_lease_until": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fanout_next_attempt_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fanout_phase": {
+            "type": "string",
+            "enum": [
+              "enqueue",
+              "verify"
+            ],
+            "default": "enqueue"
+          },
+          "fanout_revision": {
+            "type": "string"
+          },
+          "fanout_state": {
+            "type": "string",
+            "enum": [
+              "not_requested",
+              "pending",
+              "processing",
+              "retry",
+              "complete",
+              "cancelled",
+              "failed"
+            ],
+            "default": "not_requested"
+          },
+          "fanout_sweep_failed": {
+            "type": "boolean",
+            "default": false
+          },
+          "fanout_verify_failure_passes": {
+            "type": "number",
+            "default": 0
+          },
+          "importance": {
+            "type": "string",
+            "enum": [
+              "quiet",
+              "important"
+            ],
+            "default": "quiet"
+          },
+          "published_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "published",
+              "withdrawn"
+            ],
+            "default": "draft"
+          },
+          "title_en": {
+            "type": "string"
+          },
+          "title_es": {
+            "type": "string"
+          },
+          "title_ru": {
+            "type": "string"
+          },
+          "title_uk": {
+            "type": "string"
+          },
+          "topic": {
+            "type": "string",
+            "enum": [
+              "release",
+              "service",
+              "community",
+              "developer"
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "dedupe_key",
+          "topic",
+          "status",
+          "importance",
+          "title_en",
+          "body_en",
+          "fanout_state",
+          "fanout_attempt_count",
+          "fanout_lease_token",
+          "fanout_lease_until",
+          "fanout_revision",
+          "created_at",
+          "updated_at"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "NotificationReadReceipt",
+      "entity_schema": {
+        "type": "object",
+        "name": "NotificationReadReceipt",
+        "description": "Server-owned per-user inbox receipt for the exact bounded inbox window. The __all__ key is the user's mark-all-read watermark; writes are serialized and duplicate cardinality fails closed.",
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dedupe_key": {
+            "type": "string"
+          },
+          "notification_key": {
+            "type": "string"
+          },
+          "read_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "user_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "dedupe_key",
+          "user_id",
+          "notification_key",
+          "read_at",
+          "created_at",
+          "updated_at"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "ProfileComment",
+      "entity_schema": {
+        "type": "object",
+        "name": "ProfileComment",
+        "description": "Server-owned public comments left on SpyClash community profiles.",
+        "properties": {
+          "target_user_id": {
+            "type": "string"
+          },
+          "author_user_id": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 280
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "target_user_id",
+          "author_user_id",
+          "body",
+          "created_at",
+          "updated_at"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "PushDeviceRegistration",
+      "entity_schema": {
+        "type": "object",
+        "name": "PushDeviceRegistration",
+        "description": "Server-owned APNs alert registration. Raw installation identifiers are never stored and device tokens are encrypted at rest.",
+        "properties": {
+          "user_id": {
+            "type": "string"
+          },
+          "installation_id_hash": {
+            "type": "string"
+          },
+          "token_hash": {
+            "type": "string"
+          },
+          "token_ciphertext": {
+            "type": "string",
+            "description": "AES-GCM encrypted APNs token.",
+            "rls": {
+              "read": {
+                "user_condition": {
+                  "role": "admin"
+                }
+              },
+              "write": {
+                "user_condition": {
+                  "role": "admin"
+                }
+              }
+            }
+          },
+          "token_iv": {
+            "type": "string",
+            "description": "AES-GCM nonce for token_ciphertext.",
+            "rls": {
+              "read": {
+                "user_condition": {
+                  "role": "admin"
+                }
+              },
+              "write": {
+                "user_condition": {
+                  "role": "admin"
+                }
+              }
+            }
+          },
+          "environment": {
+            "type": "string",
+            "enum": [
+              "sandbox",
+              "production"
+            ]
+          },
+          "bundle_id": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          },
+          "app_version": {
+            "type": "string"
+          },
+          "alert_authorized": {
+            "type": "boolean",
+            "default": false
+          },
+          "friend_requests_enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "room_invites_enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "game_updates_enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "revoked"
+            ],
+            "default": "active"
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revoked_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_error_code": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "user_id",
+          "installation_id_hash",
+          "token_hash",
+          "token_ciphertext",
+          "token_iv",
+          "environment",
+          "bundle_id",
+          "alert_authorized",
+          "friend_requests_enabled",
+          "room_invites_enabled",
+          "game_updates_enabled",
+          "status",
+          "last_seen_at",
+          "created_at",
+          "updated_at"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "PushNotificationEvent",
+      "entity_schema": {
+        "type": "object",
+        "name": "PushNotificationEvent",
+        "description": "Server-owned source-validated APNs outbox with a bounded exact worker lease.",
+        "properties": {
+          "dedupe_key": {
+            "type": "string"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "event_type": {
+            "type": "string",
+            "enum": [
+              "friend_request",
+              "room_invite",
+              "game_started",
+              "game_finished"
+            ]
+          },
+          "source_type": {
+            "type": "string",
+            "enum": [
+              "friendship",
+              "room_invite",
+              "game_room"
+            ]
+          },
+          "recipient_user_id": {
+            "type": "string"
+          },
+          "actor_user_id": {
+            "type": "string"
+          },
+          "room_id": {
+            "type": "string"
+          },
+          "match_id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "processing",
+              "retry",
+              "delivered",
+              "partial",
+              "no_devices",
+              "cancelled",
+              "failed"
+            ],
+            "default": "pending"
+          },
+          "attempt_count": {
+            "type": "number",
+            "default": 0
+          },
+          "delivered_count": {
+            "type": "number",
+            "default": 0
+          },
+          "failed_count": {
+            "type": "number",
+            "default": 0
+          },
+          "delivered_token_hashes": {
+            "type": "array",
+            "description": "Device token hashes already accepted by APNs. Successful devices are not resent on a partial retry.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "lease_token": {
+            "type": "string"
+          },
+          "lease_until": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "next_attempt_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_error_code": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "delivered_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "dedupe_key",
+          "source_event_id",
+          "event_type",
+          "source_type",
+          "recipient_user_id",
+          "state",
+          "attempt_count",
+          "delivered_count",
+          "failed_count",
+          "lease_token",
+          "lease_until",
+          "revision",
+          "expires_at",
+          "created_at",
+          "updated_at"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "RoomInvite",
+      "entity_schema": {
+        "type": "object",
+        "name": "RoomInvite",
+        "description": "Server-owned invitation from one SpyClash operative to an active online room.",
+        "properties": {
+          "sender_user_id": {
+            "type": "string"
+          },
+          "recipient_user_id": {
+            "type": "string"
+          },
+          "room_id": {
+            "type": "string"
+          },
+          "room_code": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "accepted",
+              "declined",
+              "expired"
+            ],
+            "default": "pending"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "notification_event_id": {
+            "type": "string",
+            "description": "Opaque server event identity used to deduplicate this invite notification.",
+            "rls": {
+              "read": {
+                "user_condition": {
+                  "role": "admin"
+                }
+              },
+              "write": {
+                "user_condition": {
+                  "role": "admin"
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "sender_user_id",
+          "recipient_user_id",
+          "room_id",
+          "room_code",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "WordPack",
+      "entity_schema": {
+        "type": "object",
+        "name": "WordPack",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Pack display name"
+          },
+          "category": {
+            "type": "string",
+            "description": "Category label shown in game"
+          },
+          "words": {
+            "type": "array",
+            "description": "Array of word strings",
+            "items": {
+              "type": "string"
+            }
+          },
+          "owner_email": {
+            "type": "string",
+            "description": "Email of the user who created this pack"
+          },
+          "is_public": {
+            "type": "boolean",
+            "description": "Whether this pack is visible to everyone",
+            "default": false
+          }
+        },
+        "required": [
+          "name",
+          "words",
+          "owner_email"
+        ]
+      }
+    },
+    {
+      "entity_name": "AccountDeletionReceipt",
+      "entity_schema": {
+        "type": "object",
+        "name": "AccountDeletionReceipt",
+        "description": "Server-owned bounded deletion recovery proof. Stores only a hash of the recovery capability; raw user id is scrubbed on completion.",
+        "properties": {
+          "request_key": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "subject_hash": {
+            "type": "string"
+          },
+          "user_id": {
+            "type": "string"
+          },
+          "token_hash": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "user_delete_ready",
+              "complete"
+            ]
+          },
+          "manual_apple_revocation_required": {
+            "type": "boolean",
+            "default": false
+          },
+          "erasure_proof": {
+            "type": "object",
+            "description": "Server-derived archive selectors. Never contains provider tokens or the pseudonym secret."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "request_key",
+          "request_id",
+          "subject_hash",
+          "user_id",
+          "token_hash",
+          "phase",
+          "expires_at"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "GenerationReward",
+      "entity_schema": {
+        "name": "GenerationReward",
+        "description": "Server-only AdMob viewing attempts and non-expiring generation credits. Only verified Google SSV may change pending to earned. Exact-state reservations prevent double spending; deletion removes account records.",
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "attempt_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "custom_data": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "ad_unit_id": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "issued_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "earned",
+              "reserved",
+              "spent"
+            ]
+          },
+          "transaction_id": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "earned_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "generation_request_id": {
+            "type": "string",
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "user_id",
+          "attempt_id",
+          "custom_data",
+          "ad_unit_id",
+          "issued_at",
+          "state"
+        ],
+        "rls": {
+          "create": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "read": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "update": {
+            "user_condition": {
+              "role": "admin"
+            }
+          },
+          "delete": {
+            "user_condition": {
+              "role": "admin"
+            }
+          }
+        }
+      }
+    },
+    {
+      "entity_name": "User",
+      "entity_schema": {
+        "type": "object",
+        "name": "User",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "user"
+            ],
+            "default": "user"
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Player display name"
+          },
+          "avatar": {
+            "type": "string",
+            "description": "Avatar emoji or image url"
+          },
+          "games_played": {
+            "type": "number",
+            "default": 0
+          },
+          "games_won": {
+            "type": "number",
+            "default": 0
+          },
+          "language": {
+            "type": "string",
+            "description": "User's preferred language",
+            "enum": [
+              "ru",
+              "en"
+            ],
+            "default": "en"
+          },
+          "ai_generations_today": {
+            "type": "number",
+            "description": "AI generations used today (resets daily)",
+            "default": 0
+          },
+          "last_ai_generation_date": {
+            "type": "string",
+            "description": "ISO date of last AI generation (for daily reset)"
+          }
+        },
+        "required": [
+          "role"
+        ]
+      }
+    }
+  ]
+}

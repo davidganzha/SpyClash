@@ -1,0 +1,156 @@
+{
+  "description": "Per-participant realtime wake-up hint for an authoritative lobby revision. Clients fetch the mediated room projection after observing a signal; no room secret or raw lobby payload is stored here.",
+  "name": "GameRoomSignal",
+  "properties": {
+    "close_completion": {
+      "description": "Server-only tombstone written only after every participant received the exact closed signal. It carries the participant lease set needed to finish an interrupted physical deletion.",
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "object"
+    },
+    "close_intent_id": {
+      "description": "Server-only durable receipt proving that this recipient signal was closed by an authorized room close intent.",
+      "maxLength": 128,
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "close_match_id": {
+      "description": "Server-only match identity bound to the durable room close receipt.",
+      "maxLength": 128,
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "lobby_revision": {
+      "description": "Latest committed authoritative lobby revision known to the signal writer.",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "projected_game_mode": {
+      "description": "Safe public lobby mode projected directly to this authenticated participant.",
+      "enum": [
+        "questions",
+        "associations"
+      ],
+      "type": "string"
+    },
+    "projection_committed_at": {
+      "description": "Server timestamp captured immediately after the authoritative room CAS commits.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "projection_emitted_at": {
+      "description": "Server timestamp used with projection_id for deterministic direct-signal ordering.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "projection_id": {
+      "description": "Opaque server-issued identity used to order duplicate direct projections.",
+      "format": "uuid",
+      "type": "string"
+    },
+    "projection_kind": {
+      "description": "Activation discriminator for optional safe direct projections; generic wake-up hints always write none.",
+      "enum": [
+        "none",
+        "lobby_mode_v1"
+      ],
+      "type": "string"
+    },
+    "room_id": {
+      "description": "Room whose projected state should be refreshed.",
+      "maxLength": 256,
+      "type": "string"
+    },
+    "room_revision": {
+      "description": "Latest monotonic shared-room revision represented by this signal.",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "room_updated_at": {
+      "description": "System timestamp of the latest committed room state represented by this wake-up signal.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "state": {
+      "description": "Whether the client should refresh an active room or discard a closed-room subscription.",
+      "enum": [
+        "active",
+        "closed"
+      ],
+      "type": "string"
+    },
+    "user_id": {
+      "description": "Stable authenticated recipient id.",
+      "maxLength": 256,
+      "type": "string"
+    }
+  },
+  "required": [
+    "user_id",
+    "room_id",
+    "lobby_revision",
+    "state"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.user_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "type": "object"
+}

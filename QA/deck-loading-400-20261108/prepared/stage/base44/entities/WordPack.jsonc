@@ -1,0 +1,51 @@
+{
+  "name": "WordPack",
+  "properties": {
+    "category": {
+      "description": "Category label shown in game",
+      "type": "string"
+    },
+    "is_public": {
+      "default": false,
+      "description": "Whether this pack is visible to everyone",
+      "type": "boolean"
+    },
+    "name": {
+      "description": "Pack display name",
+      "type": "string"
+    },
+    "owner_email": {
+      "description": "Email of the user who created this pack",
+      "type": "string"
+    },
+    "owner_user_id": {
+      "description": "Stable Base44 user id assigned by wordPackAction. Legacy records may only have owner_email until rewritten.",
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "words": {
+      "description": "Array of word strings",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "name",
+    "words",
+    "owner_email"
+  ],
+  "type": "object"
+}

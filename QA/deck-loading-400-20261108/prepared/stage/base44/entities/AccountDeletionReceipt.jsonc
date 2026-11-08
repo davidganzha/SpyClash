@@ -1,0 +1,73 @@
+{
+  "description": "Server-owned bounded deletion recovery proof. Stores only a hash of the recovery capability; raw user id is scrubbed on completion.",
+  "name": "AccountDeletionReceipt",
+  "properties": {
+    "erasure_proof": {
+      "description": "Server-derived archive selectors. Never contains provider tokens or the pseudonym secret.",
+      "type": "object"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "manual_apple_revocation_required": {
+      "default": false,
+      "type": "boolean"
+    },
+    "phase": {
+      "enum": [
+        "pending",
+        "user_delete_ready",
+        "complete"
+      ],
+      "type": "string"
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "request_key": {
+      "type": "string"
+    },
+    "subject_hash": {
+      "type": "string"
+    },
+    "token_hash": {
+      "type": "string"
+    },
+    "user_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "request_key",
+    "request_id",
+    "subject_hash",
+    "user_id",
+    "token_hash",
+    "phase",
+    "expires_at"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "type": "object"
+}

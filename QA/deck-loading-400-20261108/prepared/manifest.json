@@ -1,0 +1,521 @@
+{
+  "added_fields": [
+    {
+      "definition_sha256": "d18e16f035e7bafc0aa8188ae44028f0bd339b9e8eb0e3f470087bf5fd8ecf01",
+      "entity": "GameHistory",
+      "field": "match_id"
+    },
+    {
+      "definition_sha256": "1dab8608d3f9ce79892d05ce4aac3aa6838a760ba5e1cff40db946461f75b792",
+      "entity": "GameHistory",
+      "field": "match_type"
+    },
+    {
+      "definition_sha256": "4337681daf229713661bd2825935138c56c50b09ed2386abdb0e140bbc3da21a",
+      "entity": "GameHistory",
+      "field": "player_user_id"
+    },
+    {
+      "definition_sha256": "7f071193cc302833fdf8fb03c1f89e1eb9c8929c10b5e0ad257277b69b5a2571",
+      "entity": "GameHistory",
+      "field": "profile_repair_attempt_count"
+    },
+    {
+      "definition_sha256": "0a5371c1dad235cba07810c4c9db61c6b32316eea299f8195bd76b99ae0e9bb8",
+      "entity": "GameHistory",
+      "field": "profile_repair_completed_at"
+    },
+    {
+      "definition_sha256": "862e5bf130cff58aa854fdc4369a250f09b6f0b2ec8218097382333ab301e362",
+      "entity": "GameHistory",
+      "field": "profile_repair_lease_until"
+    },
+    {
+      "definition_sha256": "cabe4a1ab563b5772e56654bc6a9c8f8e3fd0b2161d364bf09ae78e4f1c8f50a",
+      "entity": "GameHistory",
+      "field": "profile_repair_state"
+    },
+    {
+      "definition_sha256": "01dcdab099b5f9a50daa2cbfe104c7a05d8111cc7605c37f22e9b31d1c80b817",
+      "entity": "GameHistory",
+      "field": "profile_repair_token"
+    },
+    {
+      "definition_sha256": "fbaeee20d095876c8cd9e3f3df60bf22026cc5b150b8f7f8c4303255857a1896",
+      "entity": "GameHistory",
+      "field": "ranked"
+    },
+    {
+      "definition_sha256": "bc5eefe4e11d1b5114875ea08bdd2de7b530ef124408abc28d9e3a62039ee706",
+      "entity": "GameHistory",
+      "field": "result_key"
+    },
+    {
+      "definition_sha256": "05ac164ec3163994a2fc4fb827a2b14c7b191f8371d767c18e84f956c246c053",
+      "entity": "GameHistory",
+      "field": "spy_count"
+    },
+    {
+      "definition_sha256": "4764f2c820f647e59cc3aa725611d5ed5999da7cddb19cdfe714b4db234de245",
+      "entity": "GameRoom",
+      "field": "close_intent"
+    },
+    {
+      "definition_sha256": "f28225d96cc2e0d9c1ff63d60a0a159bdb42c80a00a4845dd04f51e41dd5fe8a",
+      "entity": "GameRoom",
+      "field": "departed_player_emails"
+    },
+    {
+      "definition_sha256": "4b2b6fc98c9e702fc7689eacad56f1541bca7c40920b5b7e50f329c087bb661f",
+      "entity": "GameRoom",
+      "field": "detective_vote_cancellation_event_id"
+    },
+    {
+      "definition_sha256": "fff1d3dead07034f9c0714babe1ec4474c4f28450e573a32a2cdffc9c2f42512",
+      "entity": "GameRoom",
+      "field": "detective_vote_cancellation_present_at"
+    },
+    {
+      "definition_sha256": "198f0663e928e9397f0a85d4adb01a17cae6270ae75c4f1dcbc7ae3025660485",
+      "entity": "GameRoom",
+      "field": "detective_vote_cancellation_reason"
+    },
+    {
+      "definition_sha256": "6e61be1e94de102c3dbfd561f883d57e1f35b315c3ea47edf078c99ada5d58fd",
+      "entity": "GameRoom",
+      "field": "detective_vote_cancellation_round_id"
+    },
+    {
+      "definition_sha256": "1159bf0dcffc3d846c9cfdcf477c291a504a20b583581229b0709362f9e60ace",
+      "entity": "GameRoom",
+      "field": "detective_vote_round_id"
+    },
+    {
+      "definition_sha256": "591e562899346885469e2f47fde3522deb24488b71c4724ce1a18ae1e6ab1c8d",
+      "entity": "GameRoom",
+      "field": "game_finished_event_id"
+    },
+    {
+      "definition_sha256": "ea86adf9ebfe1d2f0871a0e24f8efaf8b1521b563aab4f0abdae905f7b6c105f",
+      "entity": "GameRoom",
+      "field": "game_paused_at"
+    },
+    {
+      "definition_sha256": "b40899174776f9513f2a37ce65715bf468333f139b7e6405c8adede4088859a9",
+      "entity": "GameRoom",
+      "field": "game_paused_total_seconds"
+    },
+    {
+      "definition_sha256": "cddad5b0c50479e31d326f33c29669148ffb0818915ff98e641f60c87f061c9e",
+      "entity": "GameRoom",
+      "field": "game_started_event_id"
+    },
+    {
+      "definition_sha256": "9996748eaaff07702a7a0401b089e883f2487147ef07e6d7176814525261ec2d",
+      "entity": "GameRoom",
+      "field": "incompatible_player_emails"
+    },
+    {
+      "definition_sha256": "ca94acd3097578b3fde3e59f17d9e7450702483c149afdce7f2fbf26e7d33cf7",
+      "entity": "GameRoom",
+      "field": "intro_started_at"
+    },
+    {
+      "definition_sha256": "e847e321fbb6435b13469ca7ce8093192fa46d188f775c9084e429723884d4e3",
+      "entity": "GameRoom",
+      "field": "lobby_category"
+    },
+    {
+      "definition_sha256": "42ab22cbee034c49572724d2596d0e01718ef46311bd512cf0aa1d16843b8498",
+      "entity": "GameRoom",
+      "field": "lobby_last_mutation_fingerprint"
+    },
+    {
+      "definition_sha256": "0e521ee2979594f813898aecbf415cee3b1cfa091c422dac161d2613983f9c28",
+      "entity": "GameRoom",
+      "field": "lobby_last_mutation_id"
+    },
+    {
+      "definition_sha256": "5701e849682577cd6b325acdd006c8501ba2cff5db66ab3cebe13846d1738db6",
+      "entity": "GameRoom",
+      "field": "lobby_revision"
+    },
+    {
+      "definition_sha256": "a5368256f0dc8a1bc1016166d30861ca2118d57d7bbfff5a99c69530ef982ec9",
+      "entity": "GameRoom",
+      "field": "lobby_schema_version"
+    },
+    {
+      "definition_sha256": "e847e321fbb6435b13469ca7ce8093192fa46d188f775c9084e429723884d4e3",
+      "entity": "GameRoom",
+      "field": "lobby_source_name"
+    },
+    {
+      "definition_sha256": "daa191b56424a1eb69bed4b4442ef40a21811b0adca60c541b451eca50734665",
+      "entity": "GameRoom",
+      "field": "lobby_source_pack_id"
+    },
+    {
+      "definition_sha256": "f73d887d202e486172645d3026b9733108637e56be57d6162d2219b78ed897fd",
+      "entity": "GameRoom",
+      "field": "lobby_spy_count"
+    },
+    {
+      "definition_sha256": "e847e321fbb6435b13469ca7ce8093192fa46d188f775c9084e429723884d4e3",
+      "entity": "GameRoom",
+      "field": "lobby_theme"
+    },
+    {
+      "definition_sha256": "e072cbebbfb10c48d491d979a0ec012697c1bfd9fdad8cd970bde05bc2be1b40",
+      "entity": "GameRoom",
+      "field": "lobby_word_count"
+    },
+    {
+      "definition_sha256": "0f8f42fbbfe9947380deb8e2e9085875645c8ed5f57438ad63a4d2529d5bb8e9",
+      "entity": "GameRoom",
+      "field": "lobby_word_count_mode"
+    },
+    {
+      "definition_sha256": "7b54c06b0040690da13ffb671af5be0e3868082ae26a1a7be0a14c2b7ca734e8",
+      "entity": "GameRoom",
+      "field": "lobby_word_pool"
+    },
+    {
+      "definition_sha256": "8adabf7b7a05efeb6ee4e05c026fe94fc3ba819bf514a666c24731008861f140",
+      "entity": "GameRoom",
+      "field": "lobby_word_source"
+    },
+    {
+      "definition_sha256": "937e330ae40bb4c1799abb3561a91d5b9583e3805801f7deedaba6a9b63322c6",
+      "entity": "GameRoom",
+      "field": "match_id"
+    },
+    {
+      "definition_sha256": "3831c0ade6dc05f69ad18bb286cca037d5060bc4933dbb444244c896981b2814",
+      "entity": "GameRoom",
+      "field": "participant_user_ids"
+    },
+    {
+      "definition_sha256": "5a6bb4daa85501cfbb6564847139e1da73af2d638d123c74f81817bfcf4e212f",
+      "entity": "GameRoom",
+      "field": "replay_source_match_id"
+    },
+    {
+      "definition_sha256": "a4a561395cd73d795daa124ac72f28ce340dd28457472529989e67ec5be46c1e",
+      "entity": "GameRoom",
+      "field": "room_last_write_token"
+    },
+    {
+      "definition_sha256": "960b69678978a26321e7a3b31a14e1a83e970db75ae440b101c53a2c82684e32",
+      "entity": "GameRoom",
+      "field": "room_revision"
+    },
+    {
+      "definition_sha256": "cc752e9a48c0bac5e1fe608367d28672f9e15c339ad35a972b6559ae9c060115",
+      "entity": "GameRoom",
+      "field": "spies_know_each_other"
+    },
+    {
+      "definition_sha256": "1698d86b3fd614629a456ce19a5a817d9894324311f359225b1ffc5ba1ea4448",
+      "entity": "GameRoom",
+      "field": "spy_emails"
+    },
+    {
+      "definition_sha256": "e33c6c0c42c84336d6e8426b24414cae74ea8042ea3b1cd2b883be3c04b03b04",
+      "entity": "GameRoom",
+      "field": "terminal_intent"
+    },
+    {
+      "definition_sha256": "ec7cdce73d541249f6b82063b1bbcf34bcf1be002d45235f4f78b0ac39bc6a19",
+      "entity": "User",
+      "field": "acquisition_source"
+    },
+    {
+      "definition_sha256": "bf51d8c28fa6308510efb2e45573172b321f01a2bf0e8b28d44d1155ad8b40aa",
+      "entity": "User",
+      "field": "detective_games_played"
+    },
+    {
+      "definition_sha256": "d2df97897dbc7e400f4806b9797dfe50fa11e2e5ac3f6617cdf0917c22ee5a40",
+      "entity": "User",
+      "field": "detective_games_won"
+    },
+    {
+      "definition_sha256": "24f577641ab3bc5b2e03454d740a58a342aa76591d01e530ccdf19d541b8cf1f",
+      "entity": "User",
+      "field": "onboarding_completed"
+    },
+    {
+      "definition_sha256": "3296615c469721ff3d4ed4dfb2daeedd0bb98824883a30630b5cbbb9a567bfd9",
+      "entity": "User",
+      "field": "onboarding_completed_at"
+    },
+    {
+      "definition_sha256": "4db92a1e3146ad1183308f415227bc119f916875c5c06f876cb4efbcb8f7cf03",
+      "entity": "User",
+      "field": "onboarding_version"
+    },
+    {
+      "definition_sha256": "72639340335d412c5c35051bb9dce22cc4afc2d51e80c66b3d89eca38c6547ec",
+      "entity": "User",
+      "field": "radar_invite_policy"
+    },
+    {
+      "definition_sha256": "4bb4d2c1f5d6c85987b946bed6c7cdaf3eb5805a21c35d4ff058ada27fefbdb0",
+      "entity": "User",
+      "field": "rating"
+    },
+    {
+      "definition_sha256": "dadcc9a69066b99314761a4fd1a093760195a2f2ed0efe57d3e018ad87795c25",
+      "entity": "User",
+      "field": "spy_card_accent"
+    },
+    {
+      "definition_sha256": "329ad5bf5721db7643765af0ba32987526a6667a87c046feb843c9cccdd7b511",
+      "entity": "User",
+      "field": "spy_card_badge"
+    },
+    {
+      "definition_sha256": "4fae6ba96b1feef4e748d7dfaa46d8911d6ea645677e52d7ac2c862d30c2365e",
+      "entity": "User",
+      "field": "spy_card_theme"
+    },
+    {
+      "definition_sha256": "414d07203e64deb8caaa3e9c45246db7b27a9b4113f7ce4f653ebcd3e7127286",
+      "entity": "User",
+      "field": "spy_games_played"
+    },
+    {
+      "definition_sha256": "9e7c3abdf72f62ed06b2e0a036826e61e085d50380871a65f0cc1060759c246d",
+      "entity": "User",
+      "field": "spy_games_won"
+    },
+    {
+      "definition_sha256": "f02061e8dca8269532450449cfb34fd9a3236bf96dd92769a492d8041be23b14",
+      "entity": "User",
+      "field": "spy_id"
+    },
+    {
+      "definition_sha256": "3ef99ae0be05845319203a5437c849b4079e200883a5aace623530c9f85a0140",
+      "entity": "WordPack",
+      "field": "owner_user_id"
+    }
+  ],
+  "before_sha256": "ae0110d578658f7f17ae557619cc2414ff1a0ce9a5374ac547995cd91c7847eb",
+  "candidate_sha256": "2be448a65e564cfc67af896fcfee816c3f4aed1a47765a6d27f550b1272b8adb",
+  "entities": [
+    {
+      "before_sha256": "1c5bf61a597859b8fcabc5c71bb5e6a9b29244f93d6017249f64fe940c466ace",
+      "candidate_sha256": "1c5bf61a597859b8fcabc5c71bb5e6a9b29244f93d6017249f64fe940c466ace",
+      "name": "AccountDeletionReceipt"
+    },
+    {
+      "before_sha256": "9f22872275a1c8dfe34c4f9e5d7af2c1b1cb52d2e2b2cee84509a5efc1cf4165",
+      "candidate_sha256": "9f22872275a1c8dfe34c4f9e5d7af2c1b1cb52d2e2b2cee84509a5efc1cf4165",
+      "name": "AiGenerationQuota"
+    },
+    {
+      "before_sha256": "3fe87e7b6114440c61d425a7dc0718413ecb261292406f25fca52c6e5fb3486e",
+      "candidate_sha256": "3fe87e7b6114440c61d425a7dc0718413ecb261292406f25fca52c6e5fb3486e",
+      "name": "AiGenerationUsage"
+    },
+    {
+      "before_sha256": "85cbefddfebac948a705255d8816e7f2dcd5a0e632eaf4e020c47f83ad0a8f81",
+      "candidate_sha256": "85cbefddfebac948a705255d8816e7f2dcd5a0e632eaf4e020c47f83ad0a8f81",
+      "name": "AiWordPackCacheVariant"
+    },
+    {
+      "before_sha256": "44aec4f0bcc9be2220d069a710cafca55304a74cff4b27398d0b0d5ff172f922",
+      "candidate_sha256": "44aec4f0bcc9be2220d069a710cafca55304a74cff4b27398d0b0d5ff172f922",
+      "name": "AiWordPackOperation"
+    },
+    {
+      "before_sha256": "2782577c4b019393499eb2cf9f8609aeb570527f2b5517892c63dd5fc5f4e740",
+      "candidate_sha256": "2782577c4b019393499eb2cf9f8609aeb570527f2b5517892c63dd5fc5f4e740",
+      "name": "AiWordPackRequestResult"
+    },
+    {
+      "before_sha256": "63c714a94cb62ab2d3562f14dd9021dac6a166bb2bec6ae436d82da2801eb40b",
+      "candidate_sha256": "63c714a94cb62ab2d3562f14dd9021dac6a166bb2bec6ae436d82da2801eb40b",
+      "name": "AppStoreAccount"
+    },
+    {
+      "before_sha256": "8b003c056fa6281822e2894d63fc3c6840d69b6b751715bf22ef056c9a8ab101",
+      "candidate_sha256": "8b003c056fa6281822e2894d63fc3c6840d69b6b751715bf22ef056c9a8ab101",
+      "name": "AppleSignInCredential"
+    },
+    {
+      "before_sha256": "b3e758f02cf34fd1e70e428790e995aa0f5ffc764979ee0b2dda689ae2460ee6",
+      "candidate_sha256": "b3e758f02cf34fd1e70e428790e995aa0f5ffc764979ee0b2dda689ae2460ee6",
+      "name": "BillingIdentityLifecycle"
+    },
+    {
+      "before_sha256": "03d6116e75753cc2e00e3466d1f3baec47ae6ac2d20652f357d48a5d457c91c3",
+      "candidate_sha256": "03d6116e75753cc2e00e3466d1f3baec47ae6ac2d20652f357d48a5d457c91c3",
+      "name": "CommunityProfileSignal"
+    },
+    {
+      "before_sha256": "dc6a18b236c7aa44b92a9e26269bff386738138ac9aeec45ca8ddf3c665afbfd",
+      "candidate_sha256": "dc6a18b236c7aa44b92a9e26269bff386738138ac9aeec45ca8ddf3c665afbfd",
+      "name": "CommunityReport"
+    },
+    {
+      "before_sha256": "50ae89ff15ed8b87059737fa18c87ba16a9978cd2219038981500d89199d35cb",
+      "candidate_sha256": "50ae89ff15ed8b87059737fa18c87ba16a9978cd2219038981500d89199d35cb",
+      "name": "Entitlement"
+    },
+    {
+      "before_sha256": "029f82afe9bb6b2cc8aa4c402153161b6517fbe65f039ef469e045fcd184ebd2",
+      "candidate_sha256": "029f82afe9bb6b2cc8aa4c402153161b6517fbe65f039ef469e045fcd184ebd2",
+      "name": "Friendship"
+    },
+    {
+      "before_sha256": "6167606641c326e3ab3aaee38ae494304e6c1569c32d1ec2315e00ef72472f07",
+      "candidate_sha256": "2bfd9164e4b48d71c608bcf53450c60fc14f4f93863434063986da1ef58ad7f0",
+      "name": "GameHistory"
+    },
+    {
+      "before_sha256": "6ea82543518e3b552662f48a87ef92bed03c308a6a54531f833ba1e647829fd5",
+      "candidate_sha256": "45d2a6d597b2e6528d89660fed2ab06538ad320dda3ffb71106568c7a6c60833",
+      "name": "GameRoom"
+    },
+    {
+      "before_sha256": "a8ce358014647abf8779ed2776ed838137e8977ea41ab5f4979c5f290070f153",
+      "candidate_sha256": "a8ce358014647abf8779ed2776ed838137e8977ea41ab5f4979c5f290070f153",
+      "name": "GameRoomSignal"
+    },
+    {
+      "before_sha256": "3c36bed30ab6448347e07dc388d30bb1fa02bfbfdec63cfb802925f13cca46c4",
+      "candidate_sha256": "3c36bed30ab6448347e07dc388d30bb1fa02bfbfdec63cfb802925f13cca46c4",
+      "name": "GenerationReward"
+    },
+    {
+      "before_sha256": "ce3093b6da09dc1c1adbff9aaf2bad48112fd12ab09892e83739dbac0beebb74",
+      "candidate_sha256": "ce3093b6da09dc1c1adbff9aaf2bad48112fd12ab09892e83739dbac0beebb74",
+      "name": "LiveActivityRegistration"
+    },
+    {
+      "before_sha256": "7b9bf11a700a6683e4327c758946240e935cea4604c93f0f8ffc28d0a155b093",
+      "candidate_sha256": "7b9bf11a700a6683e4327c758946240e935cea4604c93f0f8ffc28d0a155b093",
+      "name": "MembershipGrant"
+    },
+    {
+      "before_sha256": "4a56f08669aa519b173993dc8eb1f8dc294e998fdec27fedc3f94e25b91d0d9d",
+      "candidate_sha256": "4a56f08669aa519b173993dc8eb1f8dc294e998fdec27fedc3f94e25b91d0d9d",
+      "name": "MembershipSignal"
+    },
+    {
+      "before_sha256": "9fe38954e752bd45cdbb5df2decabfa893e2170360575b96a7e23c71134d5803",
+      "candidate_sha256": "9fe38954e752bd45cdbb5df2decabfa893e2170360575b96a7e23c71134d5803",
+      "name": "NotificationAnnouncement"
+    },
+    {
+      "before_sha256": "42c2c95ee111451f8f281d5657c398fbc1fe220158a9b545367b5e5cd07dd82d",
+      "candidate_sha256": "42c2c95ee111451f8f281d5657c398fbc1fe220158a9b545367b5e5cd07dd82d",
+      "name": "NotificationReadReceipt"
+    },
+    {
+      "before_sha256": "82ae61606b034050f1fa29d3944a782a1010367b310be7c8cd9a75e889944cc3",
+      "candidate_sha256": "82ae61606b034050f1fa29d3944a782a1010367b310be7c8cd9a75e889944cc3",
+      "name": "ProfileComment"
+    },
+    {
+      "before_sha256": "c6dc6777d4a96a7096c997b3c982f729d624bcb41b186ba56d9791ee5cd34af6",
+      "candidate_sha256": "c6dc6777d4a96a7096c997b3c982f729d624bcb41b186ba56d9791ee5cd34af6",
+      "name": "PushDeviceRegistration"
+    },
+    {
+      "before_sha256": "c818d9bd861e33a4cca6d5d19c476c26d0d19e7171c06161c9c250bdeecd3b55",
+      "candidate_sha256": "c818d9bd861e33a4cca6d5d19c476c26d0d19e7171c06161c9c250bdeecd3b55",
+      "name": "PushNotificationEvent"
+    },
+    {
+      "before_sha256": "02f4958d0017a01a44a5d9eb4c8b6f93ffb4f24697fa07932d1840f8d54f7c2a",
+      "candidate_sha256": "02f4958d0017a01a44a5d9eb4c8b6f93ffb4f24697fa07932d1840f8d54f7c2a",
+      "name": "RoomInvite"
+    },
+    {
+      "before_sha256": "ec925424fd4b71c7a44be86f746e619cf974b46a86cd26cc661391949ccf42d8",
+      "candidate_sha256": "f94cef15de2ab238192dbd19ccbfec013f3bfd9575399286e3c4b7c2049e9a28",
+      "name": "User"
+    },
+    {
+      "before_sha256": "7d80748fb046843368d17ccaac191900b8ff5a17ab47ddfa7f90e59e356503a9",
+      "candidate_sha256": "6ffd18cf336e1a15ed970b31fd13366b68da24b831697b96774e0d235c381b1e",
+      "name": "WordPack"
+    }
+  ],
+  "entity_count": 28,
+  "format_version": 1,
+  "operation": "prepare_additive_schema_fields",
+  "requested_fields": {
+    "GameHistory": [
+      "match_id",
+      "match_type",
+      "player_user_id",
+      "profile_repair_attempt_count",
+      "profile_repair_completed_at",
+      "profile_repair_lease_until",
+      "profile_repair_state",
+      "profile_repair_token",
+      "ranked",
+      "result_key",
+      "spy_count"
+    ],
+    "GameRoom": [
+      "close_intent",
+      "departed_player_emails",
+      "detective_vote_cancellation_event_id",
+      "detective_vote_cancellation_present_at",
+      "detective_vote_cancellation_reason",
+      "detective_vote_cancellation_round_id",
+      "detective_vote_round_id",
+      "game_finished_event_id",
+      "game_paused_at",
+      "game_paused_total_seconds",
+      "game_started_event_id",
+      "incompatible_player_emails",
+      "intro_started_at",
+      "lobby_category",
+      "lobby_last_mutation_fingerprint",
+      "lobby_last_mutation_id",
+      "lobby_revision",
+      "lobby_schema_version",
+      "lobby_source_name",
+      "lobby_source_pack_id",
+      "lobby_spy_count",
+      "lobby_theme",
+      "lobby_word_count",
+      "lobby_word_count_mode",
+      "lobby_word_pool",
+      "lobby_word_source",
+      "match_id",
+      "participant_user_ids",
+      "replay_source_match_id",
+      "room_last_write_token",
+      "room_revision",
+      "spies_know_each_other",
+      "spy_emails",
+      "terminal_intent"
+    ],
+    "User": [
+      "acquisition_source",
+      "detective_games_played",
+      "detective_games_won",
+      "onboarding_completed",
+      "onboarding_completed_at",
+      "onboarding_version",
+      "radar_invite_policy",
+      "rating",
+      "spy_card_accent",
+      "spy_card_badge",
+      "spy_card_theme",
+      "spy_games_played",
+      "spy_games_won",
+      "spy_id"
+    ],
+    "WordPack": [
+      "owner_user_id"
+    ]
+  }
+}

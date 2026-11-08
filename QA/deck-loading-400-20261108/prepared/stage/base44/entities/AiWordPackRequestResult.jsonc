@@ -1,0 +1,94 @@
+{
+  "description": "Server-owned successful AI word-pack result for idempotent replay. The request key is scoped to authenticated user plus request_id; no raw theme is stored.",
+  "name": "AiWordPackRequestResult",
+  "properties": {
+    "cache_variant_key": {
+      "description": "Optional cache variant that supplied or received this result.",
+      "pattern": "^awv1_[A-Za-z0-9_-]{43}$",
+      "type": "string"
+    },
+    "completed_at": {
+      "description": "When the successful result became replayable.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "exhausted": {
+      "description": "Exact exhaustion signal replayed with the successful result.",
+      "type": "boolean"
+    },
+    "expires_at": {
+      "description": "Idempotency retention boundary. Expired rows no longer replay or conflict.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "request_fingerprint": {
+      "description": "One-way fingerprint of cache key, requested count, and sorted normalized exclusions.",
+      "pattern": "^awf1_[A-Za-z0-9_-]{43}$",
+      "type": "string"
+    },
+    "request_id": {
+      "description": "Client-supplied opaque request id after compatibility normalization and trim.",
+      "maxLength": 128,
+      "type": "string"
+    },
+    "request_key": {
+      "description": "One-way key derived only from authenticated user id and normalized request_id.",
+      "pattern": "^awr1_[A-Za-z0-9_-]{43}$",
+      "type": "string"
+    },
+    "result_category": {
+      "description": "Successful category returned for every replay of this request.",
+      "maxLength": 120,
+      "type": "string"
+    },
+    "result_words": {
+      "description": "Successful word list returned for every replay of this request.",
+      "items": {
+        "maxLength": 120,
+        "type": "string"
+      },
+      "maxItems": 100,
+      "minItems": 2,
+      "type": "array"
+    },
+    "user_id": {
+      "description": "Authenticated Base44 user id owning this idempotency key.",
+      "maxLength": 256,
+      "type": "string"
+    }
+  },
+  "required": [
+    "request_key",
+    "user_id",
+    "request_id",
+    "request_fingerprint",
+    "result_category",
+    "result_words",
+    "exhausted",
+    "completed_at",
+    "expires_at"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "type": "object"
+}

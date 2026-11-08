@@ -1,0 +1,102 @@
+{
+  "description": "Server-owned SpyClash friend relationship. Clients access it only through communityAction.",
+  "name": "Friendship",
+  "properties": {
+    "addressee_id": {
+      "type": "string"
+    },
+    "addressee_spy_id": {
+      "description": "Addressee SPY ID in 000-000 format",
+      "type": "string"
+    },
+    "blocked_by_id": {
+      "description": "User ID that created the block. Present only while status is blocked.",
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "request_event_id": {
+      "description": "Opaque server event identity used to deduplicate the current pending request notification.",
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "requester_id": {
+      "type": "string"
+    },
+    "requester_spy_id": {
+      "description": "Requester SPY ID in 000-000 format",
+      "type": "string"
+    },
+    "status": {
+      "default": "pending",
+      "enum": [
+        "pending",
+        "accepted",
+        "declined",
+        "blocked"
+      ],
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "required": [
+    "requester_id",
+    "addressee_id",
+    "requester_spy_id",
+    "addressee_spy_id",
+    "status",
+    "created_at",
+    "updated_at"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "type": "object"
+}

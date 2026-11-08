@@ -1,0 +1,184 @@
+{
+  "name": "GameHistory",
+  "properties": {
+    "category": {
+      "type": "string"
+    },
+    "match_id": {
+      "description": "Immutable server-issued identity of one played match, independent of reusable room code.",
+      "rls": {
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "match_type": {
+      "description": "Match origin. Only online matches contribute to competitive statistics.",
+      "enum": [
+        "online",
+        "local"
+      ],
+      "type": "string"
+    },
+    "player_count": {
+      "type": "number"
+    },
+    "player_email": {
+      "type": "string"
+    },
+    "player_user_id": {
+      "description": "Stable authenticated owner id for deletion and owner-scoped reads.",
+      "rls": {
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "profile_repair_attempt_count": {
+      "description": "Server-only count of Community profile repair claims.",
+      "minimum": 0,
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "integer"
+    },
+    "profile_repair_completed_at": {
+      "description": "Server-only completion time for Community profile repair.",
+      "format": "date-time",
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "profile_repair_lease_until": {
+      "description": "Server-only expiry of the current Community profile repair claim.",
+      "format": "date-time",
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "profile_repair_state": {
+      "description": "Server-only durable Community profile repair state for this ranked result.",
+      "enum": [
+        "pending",
+        "processing",
+        "completed"
+      ],
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "profile_repair_token": {
+      "description": "Server-only single-flight token for Community profile repair.",
+      "maxLength": 160,
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "ranked": {
+      "description": "Whether this result contributes to rating and profile statistics.",
+      "type": "boolean"
+    },
+    "result_key": {
+      "description": "Deterministic server result identity derived from match_id and player_user_id for idempotent archive recovery.",
+      "rls": {
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "role": {
+      "enum": [
+        "spy",
+        "detective"
+      ],
+      "type": "string"
+    },
+    "room_code": {
+      "type": "string"
+    },
+    "spy_count": {
+      "description": "Frozen spy-team size used for this match.",
+      "maximum": 3,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "winner": {
+      "enum": [
+        "detectives",
+        "spy"
+      ],
+      "type": "string"
+    },
+    "won": {
+      "type": "boolean"
+    },
+    "word": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "player_email",
+    "room_code",
+    "role",
+    "winner"
+  ],
+  "type": "object"
+}

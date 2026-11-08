@@ -1,0 +1,18 @@
+{
+  "name": "AiGenerationQuota",
+  "properties": {
+    "count": {
+      "default": 0,
+      "description": "Total generations on this date",
+      "type": "number"
+    },
+    "date": {
+      "description": "Date string YYYY-MM-DD",
+      "type": "string"
+    }
+  },
+  "required": [
+    "date"
+  ],
+  "type": "object"
+}

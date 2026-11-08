@@ -1,0 +1,59 @@
+{
+  "description": "Server-owned daily AI generation usage. User profile counters are mirrors only and are never authoritative.",
+  "name": "AiGenerationUsage",
+  "properties": {
+    "generations_used": {
+      "default": 0,
+      "description": "Number of server-reserved AI generation slots for this UTC day.",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "last_generated_at": {
+      "description": "Timestamp of the latest reserved generation slot.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "quota_key": {
+      "description": "Stable UTC-day key built from Base44 user id and YYYY-MM-DD.",
+      "type": "string"
+    },
+    "usage_date": {
+      "description": "UTC calendar date for this usage bucket.",
+      "format": "date",
+      "type": "string"
+    },
+    "user_id": {
+      "description": "Authenticated Base44 user id that owns this usage bucket.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "quota_key",
+    "user_id",
+    "usage_date",
+    "generations_used"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "type": "object"
+}

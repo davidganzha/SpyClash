@@ -1,0 +1,146 @@
+{
+  "description": "Server-owned APNs alert registration. Raw installation identifiers are never stored and device tokens are encrypted at rest.",
+  "name": "PushDeviceRegistration",
+  "properties": {
+    "alert_authorized": {
+      "default": false,
+      "type": "boolean"
+    },
+    "app_version": {
+      "type": "string"
+    },
+    "bundle_id": {
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "environment": {
+      "enum": [
+        "sandbox",
+        "production"
+      ],
+      "type": "string"
+    },
+    "friend_requests_enabled": {
+      "default": true,
+      "type": "boolean"
+    },
+    "game_updates_enabled": {
+      "default": true,
+      "type": "boolean"
+    },
+    "installation_id_hash": {
+      "type": "string"
+    },
+    "last_error_code": {
+      "type": "string"
+    },
+    "last_seen_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "locale": {
+      "type": "string"
+    },
+    "revoked_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "room_invites_enabled": {
+      "default": true,
+      "type": "boolean"
+    },
+    "status": {
+      "default": "active",
+      "enum": [
+        "active",
+        "revoked"
+      ],
+      "type": "string"
+    },
+    "token_ciphertext": {
+      "description": "AES-GCM encrypted APNs token.",
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "token_hash": {
+      "type": "string"
+    },
+    "token_iv": {
+      "description": "AES-GCM nonce for token_ciphertext.",
+      "rls": {
+        "read": {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        "write": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      },
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "user_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "user_id",
+    "installation_id_hash",
+    "token_hash",
+    "token_ciphertext",
+    "token_iv",
+    "environment",
+    "bundle_id",
+    "alert_authorized",
+    "friend_requests_enabled",
+    "room_invites_enabled",
+    "game_updates_enabled",
+    "status",
+    "last_seen_at",
+    "created_at",
+    "updated_at"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "type": "object"
+}

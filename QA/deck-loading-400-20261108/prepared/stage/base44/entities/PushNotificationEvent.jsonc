@@ -1,0 +1,147 @@
+{
+  "description": "Server-owned source-validated APNs outbox with a bounded exact worker lease.",
+  "name": "PushNotificationEvent",
+  "properties": {
+    "actor_user_id": {
+      "type": "string"
+    },
+    "attempt_count": {
+      "default": 0,
+      "type": "number"
+    },
+    "created_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "dedupe_key": {
+      "type": "string"
+    },
+    "delivered_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "delivered_count": {
+      "default": 0,
+      "type": "number"
+    },
+    "delivered_token_hashes": {
+      "description": "Device token hashes already accepted by APNs. Successful devices are not resent on a partial retry.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "event_type": {
+      "enum": [
+        "friend_request",
+        "room_invite",
+        "game_started",
+        "game_finished"
+      ],
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "failed_count": {
+      "default": 0,
+      "type": "number"
+    },
+    "last_error_code": {
+      "type": "string"
+    },
+    "lease_token": {
+      "type": "string"
+    },
+    "lease_until": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "match_id": {
+      "type": "string"
+    },
+    "next_attempt_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "recipient_user_id": {
+      "type": "string"
+    },
+    "revision": {
+      "type": "string"
+    },
+    "room_id": {
+      "type": "string"
+    },
+    "source_event_id": {
+      "type": "string"
+    },
+    "source_type": {
+      "enum": [
+        "friendship",
+        "room_invite",
+        "game_room"
+      ],
+      "type": "string"
+    },
+    "state": {
+      "default": "pending",
+      "enum": [
+        "pending",
+        "processing",
+        "retry",
+        "delivered",
+        "partial",
+        "no_devices",
+        "cancelled",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "required": [
+    "dedupe_key",
+    "source_event_id",
+    "event_type",
+    "source_type",
+    "recipient_user_id",
+    "state",
+    "attempt_count",
+    "delivered_count",
+    "failed_count",
+    "lease_token",
+    "lease_until",
+    "revision",
+    "expires_at",
+    "created_at",
+    "updated_at"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "type": "object"
+}

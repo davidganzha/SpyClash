@@ -1,0 +1,93 @@
+{
+  "description": "Admin-only moderation evidence submitted through communityAction. Clients cannot read or mutate reports directly. Account deletion replaces raw account ids with stable deletion tombstones while retaining the private report and snapshot for safety, enforcement, and legal review.",
+  "name": "CommunityReport",
+  "properties": {
+    "comment_id": {
+      "type": "string"
+    },
+    "content_snapshot": {
+      "description": "Private moderation snapshot of the reported content at submission time.",
+      "maxLength": 500,
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "details": {
+      "maxLength": 500,
+      "type": "string"
+    },
+    "reason": {
+      "enum": [
+        "harassment",
+        "hate_speech",
+        "sexual_content",
+        "violence_or_threats",
+        "spam",
+        "impersonation",
+        "other"
+      ],
+      "type": "string"
+    },
+    "report_type": {
+      "enum": [
+        "user",
+        "comment"
+      ],
+      "type": "string"
+    },
+    "reported_user_id": {
+      "type": "string"
+    },
+    "reporter_user_id": {
+      "type": "string"
+    },
+    "status": {
+      "default": "open",
+      "enum": [
+        "open",
+        "reviewing",
+        "actioned",
+        "dismissed"
+      ],
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "required": [
+    "reporter_user_id",
+    "reported_user_id",
+    "report_type",
+    "reason",
+    "status",
+    "created_at",
+    "updated_at"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "type": "object"
+}

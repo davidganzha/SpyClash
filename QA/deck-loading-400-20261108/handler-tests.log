@@ -1,0 +1,41 @@
+running 5 tests from ./base44/tests/schema-drift/handlers_test.ts
+observed schema reproduces the deck 400, additive repair loads only owned decks ...
+------- output -------
+wordPackAction error Request failed with status code 400 400
+----- output end -----
+observed schema reproduces the deck 400, additive repair loads only owned decks ... ok (18ms)
+restored schema preserves pagination and deduplicates overlapping ownership queries ... ok (3ms)
+restoring spy_id fixes community state without hiding its failed request ...
+------- output -------
+communityAction Request failed with status code 400 Error: Request failed with status code 400
+    at requireFilter (file:///Users/davidganzha/Documents/SpyClash.worktrees/fix-deck-400/base44/tests/schema-drift/sdk-stub.ts:79:27)
+    at Store.filter (file:///Users/davidganzha/Documents/SpyClash.worktrees/fix-deck-400/base44/tests/schema-drift/sdk-stub.ts:131:5)
+    at usersWithSpyID (file:///Users/davidganzha/Documents/SpyClash.worktrees/fix-deck-400/base44/functions/communityAction/main.ts:141:51)
+    at ensureUserProfile (file:///Users/davidganzha/Documents/SpyClash.worktrees/fix-deck-400/base44/functions/communityAction/main.ts:170:27)
+    at Array.<anonymous> (file:///Users/davidganzha/Documents/SpyClash.worktrees/fix-deck-400/base44/functions/communityAction/main.ts:813:25)
+    at async invoke (file:///Users/davidganzha/Documents/SpyClash.worktrees/fix-deck-400/base44/tests/schema-drift/handlers_test.ts:31:20)
+    at async file:///Users/davidganzha/Documents/SpyClash.worktrees/fix-deck-400/base44/tests/schema-drift/handlers_test.ts:136:18
+    at async innerWrapped (ext:cli/40_test.js:280:5)
+    at async exitSanitizer (ext:cli/40_test.js:191:27)
+    at async outerWrapped (ext:cli/40_test.js:223:14)
+----- output end -----
+restoring spy_id fixes community state without hiding its failed request ... ok (3ms)
+restored schemas save room revisions then load lobby decks and community successfully ...
+------- output -------
+wordPackAction error Request failed with status code 400 400
+communityAction Request failed with status code 400 Error: Request failed with status code 400
+    at requireFilter (file:///Users/davidganzha/Documents/SpyClash.worktrees/fix-deck-400/base44/tests/schema-drift/sdk-stub.ts:79:27)
+    at Store.filter (file:///Users/davidganzha/Documents/SpyClash.worktrees/fix-deck-400/base44/tests/schema-drift/sdk-stub.ts:131:5)
+    at usersWithSpyID (file:///Users/davidganzha/Documents/SpyClash.worktrees/fix-deck-400/base44/functions/communityAction/main.ts:141:51)
+    at ensureUserProfile (file:///Users/davidganzha/Documents/SpyClash.worktrees/fix-deck-400/base44/functions/communityAction/main.ts:170:27)
+    at Array.<anonymous> (file:///Users/davidganzha/Documents/SpyClash.worktrees/fix-deck-400/base44/functions/communityAction/main.ts:813:25)
+    at async invoke (file:///Users/davidganzha/Documents/SpyClash.worktrees/fix-deck-400/base44/tests/schema-drift/handlers_test.ts:31:20)
+    at async file:///Users/davidganzha/Documents/SpyClash.worktrees/fix-deck-400/base44/tests/schema-drift/handlers_test.ts:164:10
+    at async innerWrapped (ext:cli/40_test.js:280:5)
+    at async exitSanitizer (ext:cli/40_test.js:191:27)
+    at async outerWrapped (ext:cli/40_test.js:223:14)
+----- output end -----
+restored schemas save room revisions then load lobby decks and community successfully ... ok (5ms)
+schema repair remains compatible with an empty library and rejects missing auth ... ok (0ms)
+
+ok | 5 passed | 0 failed (35ms)

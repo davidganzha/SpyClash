@@ -1,0 +1,91 @@
+{
+  "description": "Server-owned durable generation journal. Running or failed requests never restart automatically; completed requests replay their exact words. No raw theme or provider credentials are stored. Account deletion removes these records.",
+  "name": "AiWordPackOperation",
+  "properties": {
+    "completed_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "exhausted": {
+      "type": "boolean"
+    },
+    "operation_token": {
+      "maxLength": 128,
+      "type": "string"
+    },
+    "request_fingerprint": {
+      "pattern": "^awf1_[A-Za-z0-9_-]{43}$",
+      "type": "string"
+    },
+    "request_id": {
+      "maxLength": 128,
+      "type": "string"
+    },
+    "request_key": {
+      "pattern": "^awr1_[A-Za-z0-9_-]{43}$",
+      "type": "string"
+    },
+    "result_category": {
+      "maxLength": 120,
+      "type": "string"
+    },
+    "result_words": {
+      "items": {
+        "maxLength": 120,
+        "type": "string"
+      },
+      "maxItems": 100,
+      "minItems": 2,
+      "type": "array"
+    },
+    "state": {
+      "enum": [
+        "prepared",
+        "running",
+        "completed",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "user_id": {
+      "maxLength": 256,
+      "type": "string"
+    }
+  },
+  "required": [
+    "request_key",
+    "user_id",
+    "request_id",
+    "request_fingerprint",
+    "operation_token",
+    "state",
+    "updated_at"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "type": "object"
+}

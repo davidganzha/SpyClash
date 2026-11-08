@@ -1,0 +1,114 @@
+{
+  "description": "Server-owned AI word-pack cache. Each row is one reusable variant for an exact normalized theme/language/prompt-version key; raw themes are never stored.",
+  "name": "AiWordPackCacheVariant",
+  "properties": {
+    "cache_key": {
+      "description": "One-way exact-match key for normalized theme, language, and prompt version.",
+      "pattern": "^awc1_[A-Za-z0-9_-]{43}$",
+      "type": "string"
+    },
+    "category": {
+      "description": "Safe display category returned with this variant.",
+      "maxLength": 120,
+      "type": "string"
+    },
+    "exclusion_key": {
+      "description": "One-way exact identifier for the exclusion set used to interpret an exhausted partial; raw exclusions are never stored.",
+      "pattern": "^awe1_[A-Za-z0-9_-]{43}$",
+      "type": "string"
+    },
+    "exhausted": {
+      "description": "True when the provider could not safely produce more real words for this result; callers should not attempt a futile refill.",
+      "type": "boolean"
+    },
+    "expires_at": {
+      "description": "Hard TTL boundary. Reads ignore this row at or after the timestamp.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "generated_at": {
+      "description": "When the provider result was generated.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "language_key": {
+      "description": "Canonical lowercase BCP 47 language key.",
+      "maxLength": 35,
+      "type": "string"
+    },
+    "prompt_version": {
+      "description": "Exact normalized prompt contract version.",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+      "type": "string"
+    },
+    "theme_key": {
+      "description": "One-way theme identifier suitable for telemetry; never a raw theme.",
+      "pattern": "^awt1_[A-Za-z0-9_-]{43}$",
+      "type": "string"
+    },
+    "user_id": {
+      "description": "Authenticated Base44 user id that exclusively owns this cache variant.",
+      "maxLength": 256,
+      "type": "string"
+    },
+    "variant_key": {
+      "description": "Content-derived identifier. Distinct generated packs remain separate variants under the same cache key.",
+      "pattern": "^awv1_[A-Za-z0-9_-]{43}$",
+      "type": "string"
+    },
+    "word_count": {
+      "description": "Number of unique words stored in this variant.",
+      "maximum": 100,
+      "minimum": 2,
+      "type": "integer"
+    },
+    "words": {
+      "description": "Unique generated words. Exclusions are applied again when this variant is read.",
+      "items": {
+        "maxLength": 120,
+        "type": "string"
+      },
+      "maxItems": 100,
+      "minItems": 2,
+      "type": "array"
+    }
+  },
+  "required": [
+    "user_id",
+    "cache_key",
+    "theme_key",
+    "language_key",
+    "prompt_version",
+    "exclusion_key",
+    "variant_key",
+    "category",
+    "words",
+    "exhausted",
+    "word_count",
+    "generated_at",
+    "expires_at"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "type": "object"
+}

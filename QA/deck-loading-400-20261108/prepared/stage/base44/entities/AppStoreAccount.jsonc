@@ -1,0 +1,63 @@
+{
+  "description": "Server-owned binding between a SpyClash account and the stable Apple appAccountToken used for StoreKit purchases.",
+  "name": "AppStoreAccount",
+  "properties": {
+    "app_account_token": {
+      "description": "Stable UUID passed to StoreKit and returned in Apple transaction and renewal JWS payloads.",
+      "format": "uuid",
+      "type": "string"
+    },
+    "created_at": {
+      "description": "Time the billing identity was reserved for this account.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "last_used_at": {
+      "description": "Most recent purchase preparation or verified transaction sync.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "reservation_state": {
+      "description": "Internal two-phase reservation state. Pending rows are tombstone-owned until prepare safely claims them.",
+      "enum": [
+        "pending",
+        "active",
+        "deletion_sentinel"
+      ],
+      "type": "string"
+    },
+    "user_id": {
+      "description": "Authenticated Base44 user that owns this Apple billing identity.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "user_id",
+    "app_account_token",
+    "created_at",
+    "last_used_at"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "type": "object"
+}

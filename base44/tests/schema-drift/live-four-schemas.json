@@ -1,0 +1,305 @@
+{
+  "GameHistory": {
+    "type": "object",
+    "name": "GameHistory",
+    "properties": {
+      "player_email": {
+        "type": "string"
+      },
+      "room_code": {
+        "type": "string"
+      },
+      "role": {
+        "type": "string",
+        "enum": [
+          "spy",
+          "detective"
+        ]
+      },
+      "word": {
+        "type": "string"
+      },
+      "category": {
+        "type": "string"
+      },
+      "winner": {
+        "type": "string",
+        "enum": [
+          "detectives",
+          "spy"
+        ]
+      },
+      "player_count": {
+        "type": "number"
+      },
+      "won": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "player_email",
+      "room_code",
+      "role",
+      "winner"
+    ]
+  },
+  "GameRoom": {
+    "type": "object",
+    "name": "GameRoom",
+    "properties": {
+      "code": {
+        "type": "string",
+        "description": "6-char join code"
+      },
+      "host_email": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "waiting",
+          "ready_voting",
+          "roulette",
+          "playing",
+          "finished"
+        ],
+        "default": "waiting"
+      },
+      "players": {
+        "type": "array",
+        "description": "Array of player objects {email, name, avatar}",
+        "items": {
+          "type": "object"
+        }
+      },
+      "spectators": {
+        "type": "array",
+        "description": "Array of emails of players who were eliminated but game continues — they watch only",
+        "items": {
+          "type": "string"
+        }
+      },
+      "ready_players": {
+        "type": "array",
+        "description": "Array of emails of players who are ready",
+        "items": {
+          "type": "string"
+        }
+      },
+      "cards_read": {
+        "type": "array",
+        "description": "Array of emails of players who have read their role card",
+        "items": {
+          "type": "string"
+        }
+      },
+      "spy_email": {
+        "type": "string"
+      },
+      "word": {
+        "type": "string"
+      },
+      "category": {
+        "type": "string"
+      },
+      "spy_guess": {
+        "type": "string"
+      },
+      "detective_votes": {
+        "type": "array",
+        "description": "Array of {voter_email, voted_for_email}",
+        "items": {
+          "type": "object"
+        }
+      },
+      "vote_requests": {
+        "type": "array",
+        "description": "Array of emails of players who voted to START the vote",
+        "items": {
+          "type": "string"
+        }
+      },
+      "winner": {
+        "type": "string",
+        "enum": [
+          "detectives",
+          "spy",
+          ""
+        ],
+        "default": ""
+      },
+      "round_number": {
+        "type": "number",
+        "default": 1
+      },
+      "current_asker_email": {
+        "type": "string"
+      },
+      "current_answerer_email": {
+        "type": "string"
+      },
+      "current_answer": {
+        "type": "string"
+      },
+      "current_answer_feedback": {
+        "type": "string",
+        "enum": [
+          "like",
+          "dislike",
+          null
+        ]
+      },
+      "player_feedback": {
+        "type": "array",
+        "description": "Array of {email, likes, dislikes}",
+        "items": {
+          "type": "object"
+        }
+      },
+      "questions_in_round": {
+        "type": "number",
+        "default": 0
+      },
+      "question_phase": {
+        "type": "string",
+        "enum": [
+          "asking",
+          "answering",
+          "countdown",
+          "results"
+        ],
+        "default": "asking"
+      },
+      "eliminated_emails": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "word_pool": {
+        "type": "array",
+        "description": "List of words for this game: [{word, enabled}]",
+        "items": {
+          "type": "object"
+        }
+      },
+      "game_started_at": {
+        "type": "string",
+        "description": "ISO timestamp when all cards were read and game timer started"
+      },
+      "game_duration_seconds": {
+        "type": "number",
+        "description": "Total game duration in seconds (default 15 min)",
+        "default": 900
+      },
+      "countdown_started_at": {
+        "type": "string",
+        "description": "ISO timestamp when the between-questions countdown started"
+      },
+      "roulette_target_email": {
+        "type": "string",
+        "description": "Email of the player selected by roulette to go first"
+      },
+      "game_mode": {
+        "type": "string",
+        "description": "Game mode: questions or associations",
+        "enum": [
+          "questions",
+          "associations"
+        ],
+        "default": "questions"
+      }
+    },
+    "required": [
+      "code",
+      "host_email",
+      "status"
+    ]
+  },
+  "WordPack": {
+    "type": "object",
+    "name": "WordPack",
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "Pack display name"
+      },
+      "category": {
+        "type": "string",
+        "description": "Category label shown in game"
+      },
+      "words": {
+        "type": "array",
+        "description": "Array of word strings",
+        "items": {
+          "type": "string"
+        }
+      },
+      "owner_email": {
+        "type": "string",
+        "description": "Email of the user who created this pack"
+      },
+      "is_public": {
+        "type": "boolean",
+        "description": "Whether this pack is visible to everyone",
+        "default": false
+      }
+    },
+    "required": [
+      "name",
+      "words",
+      "owner_email"
+    ]
+  },
+  "User": {
+    "type": "object",
+    "name": "User",
+    "properties": {
+      "role": {
+        "type": "string",
+        "enum": [
+          "admin",
+          "user"
+        ],
+        "default": "user"
+      },
+      "display_name": {
+        "type": "string",
+        "description": "Player display name"
+      },
+      "avatar": {
+        "type": "string",
+        "description": "Avatar emoji or image url"
+      },
+      "games_played": {
+        "type": "number",
+        "default": 0
+      },
+      "games_won": {
+        "type": "number",
+        "default": 0
+      },
+      "language": {
+        "type": "string",
+        "description": "User's preferred language",
+        "enum": [
+          "ru",
+          "en"
+        ],
+        "default": "en"
+      },
+      "ai_generations_today": {
+        "type": "number",
+        "description": "AI generations used today (resets daily)",
+        "default": 0
+      },
+      "last_ai_generation_date": {
+        "type": "string",
+        "description": "ISO date of last AI generation (for daily reset)"
+      }
+    },
+    "required": [
+      "role"
+    ]
+  }
+}

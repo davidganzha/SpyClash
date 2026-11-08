@@ -1,0 +1,58 @@
+{
+  "description": "Admin-managed LIMITLESS access grants. Clients may read only grants for their own Base44 user id and cannot write them.",
+  "name": "MembershipGrant",
+  "properties": {
+    "active": {
+      "default": true,
+      "description": "Whether this manual LIMITLESS grant is active.",
+      "type": "boolean"
+    },
+    "expires_at": {
+      "description": "Optional expiry. Empty means active until an admin disables or deletes the grant.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "label": {
+      "description": "Optional internal support label.",
+      "type": "string"
+    },
+    "user_id": {
+      "description": "Base44 User id receiving the LIMITLESS grant.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "user_id",
+    "active"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "$or": [
+        {
+          "data.user_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "type": "object"
+}
