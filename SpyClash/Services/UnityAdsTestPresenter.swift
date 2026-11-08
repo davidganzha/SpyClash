@@ -16,13 +16,13 @@ enum UnityAdsTestError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unavailable: "Unity Ads testing is not enabled in this build."
+        case .unavailable: "Unity Ads preview is not enabled in this build."
         case .alreadyPresenting: "Another advertising or privacy screen is already open."
-        case .presentationUnavailable: "Return to the ad test screen and try again."
-        case .incompatibleInitialization: "Unity Ads was initialized outside this test session. Relaunch the app."
+        case .presentationUnavailable: "Return to the ad preview screen and try again."
+        case .incompatibleInitialization: "Unity Ads was initialized outside this preview session. Relaunch the app."
         case .initializationFailed(let message): "Unity Ads initialization failed: \(message)"
-        case .loadFailed(let message): "Unity Ads could not load the test ad: \(message)"
-        case .presentationFailed(let message): "Unity Ads could not show the test ad: \(message)"
+        case .loadFailed(let message): "Unity Ads could not load the ad: \(message)"
+        case .presentationFailed(let message): "Unity Ads could not show the ad: \(message)"
         case .timedOut: "Unity Ads did not respond in time. Please try again."
         }
     }
@@ -44,7 +44,7 @@ final class UnityAdsTestPresenter: NSObject {
     private(set) var status: Status = .idle
 
     @ObservationIgnored private let configuration: UnityAdsTestConfiguration
-    @ObservationIgnored private var initializedForTest = false
+    @ObservationIgnored private var initializedForPreview = false
     @ObservationIgnored private var initializationIsPending = false
     @ObservationIgnored private var operation: Operation?
     @ObservationIgnored private var timeoutTask: Task<Void, Never>?
@@ -102,7 +102,7 @@ final class UnityAdsTestPresenter: NSObject {
     private func initializeForPreview(_ id: UUID) {
         do { try validatePendingOperation(id) }
         catch { finish(id, result: .failure(error)); return }
-        if initializedForTest {
+        if initializedForPreview {
             loadPreview(id)
             return
         }
@@ -121,8 +121,10 @@ final class UnityAdsTestPresenter: NSObject {
         UnityAds.setUserOptOut(true)
         UnityAds.setNonBehavioral(true)
         initializationIsPending = true
+        print("[UnityAdsTest] mode=\(configuration.isTestMode ? "test" : "live") game=\(configuration.gameID) placement=\(configuration.adUnitID)")
         let sdkConfiguration = UADSInitializationConfigurationBuilder(gameId: configuration.gameID)
-            .with(testMode: true)
+            .with(testMode: configuration.isTestMode)
+            .with(logLevel: .debug)
             .build()
         UnityAds.initialize(sdkConfiguration) { [weak self] error in
             // Copy only Sendable values from the SDK callback before hopping.
@@ -130,7 +132,7 @@ final class UnityAdsTestPresenter: NSObject {
             Task { @MainActor in
                 guard let self else { return }
                 self.initializationIsPending = false
-                self.initializedForTest = failure == nil
+                self.initializedForPreview = failure == nil
                 guard let current = self.operation, current.phase == .initializing else { return }
                 if let failure {
                     self.finish(current.id, result: .failure(UnityAdsTestError.initializationFailed(failure)))
@@ -178,7 +180,23 @@ final class UnityAdsTestPresenter: NSObject {
         setStatus(.presenting)
         // Mark the request as presenting before entering SDK code. From here to
         // its terminal callback, only the SDK can dismiss its own screen.
+        Self.logPresentationContext(presenter)
         ad.show(UADSShowConfigurationBuilder().with(viewController: presenter).build(), delegate: self)
+    }
+
+    private static func logPresentationContext(_ presenter: UIViewController) {
+        // Class names and window state only; never log view content or user data.
+        guard let window = presenter.viewIfLoaded?.window else {
+            print("[UnityAdsTest] show request presenter=\(type(of: presenter)) window=none")
+            return
+        }
+        var chain: [String] = []
+        var controller = window.rootViewController
+        while let current = controller, chain.count < 8 {
+            chain.append(String(describing: type(of: current)))
+            controller = current.presentedViewController
+        }
+        print("[UnityAdsTest] show request presenter=\(type(of: presenter)) window=\(type(of: window)) key=\(window.isKeyWindow) hidden=\(window.isHidden) level=\(window.windowLevel.rawValue) root/presented=\(chain.joined(separator: " -> "))")
     }
 
     private func validatePendingOperation(_ id: UUID) throws {
@@ -295,6 +313,7 @@ extension UnityAdsTestPresenter: UADSRewardedShowDelegate {
         let adID = ObjectIdentifier(unityAd)
         Task { @MainActor [weak self] in
             guard let self, self.presentingOperation(for: adID) != nil else { return }
+            print("[UnityAdsTest] SDK showDidStart")
             self.setStatus(.presenting)
         }
     }
