@@ -75,6 +75,8 @@
 	<string>$(SPYCLASH_ADS_ENABLED)</string>
 	<key>SpyClashBackendMode</key>
 	<string>$(SPYCLASH_BACKEND_MODE)</string>
+	<key>SpyClashIntegratedTestAdsEnabled</key>
+	<string>$(SPYCLASH_INTEGRATED_TEST_ADS_ENABLED)</string>
 	<key>SpyClashOwnedAdMobSimulatorTestEnabled</key>
 	<string>$(SPYCLASH_OWNED_ADMOB_SIMULATOR_TEST_ENABLED)</string>
 	<key>SpyClashRewardedAdUnitID</key>

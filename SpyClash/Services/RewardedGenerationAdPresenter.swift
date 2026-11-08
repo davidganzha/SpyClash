@@ -52,6 +52,23 @@ final class RewardedGenerationAdPresenter: NSObject {
         // Merely constructing this object does not touch either SDK.
     }
 
+#if DEBUG && targetEnvironment(simulator)
+    func permitsLocalSampleTest(isPreview: Bool) -> Bool {
+        configuration.permitsLocalSampleTest(arguments: ProcessInfo.processInfo.arguments, isPreview: isPreview)
+    }
+
+    func presentLocalSampleTest(isPreview: Bool) async throws -> Bool {
+        guard permitsLocalSampleTest(isPreview: isPreview) else { throw RewardedGenerationAdError.unavailable }
+        // Fixed local identifiers deliberately have no account or server-issued
+        // reward context. SDK completion is only a viewing result, never a credit.
+        return try await present(
+            adUnitID: RewardedGenerationAdConfiguration.testAdUnitID,
+            userID: "local-simulator-ad-test",
+            customData: "local-sample-viewing-only"
+        )
+    }
+#endif
+
     func present(
         adUnitID: String,
         userID: String,
@@ -94,7 +111,8 @@ final class RewardedGenerationAdPresenter: NSObject {
 #if DEBUG
             // Compare an official test creative without changing live ad delivery.
             if configuration.isTestConfiguration,
-               ProcessInfo.processInfo.arguments.contains("--spyclash-preview-ad-trueview") {
+               ProcessInfo.processInfo.arguments.contains("--spyclash-preview-ad-trueview")
+                || configuration.permitsLocalSampleTest(arguments: ProcessInfo.processInfo.arguments, isPreview: false) {
                 requestParameters["ft_ctype"] = "trueview"
             }
 #endif

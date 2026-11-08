@@ -13,6 +13,8 @@ struct RewardedGenerationAdConfiguration {
     let isConfigured: Bool
     let isTestConfiguration: Bool
     let isOwnedSimulatorTestConfiguration: Bool
+    private let permitsSampleSimulatorTesting: Bool
+    private let integratedSampleTestingEnabled: Bool
 
     init(infoDictionary: [String: Any], isDebugBuild: Bool, isSimulator: Bool = false) {
         appID = (infoDictionary["GADApplicationIdentifier"] as? String ?? "")
@@ -22,6 +24,8 @@ struct RewardedGenerationAdConfiguration {
         let enabled = Self.isEnabled(infoDictionary["SpyClashAdsEnabled"])
         let isTest = appID == Self.testAppID && adUnitID == Self.testAdUnitID
         isTestConfiguration = isDebugBuild && enabled && isTest
+        permitsSampleSimulatorTesting = isDebugBuild && isSimulator && enabled && isTest
+        integratedSampleTestingEnabled = Self.isEnabled(infoDictionary["SpyClashIntegratedTestAdsEnabled"])
         let validApp = appID.range(of: #"^ca-app-pub-[0-9]{16}~[0-9]{10}$"#, options: .regularExpression) != nil
         let validUnit = adUnitID.range(of: #"^ca-app-pub-[0-9]{16}/[0-9]{10}$"#, options: .regularExpression) != nil
         let samePublisher = appID.split(separator: "~").first == adUnitID.split(separator: "/").first
@@ -39,6 +43,13 @@ struct RewardedGenerationAdConfiguration {
 
     func permits(adUnitID: String) -> Bool {
         isConfigured && adUnitID == self.adUnitID
+    }
+
+    /// A local viewing control in the normal app; it cannot grant account credits.
+    func permitsLocalSampleTest(arguments: [String], isPreview: Bool) -> Bool {
+        permitsSampleSimulatorTesting && !isPreview
+            && (integratedSampleTestingEnabled || arguments.contains("--spyclash-test-ads"))
+            && !arguments.contains("--spyclash-ui-preview")
     }
 
     private static func isEnabled(_ value: Any?) -> Bool {

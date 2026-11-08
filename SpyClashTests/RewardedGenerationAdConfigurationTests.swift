@@ -101,13 +101,64 @@ final class RewardedGenerationAdConfigurationTests: XCTestCase {
         }
     }
 
-    private func make(debug: Bool, app: String, unit: String, enabled: String = "YES", simulator: Bool = false, ownedSimulatorTest: Any? = nil) -> RewardedGenerationAdConfiguration {
+    func testLocalSampleViewingRequiresExplicitFlagOutsideUIPreview() {
+        let config = make(debug: true, app: RewardedGenerationAdConfiguration.testAppID, unit: RewardedGenerationAdConfiguration.testAdUnitID, simulator: true)
+        XCTAssertTrue(config.permitsLocalSampleTest(arguments: ["--spyclash-test-ads"], isPreview: false))
+        XCTAssertFalse(config.permitsLocalSampleTest(arguments: [], isPreview: false))
+        XCTAssertFalse(config.permitsLocalSampleTest(arguments: ["--spyclash-test-ads=true"], isPreview: false))
+        XCTAssertFalse(config.permitsLocalSampleTest(arguments: ["--spyclash-test-ads"], isPreview: true))
+        XCTAssertFalse(config.permitsLocalSampleTest(arguments: ["--spyclash-test-ads", "--spyclash-ui-preview"], isPreview: false))
+    }
+
+    func testLocalSampleViewingRejectsPhysicalReleaseDisabledAndOwnedConfigurations() {
+        let sampleApp = RewardedGenerationAdConfiguration.testAppID
+        let sampleUnit = RewardedGenerationAdConfiguration.testAdUnitID
+        for config in [
+            make(debug: true, app: sampleApp, unit: sampleUnit, simulator: false),
+            make(debug: false, app: sampleApp, unit: sampleUnit, simulator: true),
+            make(debug: true, app: sampleApp, unit: sampleUnit, enabled: "NO", simulator: true),
+            make(debug: true, app: liveApp, unit: liveUnit, simulator: true, ownedSimulatorTest: true),
+            make(debug: false, app: liveApp, unit: liveUnit, simulator: true),
+            make(debug: true, app: sampleApp, unit: liveUnit, simulator: true),
+            make(debug: true, app: liveApp, unit: sampleUnit, simulator: true),
+        ] {
+            XCTAssertFalse(config.permitsLocalSampleTest(arguments: ["--spyclash-test-ads"], isPreview: false))
+        }
+    }
+
+    func testIntegratedSampleViewingPersistsWithoutLaunchArgumentsAndStillRejectsPreview() {
+        let config = make(debug: true, app: RewardedGenerationAdConfiguration.testAppID, unit: RewardedGenerationAdConfiguration.testAdUnitID, simulator: true, integratedSampleTest: "YES")
+        XCTAssertTrue(config.permitsLocalSampleTest(arguments: [], isPreview: false))
+        XCTAssertFalse(config.permitsLocalSampleTest(arguments: [], isPreview: true))
+        XCTAssertFalse(config.permitsLocalSampleTest(arguments: ["--spyclash-ui-preview"], isPreview: false))
+        let disabled = make(debug: true, app: RewardedGenerationAdConfiguration.testAppID, unit: RewardedGenerationAdConfiguration.testAdUnitID, simulator: true, integratedSampleTest: "NO")
+        XCTAssertFalse(disabled.permitsLocalSampleTest(arguments: [], isPreview: false))
+        XCTAssertTrue(disabled.permitsLocalSampleTest(arguments: ["--spyclash-test-ads"], isPreview: false))
+    }
+
+    func testIntegratedSampleBuildSettingCannotBypassConfigurationGates() {
+        let sampleApp = RewardedGenerationAdConfiguration.testAppID
+        let sampleUnit = RewardedGenerationAdConfiguration.testAdUnitID
+        for config in [
+            make(debug: true, app: sampleApp, unit: sampleUnit, simulator: false, integratedSampleTest: true),
+            make(debug: false, app: sampleApp, unit: sampleUnit, simulator: true, integratedSampleTest: true),
+            make(debug: true, app: sampleApp, unit: sampleUnit, enabled: "NO", simulator: true, integratedSampleTest: true),
+            make(debug: true, app: liveApp, unit: liveUnit, simulator: true, ownedSimulatorTest: true, integratedSampleTest: true),
+            make(debug: false, app: liveApp, unit: liveUnit, simulator: true, integratedSampleTest: true),
+        ] {
+            XCTAssertFalse(config.permitsLocalSampleTest(arguments: [], isPreview: false))
+            XCTAssertFalse(config.permitsLocalSampleTest(arguments: ["--spyclash-test-ads"], isPreview: false))
+        }
+    }
+
+    private func make(debug: Bool, app: String, unit: String, enabled: String = "YES", simulator: Bool = false, ownedSimulatorTest: Any? = nil, integratedSampleTest: Any? = nil) -> RewardedGenerationAdConfiguration {
         var infoDictionary: [String: Any] = [
             "GADApplicationIdentifier": app,
             "SpyClashRewardedAdUnitID": unit,
             "SpyClashAdsEnabled": enabled,
         ]
         infoDictionary["SpyClashOwnedAdMobSimulatorTestEnabled"] = ownedSimulatorTest
+        infoDictionary["SpyClashIntegratedTestAdsEnabled"] = integratedSampleTest
         return RewardedGenerationAdConfiguration(infoDictionary: infoDictionary, isDebugBuild: debug, isSimulator: simulator)
     }
 }
