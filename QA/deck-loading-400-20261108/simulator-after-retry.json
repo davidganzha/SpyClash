@@ -1,0 +1,62 @@
+{
+  "simulator": "SpyClash Theme Ideas QA",
+  "build": "1.0.4 (225)",
+  "action": "Tapped existing retryWordPacks in authenticated app",
+  "result": "Existing HTTP 400 panel replaced with successful empty-library state",
+  "capture": {
+    "type": "runtime-snapshot",
+    "rs": "1",
+    "screenHash": "0u9qbv8",
+    "seq": 3,
+    "count": 110,
+    "targets": [
+      "e38|tap|button|💭, АССОЦИАЦИИ||onlineRoom.mode.associations",
+      "e101|tap|button|Потяните вниз, чтобы открыть командное меню|Нет ожидающих элементов|spy-command-menu-drag-handle",
+      "e103|tap|button|Открыть главную SpyClash||shell.header.home",
+      "e57|typeText|text-field||Страны Европы, архетипы героев...|onlineRoom.themeInput",
+      "e47|tap|text|1||",
+      "e48|tap|text|🔥||",
+      "e49|tap|text|1DAVID GANZHA1||",
+      "e50|tap|text|ХОСТ||",
+      "e64|tap|button|Архетипы героев||onlineRoom.themeSuggestions.hero-archetypes",
+      "e67|tap|button|Академия магии||onlineRoom.themeSuggestions.magic-academy",
+      "e70|tap|button|Страны Европы||onlineRoom.themeSuggestions.europe",
+      "e85|tap|button|ЗАКРЫТЬ||onlineRoom.leave",
+      "e89|tap|button|Пригласить игроков||onlineRoom.inviteMore"
+    ],
+    "scroll": [
+      "e8|swipe|scroll-view|||",
+      "e61|swipe|scroll-view|||"
+    ],
+    "text": [
+      "e36|text|text|?||",
+      "e39|text|text|💭||",
+      "e40|text|text|АССОЦИАЦИИ||",
+      "e37|text|text|ВОПРОСЫ||",
+      "e104|text|text|SPY||",
+      "e105|text|text|CLASH||",
+      "e43|text|text|15 МИН||",
+      "e42|text|text|ДЛИТЕЛЬНОСТЬ||",
+      "e106|text|text|Версия SpyClash 1.225v||",
+      "e46|text|text|ИГРОКИ (1 / 3+)||",
+      "e48|text|text|🔥||",
+      "e49|text|text|1DAVID GANZHA1||",
+      "e47|text|text|1||",
+      "e50|text|text|ХОСТ||",
+      "e52|text|text|1 / 3 МИНИМУМ ОПЕРАТИВНИКА||",
+      "e54|text|text|ТЕМА||",
+      "e55|text|text|AI INTEL||",
+      "e59|text|text|// ИДЕИ ДЛЯ ТЕМЫ||",
+      "e60|text|text|НАЖМИ, ЧТОБЫ ВСТАВИТЬ||",
+      "e66|text|text|АРХЕТИПЫ ГЕРОЕВ||",
+      "e69|text|text|АКАДЕМИЯ МАГИИ||",
+      "e72|text|text|СТРАНЫ ЕВРОПЫ||",
+      "e84|text|text|Вы не создавали своих колод.||onlineRoom.noSavedWordPacks",
+      "e87|text|text|ЗАКРЫТЬ||",
+      "e91|text|text|ПРИГЛАСИТЬ ИГРОКОВ||",
+      "e95|text|text|НАЧАТЬ СЕЙЧАС||",
+      "e96|text|text|1 / 3 МИНИМУМ ОПЕРАТИВНИКА||"
+    ],
+    "udid": "F1165ACF-09E1-4249-8732-4E9F67CB2BFE"
+  }
+}

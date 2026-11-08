@@ -39,12 +39,20 @@ The handler tests reproduce the original 400s and then verify successful room cr
 
 `handler-source-check.json` records source comparisons: the word-pack runtime matches production; community differs only by an unused monthly-purchase rollout helper, and the local room entrypoint contains a separate unpublished host-transfer addition. The second test run uses downloaded production code, avoiding those differences. No function publication is required for this repair.
 
-## Production step — pending explicit approval
+## Production step — completed with explicit approval
+
+The user approved the prepared production repair and one disposable room create/close check in this chat. Applied on 8 November 2026 at 22:23 UTC. `production-schema-receipt.json` records a fresh exact preflight match, HTTP 200 from schema synchronization, no deleted entities or warnings, and exact candidate readback across all 28 schemas. The provider lists all synchronized entities as updated; semantic comparison confirms only the reviewed four schema definitions changed.
+
+`production-runtime-receipt.json` confirms all five formerly failing field filters now return HTTP 200. The published word-pack list and community state returned HTTP 200 before and after room creation. Exactly one test room was created successfully; its membership IDs, room/lobby revisions and write token persisted. Room refresh returned HTTP 200. Closing the test room succeeded on the first request, and a separate exact-ID entity lookup confirmed the room was removed.
+
+The authenticated account returned an empty deck library (zero owned packs), not a loading error. The existing signed-in app on **SpyClash Theme Ideas QA**, build **1.0.4 (225)**, was also checked: tapping the existing Retry button replaced the old red 400 panel with `onlineRoom.noSavedWordPacks` / “Вы не создавали своих колод.” See `simulator-after-retry.json` and `simulator-after-retry.jpg`. No new app build or installation was needed. The pre-existing room visible in that Simulator was not the disposable API test room and was left untouched.
+
+The production test created and closed a waiting room; it did not start a multiplayer match or claim physical-device acceptance.
 
 Target: production Base44 app `69a0e57fa939f578082f8091` serving spyclash.com. Operation: synchronize the exact reviewed full schema map through `PUT /api/apps/{app_id}/entity-schemas` with `{ "entityNameToSchema": candidate }`, adding only the 60 reviewed properties. This is not an App Store/TestFlight release.
 
 Immediately before applying, refresh authentication and read the complete live schema map. Compute its digest with the preparation script's serialization and require an exact match with `before_sha256`; stop on drift. Recheck the candidate digest. After the authorized operation, read the complete map back, require the candidate digest, and verify no entities were deleted. Do not automatically retry an ambiguous mutation before readback.
 
-After approval, validate `wordPackAction/list` and the formerly failing filters against production. If separately authorized in the same confirmation, create one disposable test room under the authenticated test account, verify its persisted revisions and loading flow, then close only that returned room ID. Existing rooms written under the old schema may lack historical metadata; the additive repair does not reconstruct already discarded fields.
+The approved validation used `wordPackAction/list` and the formerly failing filters, then one disposable test room under the authenticated account, with persisted revisions and lobby loading checked before closing only its returned ID. Existing rooms written under the old schema may lack historical metadata; the additive repair does not reconstruct already discarded fields.
 
-At this checkpoint no production schema or data has been changed. Live loading and room acceptance remain pending the approved production step.
+Production schema repair, live endpoint validation, test-room cleanup, and the existing Simulator's deck-load recovery are complete. Credentials and user/deck contents are not included in these receipts.

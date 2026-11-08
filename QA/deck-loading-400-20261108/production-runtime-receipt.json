@@ -1,0 +1,75 @@
+{
+  "app_id": "69a0e57fa939f578082f8091",
+  "started_at": "2026-11-08T22:24:21.324342+00:00",
+  "checks": [
+    {
+      "check": "filter WordPack.owner_user_id",
+      "status": 200
+    },
+    {
+      "check": "filter User.spy_id",
+      "status": 200
+    },
+    {
+      "check": "filter GameRoom.participant_user_ids",
+      "status": 200
+    },
+    {
+      "check": "filter GameRoom.room_revision",
+      "status": 200
+    },
+    {
+      "check": "filter GameHistory.player_user_id",
+      "status": 200
+    },
+    {
+      "check": "wordPackAction/list before room",
+      "status": 200,
+      "pack_count": 0
+    },
+    {
+      "check": "communityAction/state before room",
+      "status": 200
+    },
+    {
+      "check": "gameRoomAction/create_room",
+      "status": 200,
+      "room_id": "6af0f699e8a525e1c3bae419"
+    },
+    {
+      "check": "created room persistence",
+      "status": 200,
+      "revision_persisted": true,
+      "lobby_revision_persisted": true,
+      "owner_membership_persisted": true,
+      "write_token_persisted": true
+    },
+    {
+      "check": "wordPackAction/list after room",
+      "status": 200
+    },
+    {
+      "check": "communityAction/state after room",
+      "status": 200
+    },
+    {
+      "check": "gameRoomAction/get_room after room",
+      "status": 200
+    },
+    {
+      "check": "gameRoomAction/close_room",
+      "status": 200,
+      "attempt": 1
+    },
+    {
+      "check": "test room removal verified",
+      "status": 200,
+      "removed": true
+    }
+  ],
+  "create_attempt_started_at": "2026-11-08T22:24:24.293362+00:00",
+  "test_room_id": "6af0f699e8a525e1c3bae419",
+  "test_room_removed": true,
+  "completed_at": "2026-11-08T22:24:30.667536+00:00",
+  "passed": true
+}
