@@ -76,6 +76,11 @@ struct GenerationAllowanceView: View {
 
     var body: some View {
         Group {
+#if DEBUG
+            if UnityAdsTestConfiguration.current.isEnabled && !appState.shouldUsePreviewData {
+                UnityAdsTestControl(isGenerating: isGenerating)
+            }
+#endif
 #if DEBUG && targetEnvironment(simulator)
             if RewardedGenerationAdPresenter.shared.permitsLocalSampleTest(isPreview: appState.shouldUsePreviewData) {
                 VStack(alignment: .leading, spacing: 12) {

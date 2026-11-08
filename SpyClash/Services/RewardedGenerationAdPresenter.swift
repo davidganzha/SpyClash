@@ -83,6 +83,9 @@ final class RewardedGenerationAdPresenter: NSObject {
             throw RewardedGenerationAdError.invalidRewardContext
         }
         guard !isBusy else { throw RewardedGenerationAdError.alreadyPresenting }
+#if DEBUG
+        guard !UnityAdsTestPresenter.shared.isBusy else { throw RewardedGenerationAdError.alreadyPresenting }
+#endif
         try Task.checkCancellation()
         guard let presenter = Self.visiblePresenter() else { throw RewardedGenerationAdError.presentationUnavailable }
 

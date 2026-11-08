@@ -19,7 +19,7 @@
 		04D75F8DFF0760FA93ACD1D1 /* AppShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D09D5EDA02EAE3E217C67199 /* AppShellView.swift */; };
 		04D8ED820848C96E8F10D561 /* PricingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4B70AB1F4B7C7D339E01E1F /* PricingView.swift */; };
 		05134F72B448AA6BFA0414F4 /* JSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28A2D6C4E1F5FFFCBDE7FC46 /* JSONValue.swift */; };
-		058ED81924FBD187AA67B71C /* GoogleUserMessagingPlatform in Frameworks */ = {isa = PBXBuildFile; productRef = 919B02B75DB2C6161CC8A998 /* GoogleUserMessagingPlatform */; };
+		058ED81924FBD187AA67B71C /* UnityAds in Frameworks */ = {isa = PBXBuildFile; productRef = 00DEBF1A8EFA2D8BD82F96E4 /* UnityAds */; };
 		06C2FCB23B06A882DC67ECAA /* LeaderboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 723E083EC43863E9B19D1DBD /* LeaderboardView.swift */; };
 		06C51565E294435310FA67C4 /* NotificationsInboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBEA537D0BEEC5A171ABD419 /* NotificationsInboxView.swift */; };
 		07C8BE911E4032D0AC430598 /* GenerationRewardStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FB7C6E371EB4047C9D7508B /* GenerationRewardStore.swift */; };
@@ -30,7 +30,7 @@
 		0A99F706D2042A94AA6DC5DB /* LocalCinematicGameplayViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D83FC09C66C9373238F2E95 /* LocalCinematicGameplayViews.swift */; };
 		0AD0D0575DA19A67B46A8E69 /* QRScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9BF7C89321D9588B7D95E1 /* QRScannerTests.swift */; };
 		0C1FCDA43C9B82ED47918048 /* GoogleMobileAds in Frameworks */ = {isa = PBXBuildFile; productRef = 8DB029A99C0D9EDD8AADEB51 /* GoogleMobileAds */; };
-		0C441B2BD0AC8E930536B9F7 /* GoogleUserMessagingPlatform in Frameworks */ = {isa = PBXBuildFile; productRef = 04B8575AC0EF179E8013D48C /* GoogleUserMessagingPlatform */; };
+		0C441B2BD0AC8E930536B9F7 /* UnityAds in Frameworks */ = {isa = PBXBuildFile; productRef = 9F9F9D9F31D364953794E9C1 /* UnityAds */; };
 		0C47F7C097FBD547904D6115 /* MembershipRealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4819AE6F17AFC1A3DC6FB58B /* MembershipRealtimeService.swift */; };
 		0C4CA1FFBC333349B3C52FEB /* LimitlessUnlockOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEE68A515367ABB807A2007D /* LimitlessUnlockOverlay.swift */; };
 		0C748DDAC83D3EC01179E074 /* SpyOrbSceneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05EC9F49E8EAD9FFF41E783E /* SpyOrbSceneView.swift */; };
@@ -39,7 +39,7 @@
 		0E5B384245B705E4A0093F79 /* WordPackDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = B81713411A03923224780579 /* WordPackDraft.swift */; };
 		0E7E9D69BA5174E7E5022CD8 /* LocalWordPoolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C5B90645CF02EF486E85429 /* LocalWordPoolTests.swift */; };
 		0E95043E279140BF59FFBED7 /* Base44Client.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EE75E34545D7FD03BFBF561 /* Base44Client.swift */; };
-		0FAC87F7B6D324185502000F /* GoogleUserMessagingPlatform in Frameworks */ = {isa = PBXBuildFile; productRef = B24312875D0AAF20A6872E3B /* GoogleUserMessagingPlatform */; };
+		0FAC87F7B6D324185502000F /* UnityAds in Frameworks */ = {isa = PBXBuildFile; productRef = 1617B1BE3B4C5330E2B42E2D /* UnityAds */; };
 		0FD841571A372C96B7274736 /* RewardedGenerationAdPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 630208291E3E478FE4DF690A /* RewardedGenerationAdPresenter.swift */; };
 		106AE27F4B2724A17C722789 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22314E28DB2385F7A05ABC74 /* HistoryView.swift */; };
 		107EE4E6916D0B2FCEE8F827 /* SpyTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3EC24BA3BA2A7A16F039946 /* SpyTheme.swift */; };
@@ -69,6 +69,7 @@
 		22AB3D6EEE75701901A3D313 /* QRSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA6E7B15464DD14D3E49671B /* QRSheets.swift */; };
 		230419432726BAB7D67CCCA2 /* OnlineGameExperience.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02196190F4444A14882CA7C3 /* OnlineGameExperience.swift */; };
 		2373B07730DC8DD6FF2910EF /* WebAuthenticationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 086A09C277F7D2F0BACA368C /* WebAuthenticationCoordinator.swift */; };
+		238248853569BF6933CFD375 /* UnityAdsTestPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F57A639BA3D4499CEE0081C3 /* UnityAdsTestPresenter.swift */; };
 		23E53AE7786B677E55A39CE9 /* OnlineRoundState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D67CB7923E19DDEA905468EC /* OnlineRoundState.swift */; };
 		240E84EB016C70F67AE890CB /* SpyAchievementGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6DD9C73CE9356FB1C6B7258 /* SpyAchievementGlyph.swift */; };
 		242ED07A5ED0FA1091648A55 /* SupabaseAppGameTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 269FE123D2811B55068F7E92 /* SupabaseAppGameTransport.swift */; };
@@ -170,12 +171,15 @@
 		5D9078739AD4DAA94B44A59E /* GenerationAllowanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0EE0374CBCB5188F7302E97 /* GenerationAllowanceView.swift */; };
 		5EE812743C9DC7478E148A56 /* AppShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D09D5EDA02EAE3E217C67199 /* AppShellView.swift */; };
 		5F15A6AE9C3ED53E7DF81BB6 /* SupabaseTestEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = C481340ADF6DBB4A3DBCB6EF /* SupabaseTestEnvironment.swift */; };
+		5FEC22B6AFF5FF6B3D5C9852 /* UnityAdsTestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94E654895C25BAF7BCEB8EAC /* UnityAdsTestView.swift */; };
 		604A2B3BA5EA644CBDE1CD9B /* NotificationInboxStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A55F10E69B0D74795D94C42 /* NotificationInboxStore.swift */; };
+		605D2EFC5F2C0D27E82F895F /* GoogleUserMessagingPlatform in Frameworks */ = {isa = PBXBuildFile; productRef = 04B8575AC0EF179E8013D48C /* GoogleUserMessagingPlatform */; };
 		6083AE83473101C0E4CE9C18 /* SpyAchievements.swift in Sources */ = {isa = PBXBuildFile; fileRef = E174D5AC38FFB4D09F35DE12 /* SpyAchievements.swift */; };
 		60FFC6664875BDDEF0571FCA /* DetectiveVoteCancellationOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 719D1CED512E653A43A0FBDC /* DetectiveVoteCancellationOverlay.swift */; };
 		610A7F7E9382DB559119ED1C /* NotificationInboxModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA85E77102835211355B7C6 /* NotificationInboxModels.swift */; };
 		6123242DFB5D81B3D1B2D9B2 /* SupabaseLegacyAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82CC9E52C9F3F732F47A312A /* SupabaseLegacyAuth.swift */; };
 		6137B7D7F891880DAE6267C2 /* NotificationInboxStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A55F10E69B0D74795D94C42 /* NotificationInboxStore.swift */; };
+		61F6DB3C3C0C7A5424B98374 /* UnityAdsTestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94E654895C25BAF7BCEB8EAC /* UnityAdsTestView.swift */; };
 		65430D1BFE2CF52272216F5F /* SupabaseAppRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = C805DED7EE9787139BCA120C /* SupabaseAppRuntime.swift */; };
 		65B97F60EB8C89F0D594A552 /* WordPacksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2863C15FC8DD7D0C969D6E78 /* WordPacksView.swift */; };
 		65F450F402C4E78A16B51F29 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5974161C5FAC304DACA7C96 /* OnboardingView.swift */; };
@@ -188,6 +192,7 @@
 		6AB4ED505752B9316DAE7CC5 /* LobbyPlayerCardOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 986727DF9EBF18917FE1CD73 /* LobbyPlayerCardOverlay.swift */; };
 		6BEB09CD45546EB59A434FFF /* QRSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA6E7B15464DD14D3E49671B /* QRSheets.swift */; };
 		6BF35DC0D8CF7F44CC02D78A /* SpyInterfaceScale.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A763626AA7553FBDDD665B8 /* SpyInterfaceScale.swift */; };
+		6DDE079AE64460C59BB9029A /* GoogleUserMessagingPlatform in Frameworks */ = {isa = PBXBuildFile; productRef = B24312875D0AAF20A6872E3B /* GoogleUserMessagingPlatform */; };
 		6E4C94E70834661C17C08E06 /* HapticManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BBA628FB7C9372162E4C619 /* HapticManager.swift */; };
 		70545E7667108CB8B2470745 /* InterfacePreferencesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35921860BD3A7EB84F963F87 /* InterfacePreferencesTests.swift */; };
 		70F319F5A6A6D666A1E2F8A5 /* CommunityResponsivenessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBF611A1F11FF70BB08253DA /* CommunityResponsivenessTests.swift */; };
@@ -197,6 +202,7 @@
 		7224D9E0843868E26DD0FAE8 /* AcquisitionSurveyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 886A606E4B1E5B19CB0F5083 /* AcquisitionSurveyView.swift */; };
 		7249CB010AC2ED2C5F2D5A01 /* AppleSignInCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 461DB21D00E39181FC2E1E1E /* AppleSignInCoordinator.swift */; };
 		74712546970739E9274A6A23 /* CommunityDirectoryLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED044A4EF5952B43BF45E37A /* CommunityDirectoryLoader.swift */; };
+		76426072A72C7D169CA65755 /* UnityAdsTestConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3B012E97D75F303E39856C8 /* UnityAdsTestConfigurationTests.swift */; };
 		7670AF799F4B8E0BCCED0210 /* BackendClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 332E7B619CC8B10C1A63D9EF /* BackendClient.swift */; };
 		77359414A9706D147E990C1A /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5974161C5FAC304DACA7C96 /* OnboardingView.swift */; };
 		78D46900ECDDAB5CEBEE5A49 /* JSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28A2D6C4E1F5FFFCBDE7FC46 /* JSONValue.swift */; };
@@ -225,6 +231,7 @@
 		82C65BC16F6B0AC33D960C65 /* AppState+GenerationRewards.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDA640D9C316AE409C50E644 /* AppState+GenerationRewards.swift */; };
 		82D1D08C2F15D8C91C49A7A1 /* Rajdhani-OFL-1.1.txt in Resources */ = {isa = PBXBuildFile; fileRef = 9053338F106838BBB476DCE4 /* Rajdhani-OFL-1.1.txt */; };
 		82D3EF58665CCD0D09A29F69 /* Base44ClientRoomActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2E4DCE1B4AA95262020FFE /* Base44ClientRoomActionTests.swift */; };
+		82EC2ED9D640437542DB7670 /* UnityAdsTestPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F57A639BA3D4499CEE0081C3 /* UnityAdsTestPresenter.swift */; };
 		82F3A622D857CFA9EEE1D578 /* AppStoreTransactionRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8380CFC8D36E6526C374E3F3 /* AppStoreTransactionRetryTests.swift */; };
 		83309EF2D0E5EEB230E46C36 /* SpyInterfacePreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79E76174123D2C9A9D699412 /* SpyInterfacePreferences.swift */; };
 		838F038EE8AA4FF705560D26 /* GameCenterAutomaticEntryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 733B251700865C02EB49DBE8 /* GameCenterAutomaticEntryTests.swift */; };
@@ -264,6 +271,7 @@
 		9B6BB3B53D73A54386029BB2 /* SupabaseAppMutationJournal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D2B6F5CC21F56497EBF912 /* SupabaseAppMutationJournal.swift */; };
 		9D5E06E7A0149F7051E8AA1F /* GameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B5C87FEFE82151F2F7D6F6A /* GameView.swift */; };
 		9DE33462ADF6349119239D1B /* WordPackEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667D3929047FBC751174E868 /* WordPackEditorSheet.swift */; };
+		A0A32AECBDDFA00955A5661A /* UnityAdsTestConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84B29D9240846103AA2746E1 /* UnityAdsTestConfiguration.swift */; };
 		A0F10D562DF8C703AD58D42B /* NotificationInboxStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A55F10E69B0D74795D94C42 /* NotificationInboxStore.swift */; };
 		A14016F54504B30BA64BB8DA /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B25DFE515749E670224D319 /* ProfileView.swift */; };
 		A147B0B8A28BD2AD58854A60 /* LobbyPlayerCardSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3F04D961B33C5465B9CC241 /* LobbyPlayerCardSelection.swift */; };
@@ -295,10 +303,12 @@
 		B560D07713D20431F673DE19 /* StoreKitProductCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0396C303769401DA236C1527 /* StoreKitProductCatalog.swift */; };
 		B57389736182EC8FB35F0B7F /* SpyClashMatchActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34243C161AC8643C57BD83B5 /* SpyClashMatchActivityAttributes.swift */; };
 		B5955F1C1AE643158073BD0F /* OnboardingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6575BABB395718344476FA1 /* OnboardingModels.swift */; };
+		B661739C823EB049D6D77CF8 /* UnityAdsTestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94E654895C25BAF7BCEB8EAC /* UnityAdsTestView.swift */; };
 		B7174B2D7D3A4A931E9835CF /* RadarInviteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DE93DA44796A2FB3D6F8F93 /* RadarInviteView.swift */; };
 		B71823E19311EDD342C0E90B /* SpyInterfaceScale.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A763626AA7553FBDDD665B8 /* SpyInterfaceScale.swift */; };
 		B87132DB0640F69FC4E8DB03 /* SupabaseGameRecoveryBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = F34CB7D3E96AC6FB27315519 /* SupabaseGameRecoveryBanner.swift */; };
 		B9505E224064194D44CDC4A5 /* MembershipRealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4819AE6F17AFC1A3DC6FB58B /* MembershipRealtimeService.swift */; };
+		B9D1FF47D2C2B9CBC1DD3312 /* UnityAdsTestConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84B29D9240846103AA2746E1 /* UnityAdsTestConfiguration.swift */; };
 		BA98E60B487B564CAA1C023C /* SpyClashWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 760CBEBE89AEE2AA0F8A6E0E /* SpyClashWidgetsBundle.swift */; };
 		BAD33DC603A706584926821E /* GameRoomRealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E68BF1820775925C6C61E563 /* GameRoomRealtimeService.swift */; };
 		BCFB873ADEE34038600E185F /* MembershipRealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4819AE6F17AFC1A3DC6FB58B /* MembershipRealtimeService.swift */; };
@@ -364,6 +374,7 @@
 		E0EBE638D83D2427760234CB /* SpyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86974FE98CF9350796FC28D3 /* SpyModels.swift */; };
 		E27A943CAA9C87A2F4E58CDB /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C72E6B177BD60A0DABC0A4A /* KeychainStore.swift */; };
 		E354C5031FBE679050E0623D /* AppShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D09D5EDA02EAE3E217C67199 /* AppShellView.swift */; };
+		E3A7E5A6BD9E1E5D2EB56BB0 /* UnityAdsTestConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84B29D9240846103AA2746E1 /* UnityAdsTestConfiguration.swift */; };
 		E493CC355812E336264DFE58 /* SupabaseFullGameStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A0054A2A4BACE2F0F8AE94 /* SupabaseFullGameStore.swift */; };
 		E62BEECEF2147364B0AA05B5 /* SpyClashMatchLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 154D6A5D3C20539A72285920 /* SpyClashMatchLiveActivityController.swift */; };
 		E64A3733A226E57B8742236C /* PlayerSpyCard3DView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA73BD6B334F5A9F54F3E659 /* PlayerSpyCard3DView.swift */; };
@@ -378,6 +389,7 @@
 		ECDAC86975194D2BEBB14885 /* Base44Client.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EE75E34545D7FD03BFBF561 /* Base44Client.swift */; };
 		ECE4DEF51EEB914818148535 /* SpyLaserScanLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08CF05650D30ADCD231D6904 /* SpyLaserScanLayer.swift */; };
 		ED44596E572F517943ABADD6 /* AppleSignInCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 461DB21D00E39181FC2E1E1E /* AppleSignInCoordinator.swift */; };
+		EE0B9B3AC7CABB74EE094BCE /* GoogleUserMessagingPlatform in Frameworks */ = {isa = PBXBuildFile; productRef = 919B02B75DB2C6161CC8A998 /* GoogleUserMessagingPlatform */; };
 		EE552400297F07678996A596 /* Base44IsolationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35C7C07502AB7E892CA5ED1A /* Base44IsolationTests.swift */; };
 		EEBB75C4F2F4A02EA849359B /* GameInvitationOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3CC16A7D85B706DA22DF02D /* GameInvitationOverlay.swift */; };
 		F0023E34F117982C824FD55F /* StoreKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF4FD9ADA1D27731462AEF4E /* StoreKitManager.swift */; };
@@ -386,6 +398,7 @@
 		F4243401982AD3911932F475 /* CommunityDirectoryLoadingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DBBB764730826D3F49D73FC /* CommunityDirectoryLoadingTests.swift */; };
 		F48E759F49C6CADA47DD79F0 /* SupabaseSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30F9ACD6849CEF356F71814 /* SupabaseSessionTests.swift */; };
 		F5C054A3675E51C54D31D874 /* SpyClashMatchActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34243C161AC8643C57BD83B5 /* SpyClashMatchActivityAttributes.swift */; };
+		F7334FEEE1B85190AEC088DE /* UnityAdsTestPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F57A639BA3D4499CEE0081C3 /* UnityAdsTestPresenter.swift */; };
 		F757AA29B27E340487A900E3 /* LabStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBE35ADCE6A8428B76F3A58B /* LabStore.swift */; };
 		F7E60C4B5DADE7836EC06B91 /* GenerationAllowanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0EE0374CBCB5188F7302E97 /* GenerationAllowanceView.swift */; };
 		F81A7F53263F2BE40CC54FC3 /* GameInvitationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49B655DEDCC1F28E1E58254F /* GameInvitationSettingsView.swift */; };
@@ -571,6 +584,7 @@
 		80DC7F5F28187879483888CC /* GenerationRewardStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationRewardStoreTests.swift; sourceTree = "<group>"; };
 		82CC9E52C9F3F732F47A312A /* SupabaseLegacyAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseLegacyAuth.swift; sourceTree = "<group>"; };
 		8380CFC8D36E6526C374E3F3 /* AppStoreTransactionRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreTransactionRetryTests.swift; sourceTree = "<group>"; };
+		84B29D9240846103AA2746E1 /* UnityAdsTestConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnityAdsTestConfiguration.swift; sourceTree = "<group>"; };
 		84FC834A8A03378CFB477BB4 /* MembershipTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MembershipTests.swift; sourceTree = "<group>"; };
 		86974FE98CF9350796FC28D3 /* SpyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyModels.swift; sourceTree = "<group>"; };
 		8736848DF8FD11DE43D2EF37 /* LimitlessClearancePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimitlessClearancePanel.swift; sourceTree = "<group>"; };
@@ -589,6 +603,7 @@
 		9053338F106838BBB476DCE4 /* Rajdhani-OFL-1.1.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Rajdhani-OFL-1.1.txt"; sourceTree = "<group>"; };
 		9065A7D0489C60903CBB7D5B /* SpyBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyBackground.swift; sourceTree = "<group>"; };
 		9247DA8D3D9DC6DE5F651601 /* DismissedRoomExitCleanupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DismissedRoomExitCleanupTests.swift; sourceTree = "<group>"; };
+		94E654895C25BAF7BCEB8EAC /* UnityAdsTestView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnityAdsTestView.swift; sourceTree = "<group>"; };
 		97913D6348B4319F467C8E65 /* InterfaceSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterfaceSettingsView.swift; sourceTree = "<group>"; };
 		986727DF9EBF18917FE1CD73 /* LobbyPlayerCardOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LobbyPlayerCardOverlay.swift; sourceTree = "<group>"; };
 		9AFFF43EECD45A2588F995CE /* SupabaseMutationJournalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseMutationJournalTests.swift; sourceTree = "<group>"; };
@@ -609,6 +624,7 @@
 		B0EE0374CBCB5188F7302E97 /* GenerationAllowanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationAllowanceView.swift; sourceTree = "<group>"; };
 		B278BBFE3E1ED1E156E14A3E /* InterfaceSettingsControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterfaceSettingsControls.swift; sourceTree = "<group>"; };
 		B2B3BFA42ABA9ED692193D49 /* LanguageSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageSettingsView.swift; sourceTree = "<group>"; };
+		B3B012E97D75F303E39856C8 /* UnityAdsTestConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnityAdsTestConfigurationTests.swift; sourceTree = "<group>"; };
 		B4C7DF591EE7DC58C7D4568F /* SupabaseLegacySessionUpgrade.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseLegacySessionUpgrade.swift; sourceTree = "<group>"; };
 		B50EAE76ED873FFED393BDB8 /* WordPackPersistenceIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordPackPersistenceIntegrationTests.swift; sourceTree = "<group>"; };
 		B56DC470E758E134D21613A8 /* GameCenterEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameCenterEntryView.swift; sourceTree = "<group>"; };
@@ -664,6 +680,7 @@
 		F02C42B98A9366662DA343CD /* NotificationInboxTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationInboxTests.swift; sourceTree = "<group>"; };
 		F34CB7D3E96AC6FB27315519 /* SupabaseGameRecoveryBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseGameRecoveryBanner.swift; sourceTree = "<group>"; };
 		F4B70AB1F4B7C7D339E01E1F /* PricingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PricingView.swift; sourceTree = "<group>"; };
+		F57A639BA3D4499CEE0081C3 /* UnityAdsTestPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnityAdsTestPresenter.swift; sourceTree = "<group>"; };
 		FA6E7B15464DD14D3E49671B /* QRSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRSheets.swift; sourceTree = "<group>"; };
 		FD9E0E8940B7305B84993F49 /* AcquisitionSurveyIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcquisitionSurveyIntegrationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -675,7 +692,8 @@
 			files = (
 				7F3F676C52F8827203D1B104 /* SocketIO in Frameworks */,
 				F8FA099AE572D3C02CD42A74 /* GoogleMobileAds in Frameworks */,
-				0C441B2BD0AC8E930536B9F7 /* GoogleUserMessagingPlatform in Frameworks */,
+				0C441B2BD0AC8E930536B9F7 /* UnityAds in Frameworks */,
+				605D2EFC5F2C0D27E82F895F /* GoogleUserMessagingPlatform in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -685,7 +703,8 @@
 			files = (
 				8D17771759D4330EBFEC4603 /* SocketIO in Frameworks */,
 				0C1FCDA43C9B82ED47918048 /* GoogleMobileAds in Frameworks */,
-				058ED81924FBD187AA67B71C /* GoogleUserMessagingPlatform in Frameworks */,
+				058ED81924FBD187AA67B71C /* UnityAds in Frameworks */,
+				EE0B9B3AC7CABB74EE094BCE /* GoogleUserMessagingPlatform in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -695,7 +714,8 @@
 			files = (
 				87A595553DD1CBD4814B590E /* SocketIO in Frameworks */,
 				46A26AD9D3580F664F2C7888 /* GoogleMobileAds in Frameworks */,
-				0FAC87F7B6D324185502000F /* GoogleUserMessagingPlatform in Frameworks */,
+				0FAC87F7B6D324185502000F /* UnityAds in Frameworks */,
+				6DDE079AE64460C59BB9029A /* GoogleUserMessagingPlatform in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -820,6 +840,7 @@
 				7DA90F2A720D3C914DAEB5AD /* SpyGameIntroScene.swift */,
 				05EC9F49E8EAD9FFF41E783E /* SpyOrbSceneView.swift */,
 				F34CB7D3E96AC6FB27315519 /* SupabaseGameRecoveryBanner.swift */,
+				94E654895C25BAF7BCEB8EAC /* UnityAdsTestView.swift */,
 				CE1AF213121DB5A761660563 /* WelcomeView.swift */,
 				667D3929047FBC751174E868 /* WordPackEditorSheet.swift */,
 				2863C15FC8DD7D0C969D6E78 /* WordPacksView.swift */,
@@ -935,6 +956,7 @@
 				EA17B78E221F34E47BEC5A8D /* StoreKitProductCatalogTests.swift */,
 				32506C28F05EE47E2211DB75 /* StoreKitSandboxIntegrationTests.swift */,
 				B95A2D741697760ECF94CA2C /* SupabasePublicReleaseTests.swift */,
+				B3B012E97D75F303E39856C8 /* UnityAdsTestConfigurationTests.swift */,
 				8ADE534BA93394DA3C6521FA /* WebAuthenticationCoordinatorTests.swift */,
 				5CF183979BDB403CB777230B /* WordGenerationRetryTests.swift */,
 				C8D58811816F930A78503187 /* WordPackDraftTests.swift */,
@@ -1044,6 +1066,8 @@
 				B4C7DF591EE7DC58C7D4568F /* SupabaseLegacySessionUpgrade.swift */,
 				733493DF0AA53A035B384D8B /* SupabaseSocialRealtimeService.swift */,
 				C481340ADF6DBB4A3DBCB6EF /* SupabaseTestEnvironment.swift */,
+				84B29D9240846103AA2746E1 /* UnityAdsTestConfiguration.swift */,
+				F57A639BA3D4499CEE0081C3 /* UnityAdsTestPresenter.swift */,
 				086A09C277F7D2F0BACA368C /* WebAuthenticationCoordinator.swift */,
 			);
 			path = Services;
@@ -1141,6 +1165,7 @@
 			packageProductDependencies = (
 				0F3E2F7BE3B86567F9077667 /* SocketIO */,
 				8DB029A99C0D9EDD8AADEB51 /* GoogleMobileAds */,
+				00DEBF1A8EFA2D8BD82F96E4 /* UnityAds */,
 				919B02B75DB2C6161CC8A998 /* GoogleUserMessagingPlatform */,
 			);
 			productName = SpyClash;
@@ -1201,6 +1226,7 @@
 			packageProductDependencies = (
 				BC20A5F1586F7EEBA03DB7CA /* SocketIO */,
 				72BD155CC0692B7CE2D878F2 /* GoogleMobileAds */,
+				1617B1BE3B4C5330E2B42E2D /* UnityAds */,
 				B24312875D0AAF20A6872E3B /* GoogleUserMessagingPlatform */,
 			);
 			productName = SpyClashSupabaseStaging;
@@ -1240,6 +1266,7 @@
 			packageProductDependencies = (
 				8EFBB6DF80CE1233AAE13E57 /* SocketIO */,
 				D70A6652EA3965C1F16BF81E /* GoogleMobileAds */,
+				9F9F9D9F31D364953794E9C1 /* UnityAds */,
 				04B8575AC0EF179E8013D48C /* GoogleUserMessagingPlatform */,
 			);
 			productName = SpyClashSupabaseTest;
@@ -1305,6 +1332,7 @@
 				D5DAD1E41F80452290A58CF2 /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */,
 				7A47265D34AC3CEBF7BD6F1B /* XCRemoteSwiftPackageReference "swift-package-manager-google-user-messaging-platform" */,
 				4F7ED4AB9DEE99B89C08557C /* XCRemoteSwiftPackageReference "socket.io-client-swift" */,
+				BF837661C2B3FD5EF869F881 /* XCRemoteSwiftPackageReference "Unity-Ads-Swift-Package" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 7B6BED41BFC5980A89ECA708 /* Products */;
@@ -1482,6 +1510,9 @@
 				2F1E2D5C8BD15603575ED58C /* SupabaseLegacySessionUpgrade.swift in Sources */,
 				5BA2314312EC965CF44B0F81 /* SupabaseSocialRealtimeService.swift in Sources */,
 				ECD84CEB96521FBAB8BD5A21 /* SupabaseTestEnvironment.swift in Sources */,
+				A0A32AECBDDFA00955A5661A /* UnityAdsTestConfiguration.swift in Sources */,
+				F7334FEEE1B85190AEC088DE /* UnityAdsTestPresenter.swift in Sources */,
+				61F6DB3C3C0C7A5424B98374 /* UnityAdsTestView.swift in Sources */,
 				85CAC9AAEBB45BA05A2805B3 /* WebAuthenticationCoordinator.swift in Sources */,
 				48F60AF8B621AC2ECA17AA4D /* WelcomeView.swift in Sources */,
 				DC3848DDAA44064D13A1F7B2 /* WordPackDraft.swift in Sources */,
@@ -1617,6 +1648,9 @@
 				693894BAD0DB8065DFE66A1C /* SupabaseLegacySessionUpgrade.swift in Sources */,
 				553B05398D4360EDBB48276E /* SupabaseSocialRealtimeService.swift in Sources */,
 				5F15A6AE9C3ED53E7DF81BB6 /* SupabaseTestEnvironment.swift in Sources */,
+				B9D1FF47D2C2B9CBC1DD3312 /* UnityAdsTestConfiguration.swift in Sources */,
+				238248853569BF6933CFD375 /* UnityAdsTestPresenter.swift in Sources */,
+				5FEC22B6AFF5FF6B3D5C9852 /* UnityAdsTestView.swift in Sources */,
 				D93473CC1D1FCBB38C3E07C9 /* WebAuthenticationCoordinator.swift in Sources */,
 				A744EDBB751A4EB73DFC2C44 /* WelcomeView.swift in Sources */,
 				0E5B384245B705E4A0093F79 /* WordPackDraft.swift in Sources */,
@@ -1757,6 +1791,9 @@
 				546415485A1494791DC8D910 /* SupabaseLegacySessionUpgrade.swift in Sources */,
 				2B48A221A50B06D9EFE14A83 /* SupabaseSocialRealtimeService.swift in Sources */,
 				C0F07960343E815EFDD1D1FB /* SupabaseTestEnvironment.swift in Sources */,
+				E3A7E5A6BD9E1E5D2EB56BB0 /* UnityAdsTestConfiguration.swift in Sources */,
+				82EC2ED9D640437542DB7670 /* UnityAdsTestPresenter.swift in Sources */,
+				B661739C823EB049D6D77CF8 /* UnityAdsTestView.swift in Sources */,
 				2373B07730DC8DD6FF2910EF /* WebAuthenticationCoordinator.swift in Sources */,
 				2F95F6BCE1DCA4F427AAE308 /* WelcomeView.swift in Sources */,
 				1C75A8A1770F832EFBC5D5B8 /* WordPackDraft.swift in Sources */,
@@ -1799,6 +1836,7 @@
 				25FB301333DA31221DAAAE41 /* SpyAchievementTests.swift in Sources */,
 				006CA900E7957F08B0E578D7 /* StoreKitProductCatalogTests.swift in Sources */,
 				373294D8674BA67AEC1E8B5D /* StoreKitSandboxIntegrationTests.swift in Sources */,
+				76426072A72C7D169CA65755 /* UnityAdsTestConfigurationTests.swift in Sources */,
 				443DD0D2621445DE78FD2135 /* WebAuthenticationCoordinatorTests.swift in Sources */,
 				4C3014D482C6B40EA91792A3 /* WordGenerationRetryTests.swift in Sources */,
 				397C0B1DBC891128B57E1133 /* WordPackDraftTests.swift in Sources */,
@@ -2377,7 +2415,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 225;
+				CURRENT_PROJECT_VERSION = 226;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -2407,6 +2445,9 @@
 				SPYCLASH_INTEGRATED_TEST_ADS_ENABLED = NO;
 				SPYCLASH_OWNED_ADMOB_SIMULATOR_TEST_ENABLED = NO;
 				SPYCLASH_REWARDED_AD_UNIT_ID = "ca-app-pub-3940256099942544/1712485313";
+				SPYCLASH_UNITY_TEST_ADS_ENABLED = NO;
+				SPYCLASH_UNITY_TEST_AD_UNIT_ID = rewardedVideo;
+				SPYCLASH_UNITY_TEST_GAME_ID = 14850;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 6.0;
@@ -2629,7 +2670,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 225;
+				CURRENT_PROJECT_VERSION = 226;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -2652,6 +2693,9 @@
 				SPYCLASH_INTEGRATED_TEST_ADS_ENABLED = NO;
 				SPYCLASH_OWNED_ADMOB_SIMULATOR_TEST_ENABLED = NO;
 				SPYCLASH_REWARDED_AD_UNIT_ID = "";
+				SPYCLASH_UNITY_TEST_ADS_ENABLED = NO;
+				SPYCLASH_UNITY_TEST_AD_UNIT_ID = rewardedVideo;
+				SPYCLASH_UNITY_TEST_GAME_ID = 14850;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.0;
@@ -2729,7 +2773,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 225;
+				CURRENT_PROJECT_VERSION = 226;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -2752,6 +2796,9 @@
 				SPYCLASH_INTEGRATED_TEST_ADS_ENABLED = NO;
 				SPYCLASH_OWNED_ADMOB_SIMULATOR_TEST_ENABLED = NO;
 				SPYCLASH_REWARDED_AD_UNIT_ID = "";
+				SPYCLASH_UNITY_TEST_ADS_ENABLED = NO;
+				SPYCLASH_UNITY_TEST_AD_UNIT_ID = rewardedVideo;
+				SPYCLASH_UNITY_TEST_GAME_ID = 14850;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.0;
@@ -2875,7 +2922,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 225;
+				CURRENT_PROJECT_VERSION = 226;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -2905,6 +2952,9 @@
 				SPYCLASH_INTEGRATED_TEST_ADS_ENABLED = NO;
 				SPYCLASH_OWNED_ADMOB_SIMULATOR_TEST_ENABLED = NO;
 				SPYCLASH_REWARDED_AD_UNIT_ID = "ca-app-pub-3940256099942544/1712485313";
+				SPYCLASH_UNITY_TEST_ADS_ENABLED = NO;
+				SPYCLASH_UNITY_TEST_AD_UNIT_ID = rewardedVideo;
+				SPYCLASH_UNITY_TEST_GAME_ID = 14850;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 6.0;
@@ -3004,7 +3054,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 225;
+				CURRENT_PROJECT_VERSION = 226;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -3027,6 +3077,9 @@
 				SPYCLASH_INTEGRATED_TEST_ADS_ENABLED = NO;
 				SPYCLASH_OWNED_ADMOB_SIMULATOR_TEST_ENABLED = NO;
 				SPYCLASH_REWARDED_AD_UNIT_ID = "";
+				SPYCLASH_UNITY_TEST_ADS_ENABLED = NO;
+				SPYCLASH_UNITY_TEST_AD_UNIT_ID = rewardedVideo;
+				SPYCLASH_UNITY_TEST_GAME_ID = 14850;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.0;
@@ -3357,6 +3410,14 @@
 				version = 3.1.0;
 			};
 		};
+		BF837661C2B3FD5EF869F881 /* XCRemoteSwiftPackageReference "Unity-Ads-Swift-Package" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Unity-Technologies/Unity-Ads-Swift-Package.git";
+			requirement = {
+				kind = exactVersion;
+				version = 4.21.0;
+			};
+		};
 		D5DAD1E41F80452290A58CF2 /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/googleads/swift-package-manager-google-mobile-ads.git";
@@ -3368,6 +3429,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		00DEBF1A8EFA2D8BD82F96E4 /* UnityAds */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BF837661C2B3FD5EF869F881 /* XCRemoteSwiftPackageReference "Unity-Ads-Swift-Package" */;
+			productName = UnityAds;
+		};
 		04B8575AC0EF179E8013D48C /* GoogleUserMessagingPlatform */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 7A47265D34AC3CEBF7BD6F1B /* XCRemoteSwiftPackageReference "swift-package-manager-google-user-messaging-platform" */;
@@ -3377,6 +3443,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4F7ED4AB9DEE99B89C08557C /* XCRemoteSwiftPackageReference "socket.io-client-swift" */;
 			productName = SocketIO;
+		};
+		1617B1BE3B4C5330E2B42E2D /* UnityAds */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BF837661C2B3FD5EF869F881 /* XCRemoteSwiftPackageReference "Unity-Ads-Swift-Package" */;
+			productName = UnityAds;
 		};
 		72BD155CC0692B7CE2D878F2 /* GoogleMobileAds */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -3397,6 +3468,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 7A47265D34AC3CEBF7BD6F1B /* XCRemoteSwiftPackageReference "swift-package-manager-google-user-messaging-platform" */;
 			productName = GoogleUserMessagingPlatform;
+		};
+		9F9F9D9F31D364953794E9C1 /* UnityAds */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BF837661C2B3FD5EF869F881 /* XCRemoteSwiftPackageReference "Unity-Ads-Swift-Package" */;
+			productName = UnityAds;
 		};
 		B24312875D0AAF20A6872E3B /* GoogleUserMessagingPlatform */ = {
 			isa = XCSwiftPackageProductDependency;

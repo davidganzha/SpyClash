@@ -81,6 +81,12 @@
 	<string>$(SPYCLASH_OWNED_ADMOB_SIMULATOR_TEST_ENABLED)</string>
 	<key>SpyClashRewardedAdUnitID</key>
 	<string>$(SPYCLASH_REWARDED_AD_UNIT_ID)</string>
+	<key>SpyClashUnityTestAdUnitID</key>
+	<string>$(SPYCLASH_UNITY_TEST_AD_UNIT_ID)</string>
+	<key>SpyClashUnityTestAdsEnabled</key>
+	<string>$(SPYCLASH_UNITY_TEST_ADS_ENABLED)</string>
+	<key>SpyClashUnityTestGameID</key>
+	<string>$(SPYCLASH_UNITY_TEST_GAME_ID)</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Rajdhani-Bold.ttf</string>

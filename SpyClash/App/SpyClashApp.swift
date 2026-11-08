@@ -51,6 +51,9 @@ struct SpyClashApp: App {
 
 private struct RootView: View {
     @Environment(AppState.self) private var appState
+#if DEBUG
+    @State private var showsUnityAdPreview = UnityAdsTestConfiguration.current.opensPreview
+#endif
 
     var body: some View {
         ZStack {
@@ -140,7 +143,9 @@ private struct RootView: View {
     @ViewBuilder
     private var restoredContent: some View {
 #if DEBUG
-        if SupabaseTestEnvironment.isEnabled, appState.user == nil {
+        if showsUnityAdPreview {
+            UnityAdsTestPreview { showsUnityAdPreview = false }
+        } else if SupabaseTestEnvironment.isEnabled, appState.user == nil {
             SupabaseTestSetupView()
         } else if appState.shouldUsePreviewData,
            let directPreview = DebugPreviewDestination.current {

@@ -1,5 +1,5 @@
 {
-  "originHash" : "53fa06184c15c56fe43d6326c4702db1b1cc52d102fe35acbcc0719ecfd0b96a",
+  "originHash" : "9dc6c5aa9d2b4fb3c0b45c58e711e2b3063a90a862092472bc589c283ad7ce31",
   "pins" : [
     {
       "identity" : "socket.io-client-swift",
@@ -35,6 +35,15 @@
       "state" : {
         "revision" : "13b248eaa73b7826f0efb1bcf455e251d65ecb1b",
         "version" : "3.1.0"
+      }
+    },
+    {
+      "identity" : "unity-ads-swift-package",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Unity-Technologies/Unity-Ads-Swift-Package.git",
+      "state" : {
+        "revision" : "09bdf0e27186667f381196f57ceece714c8917a2",
+        "version" : "4.21.0"
       }
     }
   ],

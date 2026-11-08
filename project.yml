@@ -11,7 +11,7 @@ configs:
   SupabasePublicRelease: release
 settings:
   base:
-    CURRENT_PROJECT_VERSION: 225
+    CURRENT_PROJECT_VERSION: 226
     MARKETING_VERSION: 1.0.4
     SWIFT_VERSION: 6.0
     SPYCLASH_ADS_ENABLED: "NO"
@@ -22,6 +22,10 @@ settings:
     # Ads stay disabled and Release rejects all Google sample advertising IDs.
     SPYCLASH_ADMOB_APP_ID: "ca-app-pub-3940256099942544~1458002511"
     SPYCLASH_REWARDED_AD_UNIT_ID: ""
+    SPYCLASH_UNITY_TEST_ADS_ENABLED: "NO"
+    # Public Unity sample project, only initialized in explicit Debug test mode.
+    SPYCLASH_UNITY_TEST_GAME_ID: "14850"
+    SPYCLASH_UNITY_TEST_AD_UNIT_ID: "rewardedVideo"
   configs:
     Debug:
       SPYCLASH_ADS_ENABLED: "YES"
@@ -32,6 +36,9 @@ settings:
       SPYCLASH_ADMOB_APP_ID: "ca-app-pub-3940256099942544~1458002511"
       SPYCLASH_REWARDED_AD_UNIT_ID: "ca-app-pub-3940256099942544/1712485313"
 packages:
+  UnityAds:
+    url: https://github.com/Unity-Technologies/Unity-Ads-Swift-Package.git
+    exactVersion: 4.21.0
   SocketIO:
     url: https://github.com/socketio/socket.io-client-swift.git
     from: 16.1.1
@@ -85,6 +92,9 @@ targets:
         SpyClashIntegratedTestAdsEnabled: "$(SPYCLASH_INTEGRATED_TEST_ADS_ENABLED)"
         SpyClashOwnedAdMobSimulatorTestEnabled: "$(SPYCLASH_OWNED_ADMOB_SIMULATOR_TEST_ENABLED)"
         SpyClashRewardedAdUnitID: "$(SPYCLASH_REWARDED_AD_UNIT_ID)"
+        SpyClashUnityTestAdsEnabled: "$(SPYCLASH_UNITY_TEST_ADS_ENABLED)"
+        SpyClashUnityTestGameID: "$(SPYCLASH_UNITY_TEST_GAME_ID)"
+        SpyClashUnityTestAdUnitID: "$(SPYCLASH_UNITY_TEST_AD_UNIT_ID)"
         SKAdNetworkItems:
           - SKAdNetworkIdentifier: cstr6suwn9.skadnetwork
         CFBundleLocalizations:
@@ -158,6 +168,7 @@ targets:
     dependencies:
       - package: SocketIO
       - package: GoogleMobileAds
+      - package: UnityAds
       - package: GoogleUserMessagingPlatform
       - target: SpyClashWidgets
         embed: true
@@ -187,6 +198,9 @@ targets:
         SpyClashAdsEnabled: "$(SPYCLASH_ADS_ENABLED)"
         SpyClashOwnedAdMobSimulatorTestEnabled: "$(SPYCLASH_OWNED_ADMOB_SIMULATOR_TEST_ENABLED)"
         SpyClashRewardedAdUnitID: "$(SPYCLASH_REWARDED_AD_UNIT_ID)"
+        SpyClashUnityTestAdsEnabled: "$(SPYCLASH_UNITY_TEST_ADS_ENABLED)"
+        SpyClashUnityTestGameID: "$(SPYCLASH_UNITY_TEST_GAME_ID)"
+        SpyClashUnityTestAdUnitID: "$(SPYCLASH_UNITY_TEST_AD_UNIT_ID)"
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSRequiresIPhoneOS: true
@@ -218,6 +232,7 @@ targets:
     dependencies:
       - package: SocketIO
       - package: GoogleMobileAds
+      - package: UnityAds
       - package: GoogleUserMessagingPlatform
   SpyClashSupabaseStaging:
     type: application
@@ -253,6 +268,9 @@ targets:
         SpyClashAdsEnabled: "$(SPYCLASH_ADS_ENABLED)"
         SpyClashOwnedAdMobSimulatorTestEnabled: "$(SPYCLASH_OWNED_ADMOB_SIMULATOR_TEST_ENABLED)"
         SpyClashRewardedAdUnitID: "$(SPYCLASH_REWARDED_AD_UNIT_ID)"
+        SpyClashUnityTestAdsEnabled: "$(SPYCLASH_UNITY_TEST_ADS_ENABLED)"
+        SpyClashUnityTestGameID: "$(SPYCLASH_UNITY_TEST_GAME_ID)"
+        SpyClashUnityTestAdUnitID: "$(SPYCLASH_UNITY_TEST_AD_UNIT_ID)"
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSRequiresIPhoneOS: true
@@ -295,6 +313,7 @@ targets:
     dependencies:
       - package: SocketIO
       - package: GoogleMobileAds
+      - package: UnityAds
       - package: GoogleUserMessagingPlatform
       - target: SpyClashSupabaseStagingWidgets
         embed: true
