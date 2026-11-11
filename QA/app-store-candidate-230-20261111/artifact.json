@@ -1,0 +1,40 @@
+{
+  "version": "1.0.4",
+  "build": "230",
+  "bundle_id": "com.spyclash.ios",
+  "scheme": "SpyClash-Supabase-Public",
+  "configuration": "SupabasePublicRelease",
+  "ipa_path": "/Users/davidganzha/Documents/SpyClash/output/AppStore-230-20261111/SpyClash-1.0.4-230.ipa",
+  "ipa_bytes": 18983273,
+  "ipa_sha256": "40bb7286f5349008dab8fb808ea8dce0ebe8571d25f7b2c948c5ca5095651d05",
+  "archive_path": "/tmp/SpyClash-AppStore-230-Final/SpyClash-1.0.4-230.xcarchive",
+  "base_commit": "60bc00106d85bbd788cbdd3574e6eef21192e110",
+  "integrated_commits": [
+    "154040a8",
+    "14b631a2",
+    "37f82b12"
+  ],
+  "fan_default_probabilities": {
+    "all_spies": 2,
+    "no_spies": 2,
+    "split_words": 2,
+    "unique_words": 2,
+    "lone_civilian": 2,
+    "standard": 90
+  },
+  "uploaded": false,
+  "production_changed_by_this_rebuild": false,
+  "apple_archive_validation": "passed, no errors",
+  "apple_validation_utc": "2026-11-11T20:12:47Z",
+  "signed_archive_and_exported_ipa_checks": "passed",
+  "ios_tests": {
+    "passed": 197,
+    "failed": 0,
+    "skipped": 0
+  },
+  "backend_tests": {
+    "passed": 154,
+    "handler_steps_passed": 23,
+    "failed": 0
+  }
+}

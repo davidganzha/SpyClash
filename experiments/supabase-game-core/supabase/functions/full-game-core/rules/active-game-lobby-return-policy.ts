@@ -104,6 +104,7 @@ export function activeGameLobbyResetPatch(room: Room): Room {
     winner: "",
     fan_scenario: "",
     fan_result_reason: "",
+    fan_player_words: {},
     cards_read: [],
     vote_requests: [],
     spectators: [],

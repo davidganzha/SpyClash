@@ -1,5 +1,10 @@
 # SpyClash 1.0.4 (228) — prepared advertising release candidate
 
+**Superseded by the integrated build 230.** The server candidates below were
+prepared against `app-services` v19. The separately approved shared word-pack
+activation subsequently deployed v20; do not deploy the old candidate over it.
+See [the build 230 report](../app-store-candidate-230-20261111/README.md).
+
 The signed App Store IPA is built, exported and validated by Apple with no errors.
 The implementation is ready for controlled integration acceptance; **public
 advertising/reward delivery and a current real Apple purchase are not yet proven**.

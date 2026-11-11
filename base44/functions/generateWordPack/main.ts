@@ -78,6 +78,15 @@ import {
 } from "./word-pack-quality.ts";
 
 import { rewardedGenerationEnabled, rewardedGenerationEnabledForUser, availableRewardCredits, reserveGenerationReward, settleGenerationReward, type RewardRecord } from "./generation-rewards.ts";
+import {
+  buildSharedWordPackVariant,
+  prepareSharedWordPackRequest,
+  sharedWordPackLibraryEnabled,
+} from "./shared-word-pack-library.ts";
+import {
+  acquireSharedWordPackAccess,
+  createSharedWordPackRESTStore,
+} from "./shared-word-pack-rest.ts";
 
 function errorMessage(error: unknown) {
   return error instanceof Error
@@ -630,6 +639,25 @@ Deno.serve(async (req) => {
           }
         }
 
+        // Lookup and the topic lease precede the paid operation journal. A
+        // library outage or another worker's claim cannot spend a gen point or
+        // leave this request marked as an ambiguous provider execution.
+        const sharedEnabled = sharedWordPackLibraryEnabled({
+          SPYCLASH_SHARED_WORD_PACKS_ENABLED: Deno.env.get("SPYCLASH_SHARED_WORD_PACKS_ENABLED"),
+        });
+        const sharedStore = sharedEnabled ? createSharedWordPackRESTStore({
+          url: Deno.env.get("SPYCLASH_WORD_LIBRARY_SUPABASE_URL") ?? "",
+          secret: Deno.env.get("SPYCLASH_WORD_LIBRARY_SUPABASE_SECRET") ?? "",
+        }) : null;
+        const sharedRequest = sharedStore ? await prepareSharedWordPackRequest({
+          theme, language: "und", promptVersion: WORD_PACK_CACHE_VERSION,
+          requestedCount: count, exclusions: excludedWords,
+        }) : null;
+        const sharedAccess = sharedStore && sharedRequest
+          ? await acquireSharedWordPackAccess(sharedStore, sharedRequest)
+          : null;
+        let preserveSharedLease = false;
+
         const executeGeneration = async (): Promise<Response> => {
           // Legacy metering remains available if CASADA is ever disabled. An
           // exact request_id replay above still bypasses it because that replay
@@ -711,7 +739,15 @@ Deno.serve(async (req) => {
             fallbackUsed: false,
           };
           try {
-            if (!preferFresh) {
+            if (sharedAccess?.hit) {
+              words = sharedAccess.hit.words;
+              exhausted = sharedAccess.hit.exhausted;
+              cacheHit = true;
+            }
+            // Shared mode always searches reusable words, including explicit
+            // "more words" requests. Exclusions, not prefer_fresh, select a new
+            // pack. Older private records are never published to other users.
+            if (!sharedEnabled && !preferFresh) {
               try {
                 const hit = await lookupWordPackCache({
                   store: cacheStore,
@@ -859,6 +895,21 @@ Deno.serve(async (req) => {
               }
             }
 
+            if (!cacheHit && sharedStore && sharedRequest && sharedAccess?.token) {
+              try {
+                const record = await buildSharedWordPackVariant({
+                  request: sharedRequest, result: { words, exhausted },
+                });
+                const saved = await guard.boundary(() => sharedStore.publish(record, sharedAccess.token!));
+                if (!saved) console.warn("generateWordPack shared library publication lease expired");
+              } catch {
+                // The paid result is already durably replayable. Publication
+                // trouble must not discard it, refund a successful result, or
+                // trigger another model call. A later request can try again.
+                console.warn("generateWordPack shared library publication unavailable");
+              }
+            }
+
             // For idempotent clients this is strictly after the replay result
             // commits, so cleanup latency cannot cause another provider call.
             // Legacy clients also write reusable variants, so they must take
@@ -882,6 +933,12 @@ Deno.serve(async (req) => {
               String((error as any)?.code || "") === "generation_outcome_unknown" ||
               (!(error instanceof WordPackQualityGateError) && isTransientAIProviderError(error)) ||
               ["AbortError", "TimeoutError"].includes(String((error as any)?.name || ""));
+            // Another account must not start this topic while our paid call
+            // may still be running after a lost response. The bounded topic
+            // lease supplements the per-account durable request journal.
+            if (ambiguous && aiState.directAttempts + aiState.base44Attempts > 0) {
+              preserveSharedLease = true;
+            }
             // A timeout or lost result write is not proof that paid work failed.
             // Keep its reservation until the same durable request is reconciled.
             if (!rewardedEnabled || !ambiguous) await releaseReservation();
@@ -914,7 +971,7 @@ Deno.serve(async (req) => {
           }
 
           const source = cacheHit
-            ? "cache"
+            ? sharedEnabled ? "shared_library" : "cache"
             : aiState.base44Attempts > 0
             ? "base44_integration"
             : "openai_direct";
@@ -959,54 +1016,58 @@ Deno.serve(async (req) => {
           });
         };
 
-        // Legacy requests have no stable identity to recover. Current clients
-        // always supply a request_id; keep older explicit actions compatible.
-        if (!idempotency) return await executeGeneration();
-        const operation = await runWordPackOperation({
-          store: base44.asServiceRole.entities.AiWordPackOperation,
-          identity: idempotency,
-          guard,
-          execute: async () => {
-            const response = await executeGeneration();
-            const payload = response.ok ? await response.clone().json() : null;
-            return {
-              value: response,
-              replayCommitted: response.ok,
-              result: payload
-                ? {
-                  category: "AI GENERATED",
-                  words: payload.words,
-                  exhausted: payload.exhausted === true,
-                }
-                : null,
-            };
-          },
-        });
-        if (!operation.replayed) return operation.value;
-        await settleReplayReward();
-        let generationCount = Math.max(
-          0,
-          Math.floor(Number(user.ai_generations_today) || 0),
-        );
         try {
-          generationCount = await currentGenerationCount(quotaStore, user.id);
-        } catch { /* display only */ }
-        return Response.json({
-          name: theme,
-          category: theme,
-          words: operation.result.words,
-          exhausted: operation.result.exhausted,
-          cache_hit: false,
-          request_replayed: true,
-          active: membership.active,
-          tier: membership.tier,
-          protocol: membership.protocol,
-          expires_at: membership.expires_at,
-          status: membership.active ? "active" : "inactive",
-          providers: membership.providers,
-          benefits: membership.benefits,
-          ...generationUsageMetadata(membership.tier, generationCount),
-        });
+          // Legacy requests have no stable identity to recover. Current clients
+          // always supply a request_id; keep older explicit actions compatible.
+          if (!idempotency) return await executeGeneration();
+          const operation = await runWordPackOperation({
+            store: base44.asServiceRole.entities.AiWordPackOperation,
+            identity: idempotency,
+            guard,
+            execute: async () => {
+              const response = await executeGeneration();
+              const payload = response.ok ? await response.clone().json() : null;
+              return {
+                value: response,
+                replayCommitted: response.ok,
+                result: payload
+                  ? {
+                    category: "AI GENERATED",
+                    words: payload.words,
+                    exhausted: payload.exhausted === true,
+                  }
+                  : null,
+              };
+            },
+          });
+          if (!operation.replayed) return operation.value;
+          await settleReplayReward();
+          let generationCount = Math.max(
+            0,
+            Math.floor(Number(user.ai_generations_today) || 0),
+          );
+          try {
+            generationCount = await currentGenerationCount(quotaStore, user.id);
+          } catch { /* display only */ }
+          return Response.json({
+            name: theme,
+            category: theme,
+            words: operation.result.words,
+            exhausted: operation.result.exhausted,
+            cache_hit: false,
+            request_replayed: true,
+            active: membership.active,
+            tier: membership.tier,
+            protocol: membership.protocol,
+            expires_at: membership.expires_at,
+            status: membership.active ? "active" : "inactive",
+            providers: membership.providers,
+            benefits: membership.benefits,
+            ...generationUsageMetadata(membership.tier, generationCount),
+          });
+        } finally {
+          if (!preserveSharedLease) await sharedAccess?.release();
+        }
       },
     });
   } catch (error) {

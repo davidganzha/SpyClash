@@ -1,6 +1,7 @@
 import { BillingIdentityLifecycleError } from "./billing-identity-lifecycle.ts";
 import type { PreparedWordPackIdempotency } from "./generation-idempotency.ts";
 import type { GenerationWriteGuard } from "./generation-write-lifecycle.ts";
+import { SharedWordPackLibraryError } from "./shared-word-pack-library.ts";
 
 export type GenerationRetryMetadata = {
   retryable: boolean;
@@ -58,6 +59,20 @@ export function createGenerationRetryTracker() {
           error.retryable === true &&
           (error.code === "active_lease" || error.code === "cas_contention");
         return safeConflict
+          ? {
+            retryable: true,
+            retry_phase: "before_effects",
+            effects_started: false,
+          }
+          : { retryable: false };
+      }
+
+      if (error instanceof SharedWordPackLibraryError) {
+        const safeLibraryRetry = hasValidatedRequestIdentity &&
+          status === 503 &&
+          (error.code === "shared_library_busy" ||
+            error.code === "shared_library_unavailable");
+        return safeLibraryRetry
           ? {
             retryable: true,
             retry_phase: "before_effects",

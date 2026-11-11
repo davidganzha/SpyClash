@@ -724,7 +724,7 @@ final class Base44Client {
             email: user.email,
             name: user.callSign,
             avatar: user.avatar ?? "🕵️",
-            clientCapabilities: [Self.multiSpyCapability, "fan_mode_v1", "fan_mode_v2"]
+            clientCapabilities: [Self.multiSpyCapability, "fan_mode_v1", "fan_mode_v2", "fan_mode_v3"]
         )
     }
 
@@ -2311,7 +2311,7 @@ final class Base44Client {
         let payload = GameRoomActionPayload(
             action: action,
             accessToken: "",
-            clientCapabilities: [Self.multiSpyCapability, "fan_mode_v1", "fan_mode_v2"],
+            clientCapabilities: [Self.multiSpyCapability, "fan_mode_v1", "fan_mode_v2", "fan_mode_v3"],
             roomID: roomID,
             roomCode: roomCode,
             player: player,
@@ -2348,7 +2348,7 @@ final class Base44Client {
         let payload = GameRoomActionPayload(
             action: action,
             accessToken: token,
-            clientCapabilities: [Self.multiSpyCapability, "fan_mode_v1", "fan_mode_v2"],
+            clientCapabilities: [Self.multiSpyCapability, "fan_mode_v1", "fan_mode_v2", "fan_mode_v3"],
             roomID: roomID,
             roomCode: roomCode,
             player: player,
@@ -3198,17 +3198,27 @@ enum NotificationMutationRetryPolicy {
 
 enum WordGenerationRetryPolicy {
     private static let fallbackDelays = [250, 650]
+    private static let sharedLibraryDelays = [500, 1_000, 2_000, 4_000, 8_000]
 
     static func delayMilliseconds(for error: Base44Error, completedRetries: Int) -> Int? {
-        guard error.statusCode == 409,
-              ["active_lease", "cas_contention"].contains(error.code),
-              error.retryable,
+        guard error.retryable,
               error.retryPhase == "before_effects",
-              error.effectsStarted == false,
-              fallbackDelays.indices.contains(completedRetries) else { return nil }
-        let fallback = fallbackDelays[completedRetries]
+              error.effectsStarted == false else { return nil }
+        let delays: [Int]
+        let maximumRetryAfter: Int
+        if error.statusCode == 409 && ["active_lease", "cas_contention"].contains(error.code) {
+            delays = fallbackDelays
+            maximumRetryAfter = 3
+        } else if error.statusCode == 503 && ["shared_library_busy", "shared_library_unavailable"].contains(error.code) {
+            delays = sharedLibraryDelays
+            maximumRetryAfter = 8
+        } else {
+            return nil
+        }
+        guard delays.indices.contains(completedRetries) else { return nil }
+        let fallback = delays[completedRetries]
         guard let seconds = error.retryAfterSeconds else { return fallback }
-        return max(fallback, min(max(seconds, 0), 3) * 1_000)
+        return max(fallback, min(max(seconds, 0), maximumRetryAfter) * 1_000)
     }
 }
 
@@ -3394,7 +3404,7 @@ private struct GameRoomActionPayload: Encodable {
     init(
         action: String,
         accessToken: String,
-        clientCapabilities: [String]? = ["multi_spy_v1", "fan_mode_v1", "fan_mode_v2"],
+        clientCapabilities: [String]? = ["multi_spy_v1", "fan_mode_v1", "fan_mode_v2", "fan_mode_v3"],
         roomID: String? = nil,
         roomCode: String? = nil,
         player: Player? = nil,

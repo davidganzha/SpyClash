@@ -6489,7 +6489,9 @@ struct GameView: View {
             if let scenario = FinishedRoomResultPolicy.fanDrawScenario(in: room) {
                 FanDrawRevealView(scenario: scenario, language: appState.language)
                     .id("fan-draw-\(room.matchID ?? room.id)")
-                if scenario == .noSpies {
+                if scenario == .splitWords || scenario == .uniqueWords {
+                    fanResultWords(room)
+                } else if scenario != .allSpies {
                     SpyPanel(accent: SpyTheme.green) {
                         Text(copy.wordResult(room.displayWord))
                             .font(.system(size: 16, weight: .bold, design: .monospaced))
@@ -6552,6 +6554,28 @@ struct GameView: View {
                 .accessibilityIdentifier("onlineRoom.finished.leaveRoom")
             }
         }
+    }
+
+    private func fanResultWords(_ room: GameRoom) -> some View {
+        SpyPanel(accent: SpyTheme.green) {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(room.playersList) { player in
+                    if let word = room.fanPlayerWords?[player.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()] {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(player.name)
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundStyle(SpyTheme.muted)
+                            Text(word)
+                                .font(.system(size: 16, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.white)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .accessibilityIdentifier("onlineRoom.result.playerWord.\(player.email)")
+                    }
+                }
+            }
+        }
+        .accessibilityIdentifier("onlineRoom.result.playerWords")
     }
 
     private func wrongSpyGuessResult(_ guess: String) -> String {
@@ -8760,10 +8784,28 @@ struct GameView: View {
     }
 
     private func lobbyStartPrerequisitesAreMet(_ room: GameRoom) -> Bool {
-        LobbyStartGate.hasPrerequisites(
+        !fanNeedsMoreWords(room) && LobbyStartGate.hasPrerequisites(
             playerCount: room.playersList.count,
             isThemeSelectionReady: roomThemeSelectionIsReady,
             isGeneratingRoomTheme: isGeneratingRoomTheme
+        )
+    }
+
+    private func fanNeedsMoreWords(_ room: GameRoom) -> Bool {
+        let settings = isHost(room) ? selectedFanSettings.normalized : room.fanSettings
+        guard settings.isEnabled, settings.uniqueWordsChance > 0 else { return false }
+        let words = isHost(room)
+            ? currentLobbyStatePayload(for: room).lobbyWordPool.filter(\.enabled).map(\.word)
+            : room.enabledWordPool.map(\.word)
+        return FanDealPolicy.distinctWords(words).count < room.playersList.count
+    }
+
+    private func fanMoreWordsMessage(_ room: GameRoom) -> String {
+        localized(
+            en: "EVERYONE NEEDS A DIFFERENT WORD: ENABLE AT LEAST \(room.playersList.count) DISTINCT WORDS",
+            ru: "ДЛЯ РАЗНЫХ СЛОВ ВКЛЮЧИ МИНИМУМ \(room.playersList.count) УНИКАЛЬНЫХ СЛОВ",
+            es: "ACTIVA AL MENOS \(room.playersList.count) PALABRAS DISTINTAS, UNA POR JUGADOR",
+            uk: "ДЛЯ РІЗНИХ СЛІВ УВІМКНИ ЩОНАЙМЕНШЕ \(room.playersList.count) УНІКАЛЬНИХ СЛІВ"
         )
     }
 
@@ -8771,6 +8813,7 @@ struct GameView: View {
         if room.playersList.count < 3 {
             return copy.minimumOperatives(room.playersList.count)
         }
+        if fanNeedsMoreWords(room) { return fanMoreWordsMessage(room) }
         if isGeneratingRoomTheme {
             return localized(en: "GENERATING WORDS", ru: "ГЕНЕРАЦИЯ СЛОВ", es: "GENERANDO PALABRAS", uk: "ГЕНЕРАЦІЯ СЛІВ")
         }
@@ -10957,6 +11000,11 @@ struct GameView: View {
             return
         }
         guard !appState.hasOptimisticLobbySettingsChanges else { return }
+        guard !fanNeedsMoreWords(room) else {
+            status = fanMoreWordsMessage(room)
+            HapticManager.shared.fire(.notification(.warning))
+            return
+        }
         guard roomThemeSelectionIsReady, !isGeneratingRoomTheme else {
             status = localized(
                 en: "SELECT A DECK OR GENERATE THE THEME WORDS BEFORE STARTING",

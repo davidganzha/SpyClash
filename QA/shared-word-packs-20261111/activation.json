@@ -1,0 +1,63 @@
+{
+  "status": "activated",
+  "verified_at_utc": "2026-11-11T19:26:13.795663+00:00",
+  "source_commit": "14b631a277eb7133c457281d4d6be50727b34963",
+  "approval": "Explicit yes in this chat for the named Supabase/Base44 activation package.",
+  "supabase": {
+    "project_id": "bbkfsgnordtdiblgdzkg",
+    "project_name": "spyclash-game-core",
+    "migration_version": "20261111192031",
+    "migration_name": "shared_word_pack_library",
+    "function": "app-services",
+    "previous_version": 19,
+    "deployed_version": 20,
+    "verify_jwt": true,
+    "candidate_source_verified": true,
+    "unrelated_source_preserved": true,
+    "settings": {
+      "shared_library_enabled": true,
+      "preexisting_secret_digests_unchanged": true,
+      "added_secret_names": [
+        "SPYCLASH_SHARED_WORD_PACKS_ENABLED"
+      ]
+    }
+  },
+  "base44": {
+    "app_id": "69a0e57fa939f578082f8091",
+    "function": "generateWordPack",
+    "source_verification": {
+      "source_modules_verified": 18,
+      "deployed_entry": "base44/functions/generateWordPack/entry.ts",
+      "candidate_source_match": true,
+      "unexpected_ts_modules": []
+    },
+    "server_connection_and_enablement_command_succeeded": true,
+    "configured_secret_names_verified": [
+      "SPYCLASH_WORD_LIBRARY_SUPABASE_URL",
+      "SPYCLASH_WORD_LIBRARY_SUPABASE_SECRET",
+      "SPYCLASH_SHARED_WORD_PACKS_ENABLED"
+    ]
+  },
+  "checks": {
+    "rest_access": {
+      "server_rpc_http": 200,
+      "anonymous_rpc_http": 401,
+      "unknown_topic_rows": 0,
+      "server_key_type": "secret",
+      "credentials_printed": false
+    },
+    "edge_auth": {
+      "unauthenticated_generation_http": 401,
+      "authentication_gate_preserved": true,
+      "paid_generation_invoked": false
+    },
+    "both_new_tables_rls_enabled": true,
+    "anonymous_and_authenticated_table_and_rpc_access_denied": true,
+    "server_role_table_and_rpc_access_allowed": true,
+    "live_transaction_smoke": "claim, duplicate-claim denial, fenced publication, readback, fenced release passed; transaction rolled back",
+    "test_records_persisted": false,
+    "live_paid_generation_or_customer_point_spend_exercised": false,
+    "security_advisor": "Only informational no-policy finding for server-only library; client grants denied as designed."
+  },
+  "client_release": "Build229 committed and Simulator-tested; no new App Store or TestFlight release performed."
+}

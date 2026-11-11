@@ -1,0 +1,558 @@
+[
+  {
+    "path": "SpyClash.xcodeproj/project.pbxproj",
+    "sha256": "7612e7eb53f060218d9a027366a95b7fd522e7e334df957234099074d54f2423"
+  },
+  {
+    "path": "SpyClash.xcodeproj/project.xcworkspace/contents.xcworkspacedata",
+    "sha256": "7f3b00b5c3fdb45242d7b87e1e5c4e25d1fa8129a16c94295ecc4e8ea2235c5f"
+  },
+  {
+    "path": "SpyClash.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
+    "sha256": "66866be95d6961e449b70f61810d0bf80b95d73eebb8c6dd167d7afdfcfd721a"
+  },
+  {
+    "path": "SpyClash.xcodeproj/xcshareddata/xcschemes/SpyClash-Settings-UI.xcscheme",
+    "sha256": "d238078b9eadc9a67bb0ec9e6b1464fc667404db446ff0c1a426630ddd9a9d75"
+  },
+  {
+    "path": "SpyClash.xcodeproj/xcshareddata/xcschemes/SpyClash-Supabase-Main-Candidate.xcscheme",
+    "sha256": "7026a055b1b012b394ddb3208de8cfeec6c82f0e505853094e7fbac598dc8683"
+  },
+  {
+    "path": "SpyClash.xcodeproj/xcshareddata/xcschemes/SpyClash-Supabase-Public.xcscheme",
+    "sha256": "ccd383241ab191ec90d34bd8692c123143b69cfb9c4f515f9678f846ff30b0e7"
+  },
+  {
+    "path": "SpyClash.xcodeproj/xcshareddata/xcschemes/SpyClash-Supabase-Staging.xcscheme",
+    "sha256": "9077b3f9102bec127910a6de1dabba8649af93f8f05f2deff258872c0b4c698c"
+  },
+  {
+    "path": "SpyClash.xcodeproj/xcshareddata/xcschemes/SpyClash-Supabase-Test.xcscheme",
+    "sha256": "6b807eae55d2c92f7cacf1779142e1a5f4c849bf70da03ab3c3a414ac2c702d1"
+  },
+  {
+    "path": "SpyClash.xcodeproj/xcshareddata/xcschemes/SpyClash.xcscheme",
+    "sha256": "efc6f5e98f08ebc8286f0e2ab1f5db41d463600aeeb0383cf76101f8f89bdaaf"
+  },
+  {
+    "path": "SpyClash/App/AppState+AcquisitionSurvey.swift",
+    "sha256": "c5648e5b4ff657ce6483daa7fc98aaba634679c4698368c0ae60cd91eb37c8e4"
+  },
+  {
+    "path": "SpyClash/App/AppState+GenerationRewards.swift",
+    "sha256": "62f4dbfe29c2350bce48850e15b6c05aa03c1d85ea6ee679ee99a81289501fad"
+  },
+  {
+    "path": "SpyClash/App/AppState+Membership.swift",
+    "sha256": "d3a16473264460ac4b864fe9ee13f9ce83dc77a0ef182b1ec31da5c718dc0036"
+  },
+  {
+    "path": "SpyClash/App/AppState.swift",
+    "sha256": "776338292b9fd183ad5fcea8c9aa87f00e66cc5fa5819f2eaa14abe1be3636f2"
+  },
+  {
+    "path": "SpyClash/App/AppTab.swift",
+    "sha256": "08c653b1a97db735ad7ebf4014730a5924a10dd8792c61db45e1aad4bc49414f"
+  },
+  {
+    "path": "SpyClash/App/SpyClashApp.swift",
+    "sha256": "d80a92c6f2532bf0e50b9eef7f7442519c22df4e857427268a1e1387625dc1e1"
+  },
+  {
+    "path": "SpyClash/Design/SpyInterfacePreferences.swift",
+    "sha256": "06cb1fb48c4837631d27366dd87f3ae0ff9dcfd3cad3f41cca910e8262fa996b"
+  },
+  {
+    "path": "SpyClash/Design/SpyInterfaceScale.swift",
+    "sha256": "89b3bbe5774101f0dfba6719c519e4f4c6e91ef6b993c5d5a1558c8167ae8403"
+  },
+  {
+    "path": "SpyClash/Design/SpyLaserScanLayer.swift",
+    "sha256": "055c96567325836f740c0fea1407b3336dd2e6e2c7604ca9bae5c6af5bd0af71"
+  },
+  {
+    "path": "SpyClash/Design/SpyTheme.swift",
+    "sha256": "1c93aab5e0721d157de6c1d5f6c54813b77aaeab616d92d832f1adecf62d5e53"
+  },
+  {
+    "path": "SpyClash/LiveActivities/GameRoomLiveActivityProjection.swift",
+    "sha256": "b4d5d97b5a5d13e1cb61d5872bf80263f325b3935c7766fcb45335ef81ca4450"
+  },
+  {
+    "path": "SpyClash/LiveActivities/SpyClashMatchLiveActivityController.swift",
+    "sha256": "db74f62b1e6d014794c8188617dfca5fa57028435ac3af08d99b8ff138a886b8"
+  },
+  {
+    "path": "SpyClash/LiveActivityShared/SpyClashMatchActivityAttributes.swift",
+    "sha256": "fbff16f35dda5e8726d9d0e528c2b6fb823f7cf6182cfebd04be1a6c80358b5c"
+  },
+  {
+    "path": "SpyClash/Models/AcquisitionSurveyStore.swift",
+    "sha256": "0ed48105d1abdf6066e0af263eb2fece743520c8f3cdc88e080994a00f46f4c3"
+  },
+  {
+    "path": "SpyClash/Models/FanMode.swift",
+    "sha256": "c6e92374f153af00b2924e50bc253fb9ff0f7b626be4690f5a100bb807c00ba4"
+  },
+  {
+    "path": "SpyClash/Models/GameInvitationCenter.swift",
+    "sha256": "cd0b6226eafdb2f90c309dbb5c7b57428efb624197c61b1b7d139baea9a11234"
+  },
+  {
+    "path": "SpyClash/Models/GenerationRewards.swift",
+    "sha256": "f376c95801c130ea721406447e0bf92fb205fefb6889bdb428786326acd71a5a"
+  },
+  {
+    "path": "SpyClash/Models/InterfacePreferences.swift",
+    "sha256": "f699297a61fb74afa49fd4f9c2b68b5f9ecf1e56eb81cfdb2bb588f11025030d"
+  },
+  {
+    "path": "SpyClash/Models/InterfaceScalePolicy.swift",
+    "sha256": "b14990fb4b4b18008c62f07a0ed08861c30e26954065885469911af786bf2575"
+  },
+  {
+    "path": "SpyClash/Models/LocalWordPool.swift",
+    "sha256": "89646a31a55499eb679371ed41c75dfd3acdc459b1e697a43c1569d52b44ae6d"
+  },
+  {
+    "path": "SpyClash/Models/Membership.swift",
+    "sha256": "00cfc5845f4867ed55da50c2ea27893041a99ea97c16002eb0a703d31ed6e614"
+  },
+  {
+    "path": "SpyClash/Models/NotificationInboxModels.swift",
+    "sha256": "9508837b6b6d36e9a9cb445fdd42d466a89ec65030cd647ae841ffea45b3bf48"
+  },
+  {
+    "path": "SpyClash/Models/OnboardingModels.swift",
+    "sha256": "29b4f4098aaaec11066d022f38ae303b549e3e2e533d4f996033bbe6b2c78f78"
+  },
+  {
+    "path": "SpyClash/Models/OnlineRoundState.swift",
+    "sha256": "fb42703d95edebf922858dd50119ad34308b5ba2b3be5e8b356c2007e426f83f"
+  },
+  {
+    "path": "SpyClash/Models/SpyAchievements.swift",
+    "sha256": "f6b69239a0a022766829ff5c0304d0c571e13e0d2fbc131bf4a9e30c795ee9e3"
+  },
+  {
+    "path": "SpyClash/Models/SpyModels.swift",
+    "sha256": "19bb427a0771220e6294f5391f82a5cd85a48b46d215ba5167dac8716ee64a23"
+  },
+  {
+    "path": "SpyClash/Models/WordPackDraft.swift",
+    "sha256": "736e7225bfa84afca9e28673596c7de56d2384a9b718b4534f33faf87bc0927e"
+  },
+  {
+    "path": "SpyClash/Resources/Assets.xcassets/AccentColor.colorset/Contents.json",
+    "sha256": "f432dd0b4d7cba2be987302d14c9a1697548bb0e0bd0407990eeb7a170bb5845"
+  },
+  {
+    "path": "SpyClash/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png",
+    "sha256": "62af6116fa737d1b3b7752fb8ae43987482a28926370bbcfba6e1eaf858ff35a"
+  },
+  {
+    "path": "SpyClash/Resources/Assets.xcassets/AppIcon.appiconset/Contents.json",
+    "sha256": "3f98946828ecc23b033dd996151d5baf16f354203dd3ee1907f9536e0c3c1125"
+  },
+  {
+    "path": "SpyClash/Resources/Assets.xcassets/Contents.json",
+    "sha256": "6248561bf2784c2488a1d948159a69fd8a6c9d06206c408a1c35b202d3c26c0a"
+  },
+  {
+    "path": "SpyClash/Resources/Assets.xcassets/LaunchBackground.colorset/Contents.json",
+    "sha256": "beaa2350b7baa6041135adbb3ea80addb73ce63b3971b4fb77d213b66ef2a399"
+  },
+  {
+    "path": "SpyClash/Resources/Assets.xcassets/LaunchLogo.imageset/Contents.json",
+    "sha256": "6417cccfa4b7b84352d3a5d86adaeee10415c026560c95b47da1347de471e2a1"
+  },
+  {
+    "path": "SpyClash/Resources/Assets.xcassets/LaunchLogo.imageset/LaunchLogo@1x.png",
+    "sha256": "b350f9cf87489302a958f742782d284dede13548057c8a02c9e987c9693a91de"
+  },
+  {
+    "path": "SpyClash/Resources/Assets.xcassets/LaunchLogo.imageset/LaunchLogo@2x.png",
+    "sha256": "b521e1aa59fbd1e7dbb853300cdf5ea8468f15816c4905e14f0155020229c9a2"
+  },
+  {
+    "path": "SpyClash/Resources/Assets.xcassets/LaunchLogo.imageset/LaunchLogo@3x.png",
+    "sha256": "31a27841fc63831db7759510fbc112a81f7ab417626c167138703ec7781f7d35"
+  },
+  {
+    "path": "SpyClash/Resources/Assets.xcassets/SpyClashLogo.imageset/Contents.json",
+    "sha256": "cc098114ec44b092a6bc6739bcd9095c98e1d3ccd995bbf84e2e22ed76930b63"
+  },
+  {
+    "path": "SpyClash/Resources/Assets.xcassets/SpyClashLogo.imageset/SpyClashLogo.png",
+    "sha256": "1783627684ba931e61d25b356f6db883b35c98077e5db745b297a469b8b5755c"
+  },
+  {
+    "path": "SpyClash/Resources/Info.plist",
+    "sha256": "76ab74fb6d1a3b819c1fa7a1254d8e26594d8e9b77ca4049e2cacc09a2e09220"
+  },
+  {
+    "path": "SpyClash/Resources/PrivacyInfo.xcprivacy",
+    "sha256": "13307368197b74d73e195b57d5b4bb42fa49d7b11b30965ea854a0a9697204d4"
+  },
+  {
+    "path": "SpyClash/Resources/Rajdhani-Bold.ttf",
+    "sha256": "691470dd3286a14e9677940d0bf75796179841ba5215cbda1a2c8910a3226afd"
+  },
+  {
+    "path": "SpyClash/Resources/SpyClash.entitlements",
+    "sha256": "d399e9c7382f49bde7c1145a50519b6a2d797d259a5debbac1c8fbe1a81b1e13"
+  },
+  {
+    "path": "SpyClash/Resources/en.lproj/InfoPlist.strings",
+    "sha256": "ac8357aa7452ede394f4a94da49ec4e6dcf2264cf784d2e2ebd17cad1ce9c76f"
+  },
+  {
+    "path": "SpyClash/Resources/es.lproj/InfoPlist.strings",
+    "sha256": "e8db43a645d3375403aeedb2996c48f77b6fa31221b344232229e10e0f2e6e00"
+  },
+  {
+    "path": "SpyClash/Resources/ru-UA.lproj/InfoPlist.strings",
+    "sha256": "5751a9576064410c0b2b6b2b17f2e17220afc1e01e84c85292f234080c459fec"
+  },
+  {
+    "path": "SpyClash/Resources/ru.lproj/InfoPlist.strings",
+    "sha256": "5751a9576064410c0b2b6b2b17f2e17220afc1e01e84c85292f234080c459fec"
+  },
+  {
+    "path": "SpyClash/Resources/uk.lproj/InfoPlist.strings",
+    "sha256": "d6d31d08c053a7e9bf123d344ce17e6efa49e8bfba5146223e775d49eb920992"
+  },
+  {
+    "path": "SpyClash/SWIFTUI_MIGRATION.md",
+    "sha256": "ca29c99494204acccd30586ff973981cf2f06d2a2fd3c3aa0f3b61df95cb0595"
+  },
+  {
+    "path": "SpyClash/Services/AppleNativeHandoff.swift",
+    "sha256": "d3f57387fa52535fae333c1f743572b6c26018a6c7d40f7a4591b1ea7349e699"
+  },
+  {
+    "path": "SpyClash/Services/AppleSessionCompletionSession.swift",
+    "sha256": "dcdab63d190015b2bd171d6fdf7463597e902c770ad6d33d4389211806c1b65a"
+  },
+  {
+    "path": "SpyClash/Services/AppleSignInCoordinator.swift",
+    "sha256": "8f6a0e89c9a442dd812d037d020df404e47a92dc40174fb71eae4fb5e35650a0"
+  },
+  {
+    "path": "SpyClash/Services/Base44Client.swift",
+    "sha256": "e18b03c38869fdf77a913d197cab77c9cf18a3163d4f8076637e92a503282312"
+  },
+  {
+    "path": "SpyClash/Services/CommunityDirectoryLoader.swift",
+    "sha256": "5519a65fd21d17714c76dae3a501b51f8262c8c55f17e1b43ed9133fe994b1f3"
+  },
+  {
+    "path": "SpyClash/Services/GameCenterAuthentication.swift",
+    "sha256": "17b572ca32e879e697989c0207b152c909fd5dc437f7a58faab08d293b5f1a11"
+  },
+  {
+    "path": "SpyClash/Services/GameRoomRealtimeService.swift",
+    "sha256": "4561a4be303cc044e7c799c100f039605d9a7743904bef39d01941360f4adb08"
+  },
+  {
+    "path": "SpyClash/Services/GenerationRewardStore.swift",
+    "sha256": "86be91b7ad7ca946277c6bb1faada80ee7df4df30e8989c85bc671f86f0fd294"
+  },
+  {
+    "path": "SpyClash/Services/HapticManager.swift",
+    "sha256": "d7d57315703dc765352a0dce0b939973ac6049a1d25ccf392837ee90cd72e3c6"
+  },
+  {
+    "path": "SpyClash/Services/KeychainStore.swift",
+    "sha256": "c1b0e40b0b0acaa735ac8653309b07080bce5c6c5d4ca401d0f353b929fe8e64"
+  },
+  {
+    "path": "SpyClash/Services/MembershipRealtimeService.swift",
+    "sha256": "d1bc2c77cc56e5c397999744f4fb5fc59452ef715a619bbc6e524a9244962fcc"
+  },
+  {
+    "path": "SpyClash/Services/MembershipStore.swift",
+    "sha256": "eeb69f7dc7387a5af695e76c1788ac7c8df79ac8ea13c6a4182be03e905050a4"
+  },
+  {
+    "path": "SpyClash/Services/NotificationInboxStore.swift",
+    "sha256": "d8afb6e1f504e0ff110fc7d739cd59d694b4464f18b5b6c467466a4065a9b284"
+  },
+  {
+    "path": "SpyClash/Services/OnboardingPermissionCoordinator.swift",
+    "sha256": "ec3888277d5e08d43ea9605e72af52d5d2b802c21e8c55f915f1c13cd2168e6b"
+  },
+  {
+    "path": "SpyClash/Services/PushNotificationCoordinator.swift",
+    "sha256": "2af527ad0a0d0ba599039de69291c58253414aedeedb6336258f309f2d5cfcac"
+  },
+  {
+    "path": "SpyClash/Services/RadarNearbyService.swift",
+    "sha256": "23ff8d68fa54358ad0b37ffe0619bdd99af201e111ac8d2b8d75e1010229b23a"
+  },
+  {
+    "path": "SpyClash/Services/RewardedGenerationAdConfiguration.swift",
+    "sha256": "874a96dbdc740536c1dcd205b85c117e4766bd0b3060bb28f0d5bcd8462dac51"
+  },
+  {
+    "path": "SpyClash/Services/RewardedGenerationAdPresenter.swift",
+    "sha256": "954f663736ddf18e6bb4bc8a91d70a4c087ee938129050f3e9bdc44ea816d114"
+  },
+  {
+    "path": "SpyClash/Services/StoreKitManager.swift",
+    "sha256": "a05011c046dc233a136c90a3a99dec5f0f735d7e1437a4b99d17ef0ce888bad6"
+  },
+  {
+    "path": "SpyClash/Services/StoreKitOperationFailure.swift",
+    "sha256": "81c7c577bc87f58e82bc13ec21f6109c4fc76a918986040be81a56ec3b2b84c2"
+  },
+  {
+    "path": "SpyClash/Services/StoreKitProductCatalog.swift",
+    "sha256": "16df6441d21fa877c3011eab11ed8c516fe42b7e2a7840b68da49fb89dacb8de"
+  },
+  {
+    "path": "SpyClash/Services/SupabaseAppGameTransport.swift",
+    "sha256": "1cdf6a849bbbe1f4774eba67ad2c501290e041246c1bad48aefc750bfbc2c3d0"
+  },
+  {
+    "path": "SpyClash/Services/SupabaseAppMutationJournal.swift",
+    "sha256": "4cd4fe5c46ed26eb393ef658aab6ad1da9cd9e07452a1e547b25e21f0077cd3b"
+  },
+  {
+    "path": "SpyClash/Services/SupabaseAppRuntime.swift",
+    "sha256": "9f1708100236940eb141653d281d918606732114d3705d9a03689ac340ef9420"
+  },
+  {
+    "path": "SpyClash/Services/SupabaseAppSession.swift",
+    "sha256": "3872b15825106f27774ac5abd271a9f16aee39f53be9df3ec91b15a881dd571c"
+  },
+  {
+    "path": "SpyClash/Services/SupabaseFullGameStore.swift",
+    "sha256": "96f56c033bad9d0bb18ab6d91b60c425475510cd3b3ad27357ac2a53bcfc5d40"
+  },
+  {
+    "path": "SpyClash/Services/SupabaseGameAdapter.swift",
+    "sha256": "e8b14d61b668576724d0288f3e2c42b1c72e7d73ea3e751e9e50947740986097"
+  },
+  {
+    "path": "SpyClash/Services/SupabaseLegacyAuth.swift",
+    "sha256": "2ebe46c55e72edfca0191bf0bb848f4ea6794f5ca1f120c78163c878dcc63c75"
+  },
+  {
+    "path": "SpyClash/Services/SupabaseLegacySessionUpgrade.swift",
+    "sha256": "b448a05bb49e0e9ac658a20c06ea56d167de04fbfff0fff8d31f50e0049e137e"
+  },
+  {
+    "path": "SpyClash/Services/SupabaseSocialRealtimeService.swift",
+    "sha256": "7dbf160158adddf678903cd1374df58fbd7b9d37a7f0b476037f2b8bc85c573c"
+  },
+  {
+    "path": "SpyClash/Services/SupabaseTestEnvironment.swift",
+    "sha256": "a1b90d132dec1c94a30652ca9c90dfc3c1b57c629d12435a87a91333ca6317a4"
+  },
+  {
+    "path": "SpyClash/Services/UnityAdsTestConfiguration.swift",
+    "sha256": "f188b79ad42ac9e4a17f0ac7cb782935917c7a01a90ad4454aa809eab2f2695a"
+  },
+  {
+    "path": "SpyClash/Services/UnityAdsTestPresenter.swift",
+    "sha256": "50c62a18f14f76f1de7412a14197dd37a0cd63348fd863613a6966ee3bbb8420"
+  },
+  {
+    "path": "SpyClash/Services/UnityRewardedGenerationAdConfiguration.swift",
+    "sha256": "19bb7a879074a5524068a606fa4c437b8e8d8594cfd1338fd31c1e41f0ce34b4"
+  },
+  {
+    "path": "SpyClash/Services/UnityRewardedGenerationAdPresenter.swift",
+    "sha256": "d5c95b9abe5255279bf84cc37a21fba30fbebf6a546a3cdd8b38adce8c066c4b"
+  },
+  {
+    "path": "SpyClash/Services/WebAuthenticationCoordinator.swift",
+    "sha256": "a493cdaeeac7cac7438c768818ed2946ab53767c7fa024eac7e37a3c2d129915"
+  },
+  {
+    "path": "SpyClash/Views/AcquisitionSurveyView.swift",
+    "sha256": "4b1b634a7b7642ef7a947cedcd45473c1fdd8daee3c414e6ffdedde06defe24d"
+  },
+  {
+    "path": "SpyClash/Views/AppShellView.swift",
+    "sha256": "213f699c8af6e69175909264dff2bc779d5d3c02b82c3d555650f4922e3e639e"
+  },
+  {
+    "path": "SpyClash/Views/AuthView.swift",
+    "sha256": "219f66613d7cf9fa03fc9e7dde9c92111462dd2c3aa2d8646393722853a9bc53"
+  },
+  {
+    "path": "SpyClash/Views/CommunityView.swift",
+    "sha256": "77e33e64b4b51715a6027f8fcf8184aaf50afc399b2643584176c4e5429354a0"
+  },
+  {
+    "path": "SpyClash/Views/DetectiveVoteCancellationOverlay.swift",
+    "sha256": "cd39a07138fb0e7fe38efd3fd08354f91985ca6bf0ea194423fa6582ff9412de"
+  },
+  {
+    "path": "SpyClash/Views/FanModeViews.swift",
+    "sha256": "c84e61b78d72d85fdf98a667f3112955444bc0fdd6c12c258f4b8d71c6c711a1"
+  },
+  {
+    "path": "SpyClash/Views/GameCenterEntryView.swift",
+    "sha256": "ec217ed775d8d3f7049d34e08798cfbe10cd56901f9c93411da25a49d78f2e47"
+  },
+  {
+    "path": "SpyClash/Views/GameInvitationOverlay.swift",
+    "sha256": "67cbef93aead29fea0efbd0a11ab8d94cc4605bce9a2599a225758e9a940b7f0"
+  },
+  {
+    "path": "SpyClash/Views/GameInvitationSettingsView.swift",
+    "sha256": "901b489519dd0bc290468d43049ed26b7df706b72515961543c01604d06ff949"
+  },
+  {
+    "path": "SpyClash/Views/GameView.swift",
+    "sha256": "6c16863784693ebd7e2b1e8fd88549c562a98e689bf1b6cbba60e32fcf859442"
+  },
+  {
+    "path": "SpyClash/Views/GenerationAllowanceView.swift",
+    "sha256": "4a9285d5219813c8304f8b86ecee88c3d111f625765aabb01085056a8f9c7295"
+  },
+  {
+    "path": "SpyClash/Views/HistoryView.swift",
+    "sha256": "00d1a904e6e1ae15d72c6f04cb350cc72191ff2d2f761464774af239b4a3fcc2"
+  },
+  {
+    "path": "SpyClash/Views/HomeView.swift",
+    "sha256": "bc6303b0fd8f8ef03345859d4aedf98de62f6dc5b4e90bf965dd1192d6b9a039"
+  },
+  {
+    "path": "SpyClash/Views/InterfaceSettingsControls.swift",
+    "sha256": "cb9598de6dae6cb56035972d3d0d093e7c97de44095e8e323084722418a551c9"
+  },
+  {
+    "path": "SpyClash/Views/InterfaceSettingsView.swift",
+    "sha256": "5033ebcecc76ea453813788d43db180ce06bb168ba955cc1586cf76f0946b70e"
+  },
+  {
+    "path": "SpyClash/Views/LanguageSettingsView.swift",
+    "sha256": "b0a9278cf07e68a1c9f1a46ec4decdae64fe4084401609886f2820807e27e838"
+  },
+  {
+    "path": "SpyClash/Views/LeaderboardView.swift",
+    "sha256": "90604d8e03cce2a8cf6f4f6d3fa94e53e95182cc9b96edd220bee8b52711fbef"
+  },
+  {
+    "path": "SpyClash/Views/LimitlessClearancePanel.swift",
+    "sha256": "41c2b776c33339a57d7a69128b48f33ddad113fa30cbf827c2d7a1c38ce6c108"
+  },
+  {
+    "path": "SpyClash/Views/LimitlessUnlockOverlay.swift",
+    "sha256": "3b027879c91e4c0d537932d6bdf1f91136d6bebb76bb3867f4ae18d3e39688c0"
+  },
+  {
+    "path": "SpyClash/Views/LobbyPlayerCardOverlay.swift",
+    "sha256": "2589130afcf7a2638c3146a835f2be075ce314bfc3a820d1aac5d6ef5dc929cc"
+  },
+  {
+    "path": "SpyClash/Views/LobbyPlayerCardSelection.swift",
+    "sha256": "6fbb60e40195a9cc08544134ca8cc3edd4a4e0180cb1863802246def7621e1c9"
+  },
+  {
+    "path": "SpyClash/Views/LocalCinematicGameplayViews.swift",
+    "sha256": "2a36a55034524d5a1398d74d9e485c097ad16608b30ea892273038df55cbbe6f"
+  },
+  {
+    "path": "SpyClash/Views/LocalGameView.swift",
+    "sha256": "5c1aa4a4eb42cf9900be3cc158cb8fd467ab87837f967188d6b41a9acc66c8d1"
+  },
+  {
+    "path": "SpyClash/Views/LocalPrivateDecisionViews.swift",
+    "sha256": "dccf5485e351dc363046a70f58d75886738791e0abbdc590232005838b44b494"
+  },
+  {
+    "path": "SpyClash/Views/NotificationsInboxView.swift",
+    "sha256": "5d72805a54399ef60f05e20e623afab2176ed3d4084e4b6cf050766f11a378f2"
+  },
+  {
+    "path": "SpyClash/Views/OnboardingView.swift",
+    "sha256": "e668964fc6a5e2fc10dda1a6ce43adf73b42caf6bcd4abf0508b5ceaf18e8e03"
+  },
+  {
+    "path": "SpyClash/Views/OnlineGameExperience.swift",
+    "sha256": "7d4ffd9bd556a33ee42be478a59cefb858c659d834baada2dcbbe6e479269b06"
+  },
+  {
+    "path": "SpyClash/Views/PlayerSpyCard3DView.swift",
+    "sha256": "6cd41e26e69259ce5ebb28007218e299930de84e008ef2ca5ceea65d8d75f2e2"
+  },
+  {
+    "path": "SpyClash/Views/PricingView.swift",
+    "sha256": "45d79b9e20e71f26418e58e5c8fa122d9e4e6586b565a50a3a5687d6ca78effc"
+  },
+  {
+    "path": "SpyClash/Views/ProfileView.swift",
+    "sha256": "9e6f5cf7d11fc652ee413493a5320367985e4c0943c6767e182cac7460effd95"
+  },
+  {
+    "path": "SpyClash/Views/QRSheets.swift",
+    "sha256": "d583dab43b1e30ddaeedeffe8339fad942c6a02baf07afa094da283dce8f2851"
+  },
+  {
+    "path": "SpyClash/Views/RadarInviteView.swift",
+    "sha256": "3d6e7e4f6548faff2528b6e5beecb50afaedcc69596fdd64bf44043c64b1355b"
+  },
+  {
+    "path": "SpyClash/Views/SpyAchievementGlyph.swift",
+    "sha256": "5be8023f1d5f793d41e5485c61380442d4c34c4018b002b7c18aece4793d4fae"
+  },
+  {
+    "path": "SpyClash/Views/SpyAchievementsView.swift",
+    "sha256": "9c1d6491f7f6088ecc9c45c12f09d7a3a62d2cc47ca663353c1f7b9c2ac03c88"
+  },
+  {
+    "path": "SpyClash/Views/SpyBackground.swift",
+    "sha256": "9c8723cc84f2c19d1db52aa35a938177028e7fb92c7ec45fa380cfff160ef3b2"
+  },
+  {
+    "path": "SpyClash/Views/SpyGameIntroScene.swift",
+    "sha256": "17a1e890f8432c9d537edc09f56688e35f889b22106aa6cfda3de1a4789ac569"
+  },
+  {
+    "path": "SpyClash/Views/SpyOrbSceneView.swift",
+    "sha256": "b20feae4f2066289c9880a81d00997440c8f30f8627f465c542668029dc9ca0c"
+  },
+  {
+    "path": "SpyClash/Views/SupabaseGameRecoveryBanner.swift",
+    "sha256": "40ee47e88b8f4ec287758b0754690c7de15e6264c15f487431f9d7fe938497a2"
+  },
+  {
+    "path": "SpyClash/Views/UnityAdsTestView.swift",
+    "sha256": "92290a3e3bee047023ac62a2061bf1a2fde0053539c4563cd98db27fcd8b1d79"
+  },
+  {
+    "path": "SpyClash/Views/WelcomeView.swift",
+    "sha256": "a77845f7cdf50320b189162facf59969251c60624694802f8a5cbc0c20829453"
+  },
+  {
+    "path": "SpyClash/Views/WordPackEditorSheet.swift",
+    "sha256": "00eda17705ebb73400fe5dc5c0aae59201ae962006787f72c472b3a9ce62d5f2"
+  },
+  {
+    "path": "SpyClash/Views/WordPacksView.swift",
+    "sha256": "916ed644790b1dfe0b0a2d26b899817937b5a2bcbae2ff13c2e39c85e0593d57"
+  },
+  {
+    "path": "SpyClashWidgets/Info.plist",
+    "sha256": "6991737cdf82a6f9db31cf60cdc6b7529f7647023f7231cf5c2c304c3b8a0cef"
+  },
+  {
+    "path": "SpyClashWidgets/SpyClashMatchLiveActivity.swift",
+    "sha256": "6ffa1496b1b2a89bac5823b1a86162f63d8aa3b9cf5e6147245a2f39009fd346"
+  },
+  {
+    "path": "SpyClashWidgets/SpyClashWidgetsBundle.swift",
+    "sha256": "fb44a666d1a29b41a3088409896ad9fdfceac15b11a5bf0f2a43b7105ad4cd11"
+  },
+  {
+    "path": "project.yml",
+    "sha256": "d8aeec17f9fbfe7a2c2b2998f3a3ffa1dffe953f7d58f9543d653738f5faca0e"
+  }
+]

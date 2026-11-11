@@ -1,0 +1,101 @@
+{
+  "build": 230,
+  "production_changed": false,
+  "resolved_conflicts": [
+    "Base44 preserves account enrollment check inside generation writer lease and adds shared-library imports/flow",
+    "Native preserves enrollment lookup inside quota transaction and combines it with sharedEnabled; global switch alone does not meter unenrolled users"
+  ],
+  "fixture_changes": [
+    "Actual Base44 HTTP tests explicitly seed already-enrolled fixture accounts",
+    "Shared native integration applies enrollment migration and seeds enrolled fixture accounts; adds shared-cache coverage for old unenrolled accounts and verified LIMITLESS"
+  ],
+  "checks": [
+    {
+      "name": "Base44 shared-library, REST, retry and actual-handler suite",
+      "passed": 39,
+      "steps_passed": 23,
+      "failed": 0,
+      "log": "base44-shared-combined.log"
+    },
+    {
+      "name": "Base44 Unity and existing reward handler integration",
+      "passed": 27,
+      "failed": 0,
+      "log": "base44-reward-integration.log"
+    },
+    {
+      "name": "Native reward/enrollment regression",
+      "passed": 33,
+      "failed": 0,
+      "log": "native-reward-regression.log"
+    },
+    {
+      "name": "Shared native generation with enrollment and LIMITLESS",
+      "passed": 11,
+      "failed": 0,
+      "log": "native-shared-combined.log"
+    },
+    {
+      "name": "Shared-library SQL access and concurrency",
+      "passed": 6,
+      "failed": 0,
+      "log": "shared-library-sql.log"
+    },
+    {
+      "name": "Full game core with FAN 2 percent defaults and legacy compatibility",
+      "passed": 38,
+      "fan_tests_passed": 21,
+      "failed": 0,
+      "log": "fan-defaults-full-core-regression.log",
+      "command": "deno test --config supabase/functions/full-game-core/deno.json --no-lock --deny-net tests/full-core-engine"
+    }
+  ],
+  "typechecks": [
+    "Base44 generateWordPack and generationRewardAction",
+    "Supabase app-services entrypoint",
+    "Supabase full-game-core entrypoint after FAN defaults change"
+  ],
+  "harness_note": "Initial retry static-source check needed allow-read; rerun with correct local read permission passed. No implementation change was needed for that runner failure.",
+  "deployment_scope": "No new deployment candidate prepared. The build228 candidate based on app-services v19 is obsolete after separately activated shared library v20; do not deploy it. Any future backend release must start from freshly retrieved live sources and preserve active shared-library changes.",
+  "sources": [
+    {
+      "path": "base44/functions/generateWordPack/main.ts",
+      "sha256": "801a2205c2bd98398f279b48ded2e6be7e2a89551dedf21dc5e5508349d78e2a"
+    },
+    {
+      "path": "experiments/supabase-game-core/supabase/functions/app-services/native-generation.ts",
+      "sha256": "39b99d24f200ba816b44cb94636ed46bd2a29fe7c3d6edaaf53c1760fcc93f2f"
+    },
+    {
+      "path": "base44/functions/generateWordPack/main-operation_test.ts",
+      "sha256": "4b4f3edead0d9a93e16b78546b7903450b987fa7fba2a43183eb2204604382a9"
+    },
+    {
+      "path": "experiments/supabase-game-core/tests/game-center/shared-generation-integration.ts",
+      "sha256": "a377c444dc62afaae2906420a7a920c60087e6b2cdf8af722baa9b495011cb6b"
+    },
+    {
+      "path": "experiments/supabase-game-core/supabase/functions/full-game-core/rules/fan-mode-policy.ts",
+      "sha256": "9546a9b13df1cacb8ad0ccf05c1763a8d43e2cab13857c0939e1ff5c4fccea76"
+    },
+    {
+      "path": "experiments/supabase-game-core/tests/full-core-engine/fan-mode.test.ts",
+      "sha256": "4d200454604912140a5e6e352066007dc0d5d590223aeb77c0649b3bc433a709"
+    }
+  ],
+  "fan_defaults": {
+    "new_configuration": {
+      "all_spies": 2,
+      "no_spies": 2,
+      "split_words": 2,
+      "unique_words": 2,
+      "lone_civilian": 2,
+      "standard": 90
+    },
+    "legacy_compatibility": "If either old probability is non-null, missing new probabilities default to zero. Explicit custom probabilities, including zero, are preserved. Missing old probabilities default to two. Fully absent/null old probabilities select fresh extra-deal defaults of two.",
+    "client_capability": "Enabled FAN with fresh defaults requires fan_mode_v3 because the three extra deals have nonzero probabilities. Legacy old-only settings remain fan_mode_v2-compatible. FAN disabled does not require v3.",
+    "schema": "LOBBY_SCHEMA_VERSION remains 2; no database/schema migration added. v3 is the existing player capability, not a lobby schema version.",
+    "word_pool": "As already required for unique_words, enabled fresh FAN needs at least one distinct enabled word per player before start.",
+    "verification": "All 100 random sampling outcomes counted: each surprise 2, standard 90; room creation/projection/lobby defaults, explicit zero, partial legacy fields, null defaults and v2/v3 capability gating covered."
+  }
+}

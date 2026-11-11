@@ -6984,7 +6984,7 @@ final class LocalFanOutcomeTests: XCTestCase {
     }
 
     func testBothAnomaliesDrawAfterAnyValidPlayerEjection() {
-        for scenario in [FanScenario.allSpies, .noSpies] {
+        for scenario in FanScenario.allCases where scenario != .standard {
             let roles = Array(repeating: scenario == .allSpies, count: 5)
             for player in roles.indices {
                 XCTAssertEqual(LocalGameAccusationPolicy.outcome(
@@ -6995,7 +6995,7 @@ final class LocalFanOutcomeTests: XCTestCase {
     }
 
     func testInvalidOrAlreadyEliminatedPlayerCannotTriggerFanReveal() {
-        for scenario in [FanScenario.allSpies, .noSpies] {
+        for scenario in FanScenario.allCases where scenario != .standard {
             let roles = Array(repeating: scenario == .allSpies, count: 3)
             for player in [-2, -1, 3] {
                 XCTAssertEqual(LocalGameAccusationPolicy.outcome(
@@ -7041,7 +7041,7 @@ final class FanOnlineDrawTests: XCTestCase {
         var room = GameRoom.previewRoom(status: "finished")
         room.fanModeEnabled = true
         room.winner = "draw"
-        for scenario in [FanScenario.allSpies, .noSpies] {
+        for scenario in FanScenario.allCases where scenario != .standard {
             room.fanScenario = scenario.rawValue
             XCTAssertEqual(FinishedRoomResultPolicy.fanDrawScenario(in: room), scenario)
             room.status = "playing"

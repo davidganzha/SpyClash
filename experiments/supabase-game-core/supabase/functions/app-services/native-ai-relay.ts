@@ -138,7 +138,7 @@ export async function nativeRelayHasUnknownOutcome(tx:any,userID:string,requestI
 }
 /** The request lock fences a late claim against releasing an unspent quota.
  * Started work keeps its lease so an in-flight completion can still be saved. */
-export async function settleNativeRelayFailure(db:any,userID:string,requestID:string,leaseID:string,qualityRejected=false){
+export async function settleNativeRelayFailure(db:any,userID:string,requestID:string,leaseID:string,qualityRejected=false,refundDefinitiveLegacyFailure=false){
   return await db.begin(async(tx:any)=>{
     await tx`select pg_advisory_xact_lock_shared(hashtextextended(${'spyclash-account:'+userID},0))`;
     await lockGenerationQuota(tx,userID);
@@ -158,7 +158,10 @@ export async function settleNativeRelayFailure(db:any,userID:string,requestID:st
     // Release only our worker lease and replay cached output after DB outages.
     const outcome=quality?'quality':failure?'failed':spent?'replayable':'unspent';
     const errorCode=quality?'generation_quality_failed':failure?'generation_provider_failed':spent?'generation_persistence_retry':'generation_failed';
-    const refundable=row.charge_source&&row.charge_source!=='legacy'&&(quality||Boolean(failure)||!spent);
+    // Shared-library requests also journal direct provider work under the
+    // existing legacy quota. Definite failure refunds that quota without
+    // changing its source, limit, or handling an unknown outcome as failure.
+    const refundable=row.charge_source&&(row.charge_source!=='legacy'||refundDefinitiveLegacyFailure)&&(quality||Boolean(failure)||!spent);
     if(refundable)await releaseRewardGeneration(tx,userID,requestID,row);
     await tx`update game_center_private.generation_requests set state='failed',charged=${spent&&!refundable},lease_id=null,lease_until=null,
       error_code=${errorCode},updated_at=clock_timestamp()

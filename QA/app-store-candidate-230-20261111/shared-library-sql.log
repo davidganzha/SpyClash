@@ -1,0 +1,7 @@
+PASS shared stock has RLS and no anonymous or signed-in client grants
+PASS one concurrent claimant owns the shared topic generation lease
+PASS stale tokens cannot publish or release another worker lease
+PASS the backend service role can read and publish through invoker RPCs
+PASS expired leases can be replaced and old workers lose publication rights
+PASS lookup returns all live variants and excludes expired stock
+PASS 6 shared-library PostgreSQL checks

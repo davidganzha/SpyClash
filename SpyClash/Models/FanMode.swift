@@ -1,23 +1,102 @@
 import Foundation
 
 struct FanModeSettings: Codable, Equatable, Hashable {
+    static let defaultSurpriseChance = 2
+
     var isEnabled = false
-    var allSpiesChance = 15
-    var noSpiesChance = 15
+    var allSpiesChance = defaultSurpriseChance
+    var noSpiesChance = defaultSurpriseChance
+    var splitWordsChance = defaultSurpriseChance
+    var uniqueWordsChance = defaultSurpriseChance
+    var loneCivilianChance = defaultSurpriseChance
+
+    init(isEnabled: Bool = false,
+         allSpiesChance: Int = Self.defaultSurpriseChance, noSpiesChance: Int = Self.defaultSurpriseChance,
+         splitWordsChance: Int = Self.defaultSurpriseChance, uniqueWordsChance: Int = Self.defaultSurpriseChance,
+         loneCivilianChance: Int = Self.defaultSurpriseChance) {
+        self.isEnabled = isEnabled
+        self.allSpiesChance = allSpiesChance
+        self.noSpiesChance = noSpiesChance
+        self.splitWordsChance = splitWordsChance
+        self.uniqueWordsChance = uniqueWordsChance
+        self.loneCivilianChance = loneCivilianChance
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        isEnabled = try values.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? false
+        let savedAllSpiesChance = try values.decodeIfPresent(Int.self, forKey: .allSpiesChance)
+        let savedNoSpiesChance = try values.decodeIfPresent(Int.self, forKey: .noSpiesChance)
+        // Existing v2 settings must not silently gain deals requiring a v3 client.
+        let extraDefault = savedAllSpiesChance != nil || savedNoSpiesChance != nil ? 0 : Self.defaultSurpriseChance
+        allSpiesChance = savedAllSpiesChance ?? Self.defaultSurpriseChance
+        noSpiesChance = savedNoSpiesChance ?? Self.defaultSurpriseChance
+        splitWordsChance = try values.decodeIfPresent(Int.self, forKey: .splitWordsChance) ?? extraDefault
+        uniqueWordsChance = try values.decodeIfPresent(Int.self, forKey: .uniqueWordsChance) ?? extraDefault
+        loneCivilianChance = try values.decodeIfPresent(Int.self, forKey: .loneCivilianChance) ?? extraDefault
+    }
 
     var normalized: Self {
-        let all = min(max(allSpiesChance, 0), 99)
-        return Self(isEnabled: isEnabled, allSpiesChance: all,
-                    noSpiesChance: min(max(noSpiesChance, 0), min(99, 100 - all)))
+        var result = self
+        var remaining = 100
+        for scenario in FanScenario.surprises {
+            let value = min(max(chance(for: scenario), 0), min(99, remaining))
+            result.assignChance(value, for: scenario)
+            remaining -= value
+        }
+        return result
     }
-    var standardChance: Int { 100 - normalized.allSpiesChance - normalized.noSpiesChance }
+
+    var standardChance: Int {
+        let settings = normalized
+        return 100 - FanScenario.surprises.reduce(0) { $0 + settings.chance(for: $1) }
+    }
+
+    func chance(for scenario: FanScenario) -> Int {
+        switch scenario {
+        case .standard: standardChance
+        case .allSpies: allSpiesChance
+        case .noSpies: noSpiesChance
+        case .splitWords: splitWordsChance
+        case .uniqueWords: uniqueWordsChance
+        case .loneCivilian: loneCivilianChance
+        }
+    }
+
+    /// The moved slider keeps its value; other chances fit into the remaining budget.
+    mutating func setChance(_ value: Int, for scenario: FanScenario) {
+        guard scenario != .standard else { return }
+        self = normalized
+        let selected = min(max(value, 0), 99)
+        assignChance(selected, for: scenario)
+        var remaining = 100 - selected
+        for other in FanScenario.surprises where other != scenario {
+            let next = min(chance(for: other), remaining)
+            assignChance(next, for: other)
+            remaining -= next
+        }
+    }
+
+    private mutating func assignChance(_ value: Int, for scenario: FanScenario) {
+        switch scenario {
+        case .standard: break
+        case .allSpies: allSpiesChance = value
+        case .noSpies: noSpiesChance = value
+        case .splitWords: splitWordsChance = value
+        case .uniqueWords: uniqueWordsChance = value
+        case .loneCivilian: loneCivilianChance = value
+        }
+    }
 
     func scenario(roll: Int) -> FanScenario {
         let settings = normalized
         guard settings.isEnabled else { return .standard }
         let value = min(max(roll, 0), 99)
-        if value < settings.allSpiesChance { return .allSpies }
-        if value < settings.allSpiesChance + settings.noSpiesChance { return .noSpies }
+        var threshold = 0
+        for scenario in FanScenario.surprises {
+            threshold += settings.chance(for: scenario)
+            if value < threshold { return scenario }
+        }
         return .standard
     }
 }
@@ -26,6 +105,12 @@ enum FanScenario: String, Codable, CaseIterable {
     case standard
     case allSpies = "all_spies"
     case noSpies = "no_spies"
+    case splitWords = "split_words"
+    case uniqueWords = "unique_words"
+    case loneCivilian = "lone_civilian"
+
+    static let surprises: [Self] = [.allSpies, .noSpies, .splitWords, .uniqueWords, .loneCivilian]
+    var hasPersonalWords: Bool { self == .splitWords || self == .uniqueWords }
 
     func title(_ language: AppLanguage) -> String {
         let copy = FanModeCopy(language: language)
@@ -33,7 +118,62 @@ enum FanScenario: String, Codable, CaseIterable {
         case .standard: return copy.text("ONE SPY", "ОДИН ШПИОН", "UN ESPÍA", "ОДИН ШПИГУН")
         case .allSpies: return copy.text("EVERYONE IS A SPY", "ВСЕ — ШПИОНЫ", "TODOS SON ESPÍAS", "УСІ — ШПИГУНИ")
         case .noSpies: return copy.text("NO SPIES", "ШПИОНОВ НЕТ", "NO HAY ESPÍAS", "ШПИГУНІВ НЕМАЄ")
+        case .splitWords: return copy.text("TWO WORDS, TWO HALVES", "ДВА СЛОВА НА ДВЕ ПОЛОВИНЫ", "DOS PALABRAS, DOS MITADES", "ДВА СЛОВА НА ДВІ ПОЛОВИНИ")
+        case .uniqueWords: return copy.text("A DIFFERENT WORD FOR EVERYONE", "У ВСЕХ РАЗНЫЕ СЛОВА", "UNA PALABRA DISTINTA PARA CADA UNO", "В УСІХ РІЗНІ СЛОВА")
+        case .loneCivilian: return copy.text("ALL SPIES EXCEPT ONE", "ВСЕ ШПИОНЫ, КРОМЕ ОДНОГО", "TODOS ESPÍAS SALVO UNO", "УСІ ШПИГУНИ, КРІМ ОДНОГО")
         }
+    }
+}
+
+struct FanDeal: Equatable {
+    let spyIndices: [Int]
+    let playerWords: [Int: String]
+}
+
+enum FanDealPolicy {
+    static func distinctWords(_ words: [String]) -> [String] {
+        var seen = Set<String>()
+        return words.compactMap { raw in
+            let word = raw.precomposedStringWithCompatibilityMapping.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !word.isEmpty, seen.insert(word.lowercased()).inserted else { return nil }
+            return word
+        }
+    }
+
+    /// Returns nil rather than repeating words when the requested deal is impossible.
+    static func deal(scenario: FanScenario, playerCount: Int, word: String, pool: [String],
+                     standardSpyCount: Int = 1) -> FanDeal? {
+        guard playerCount >= 2 else { return nil }
+        let words = distinctWords([word] + pool)
+        guard let mainWord = words.first, !word.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        let indices = Array(0..<playerCount).shuffled()
+        let spyIndices: [Int]
+        var assignedWords: [Int: String] = [:]
+        switch scenario {
+        case .allSpies:
+            spyIndices = Array(0..<playerCount)
+        case .noSpies:
+            spyIndices = []
+        case .loneCivilian:
+            spyIndices = Array(indices.dropFirst()).sorted()
+        case .standard:
+            spyIndices = Array(indices.prefix(min(max(standardSpyCount, 1), playerCount - 1))).sorted()
+        case .splitWords:
+            guard words.count >= 2, let otherWord = words.dropFirst().randomElement() else { return nil }
+            let pair = [mainWord, otherWord].shuffled()
+            for (offset, player) in indices.enumerated() {
+                assignedWords[player] = pair[offset < playerCount / 2 ? 0 : 1]
+            }
+            return FanDeal(spyIndices: [], playerWords: assignedWords)
+        case .uniqueWords:
+            guard words.count >= playerCount else { return nil }
+            let selected = ([mainWord] + Array(words.dropFirst().shuffled().prefix(playerCount - 1))).shuffled()
+            for (player, assignedWord) in zip(indices, selected) { assignedWords[player] = assignedWord }
+            return FanDeal(spyIndices: [], playerWords: assignedWords)
+        }
+        let spies = Set(spyIndices)
+        for player in 0..<playerCount where !spies.contains(player) { assignedWords[player] = mainWord }
+        return FanDeal(spyIndices: spyIndices, playerWords: assignedWords)
     }
 }
 
@@ -69,8 +209,13 @@ enum FanVotePolicy {
 
 extension GameRoom {
     var fanSettings: FanModeSettings {
-        FanModeSettings(isEnabled: fanModeEnabled ?? false, allSpiesChance: fanAllSpiesChance ?? 15,
-                        noSpiesChance: fanNoSpiesChance ?? 15).normalized
+        let extraDefault = fanAllSpiesChance != nil || fanNoSpiesChance != nil ? 0 : FanModeSettings.defaultSurpriseChance
+        return FanModeSettings(isEnabled: fanModeEnabled ?? false,
+                        allSpiesChance: fanAllSpiesChance ?? FanModeSettings.defaultSurpriseChance,
+                        noSpiesChance: fanNoSpiesChance ?? FanModeSettings.defaultSurpriseChance,
+                        splitWordsChance: fanSplitWordsChance ?? extraDefault,
+                        uniqueWordsChance: fanUniqueWordsChance ?? extraDefault,
+                        loneCivilianChance: fanLoneCivilianChance ?? extraDefault).normalized
     }
 }
 
@@ -85,16 +230,16 @@ struct FanModeCopy {
         }
     }
     var rules: String {
-        text("Sometimes everyone is a spy — or nobody is. Keep playing and vote for a player. If a surprise round was drawn, the first ejection reveals it and everyone shares a draw. When time runs out, vote until someone is ejected. Word guessing and teammate reveal are disabled.",
-             "Иногда шпионами становятся все — или никто. Играйте и голосуйте за игрока. Если выпал сюрприз, первое исключение раскроет его и завершит матч весёлой ничьей. Когда время выйдет, голосуйте до исключения. Угадывание слова и раскрытие союзников отключены.",
-             "A veces todos son espías, o nadie lo es. Seguid jugando y votad por un jugador. Si salió una ronda sorpresa, la primera expulsión la revela y todos empatáis. Al acabarse el tiempo, votad hasta expulsar a alguien. No se puede adivinar la palabra ni ver aliados.",
-             "Іноді шпигунами стають усі — або ніхто. Грайте й голосуйте за гравця. Якщо випав сюрприз, перше виключення розкриє його та завершить матч веселою нічиєю. Коли час вийде, голосуйте до виключення. Вгадування слова й розкриття союзників вимкнено.")
+        text("Roles and words may hide a surprise. Play normally and vote for a player. The first ejection reveals a surprise round and ends it in a draw. When time runs out, keep voting until someone is ejected. Word guessing and teammate reveal are disabled.",
+             "В ролях и словах может скрываться сюрприз. Играйте и голосуйте за игрока. Первое исключение раскрывает необычную раздачу и завершает её ничьей. Когда время выйдет, голосуйте до исключения. Угадывание слова и раскрытие союзников отключены.",
+             "Los roles y las palabras pueden esconder una sorpresa. Jugad y votad por un jugador. La primera expulsión revela una ronda sorpresa y la termina en empate. Al agotarse el tiempo, seguid votando hasta expulsar a alguien. No se puede adivinar la palabra ni ver aliados.",
+             "У ролях і словах може ховатися сюрприз. Грайте й голосуйте за гравця. Перше виключення розкриває незвичну роздачу та завершує її нічиєю. Коли час вийде, голосуйте до виключення. Вгадування слова й розкриття союзників вимкнено.")
     }
     var scenarioHint: String {
-        text("All spies: nobody knows the word. No spies: everyone knows it. The surprise stays secret until a player is ejected. No wins or losses in a surprise round.",
-             "Все шпионы: никто не знает слово. Шпионов нет: слово знают все. Сюрприз остаётся тайной до исключения игрока. В таком раунде нет побед и поражений.",
-             "Todos espías: nadie conoce la palabra. Sin espías: todos la conocen. La sorpresa se guarda hasta expulsar a alguien. En esa ronda no hay victorias ni derrotas.",
-             "Усі шпигуни: ніхто не знає слово. Шпигунів немає: слово знають усі. Сюрприз залишається таємницею до виключення гравця. У такому раунді немає перемог і поразок.")
+        text("Two words: no spies, two groups as equal as possible. Different words: no spies, at least one distinct active word per player is needed. All spies except one: only one player knows the word. By default, each surprise has a 2% chance and the normal game has a 90% chance.",
+             "Два слова: шпионов нет, группы делятся максимально поровну. Разные слова: шпионов нет, в колоде нужно хотя бы по одному уникальному активному слову на игрока. Все шпионы, кроме одного: слово знает только один игрок. По умолчанию шанс каждой необычной раздачи — 2%, обычной игры — 90%.",
+             "Dos palabras: sin espías, dos grupos lo más iguales posible. Palabras distintas: sin espías, se necesita una palabra activa única por jugador. Todos espías salvo uno: solo uno conoce la palabra. Por defecto, cada sorpresa tiene un 2% de probabilidad y la partida normal un 90%.",
+             "Два слова: шпигунів немає, групи діляться якомога порівну. Різні слова: шпигунів немає, у колоді потрібно хоча б по одному унікальному активному слову на гравця. Усі шпигуни, крім одного: слово знає лише один гравець. За замовчуванням шанс кожної незвичної роздачі — 2%, звичайної гри — 90%.")
     }
     var ballotTitle: String { text("Choose a suspect", "Выберите подозреваемого", "Elige un sospechoso", "Оберіть підозрюваного") }
     var voteForPlayer: String { text("Vote for a player", "Голосовать за игрока", "Votar por un jugador", "Голосувати за гравця") }
@@ -120,6 +265,9 @@ struct FanModeCopy {
         switch scenario {
         case .allSpies: text("EVERYONE WAS A SPY", "ВСЕ БЫЛИ ШПИОНАМИ", "TODOS ERAN ESPÍAS", "УСІ БУЛИ ШПИГУНАМИ")
         case .noSpies: text("THERE WERE NO SPIES", "ШПИОНОВ НЕ БЫЛО", "NO HABÍA ESPÍAS", "ШПИГУНІВ НЕ БУЛО")
+        case .splitWords: text("YOU HAD TWO DIFFERENT WORDS", "У ВАС БЫЛО ДВА РАЗНЫХ СЛОВА", "TENÍAIS DOS PALABRAS DISTINTAS", "У ВАС БУЛО ДВА РІЗНИХ СЛОВА")
+        case .uniqueWords: text("EVERYONE HAD A DIFFERENT WORD", "У КАЖДОГО БЫЛО СВОЁ СЛОВО", "CADA UNO TENÍA UNA PALABRA DISTINTA", "У КОЖНОГО БУЛО СВОЄ СЛОВО")
+        case .loneCivilian: text("ONLY ONE PLAYER WAS NOT A SPY", "ТОЛЬКО ОДИН ИГРОК НЕ БЫЛ ШПИОНОМ", "SOLO UNO NO ERA ESPÍA", "ЛИШЕ ОДИН ГРАВЕЦЬ НЕ БУВ ШПИГУНОМ")
         case .standard: scenario.title(language)
         }
     }

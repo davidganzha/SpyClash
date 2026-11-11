@@ -32,8 +32,9 @@ struct FanModeSettingsPanel: View {
                         .tint(SpyTheme.amber).disabled(!editable).accessibilityIdentifier("fanMode.enabled")
                     Text(copy.rules).font(.system(size: 12, design: .monospaced)).foregroundStyle(SpyTheme.muted).fixedSize(horizontal: false, vertical: true)
                     if settings.isEnabled {
-                        chance(.allSpies)
-                        chance(.noSpies)
+                        ForEach(FanScenario.surprises, id: \.self) { scenario in
+                            chance(scenario)
+                        }
                         HStack {
                             Text(FanScenario.standard.title(language))
                             Spacer()
@@ -48,23 +49,15 @@ struct FanModeSettingsPanel: View {
     }
 
     private func chance(_ scenario: FanScenario) -> some View {
-        let isAll = scenario == .allSpies
-        let value = isAll ? settings.allSpiesChance : settings.noSpiesChance
+        let value = settings.chance(for: scenario)
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(scenario.title(language))
                 Spacer()
                 Text("\(value)%").monospacedDigit().foregroundStyle(SpyTheme.amber)
             }.font(.system(size: 11, weight: .bold, design: .monospaced))
-            Slider(value: Binding(get: { Double(isAll ? settings.allSpiesChance : settings.noSpiesChance) }, set: { raw in
-                let next = min(max(Int(raw.rounded()), 0), 99)
-                if isAll {
-                    settings.allSpiesChance = next
-                    settings.noSpiesChance = min(settings.noSpiesChance, 100 - next)
-                } else {
-                    settings.noSpiesChance = next
-                    settings.allSpiesChance = min(settings.allSpiesChance, 100 - next)
-                }
+            Slider(value: Binding(get: { Double(settings.chance(for: scenario)) }, set: { raw in
+                settings.setChance(Int(raw.rounded()), for: scenario)
                 onChange()
             }), in: 0...99, step: 1)
             .tint(SpyTheme.amber).disabled(!editable)
@@ -231,7 +224,7 @@ struct FanDrawRevealView: View {
     @State private var showOutcome = false
 
     private var copy: FanModeCopy { FanModeCopy(language: language) }
-    private var accent: Color { scenario == .allSpies ? SpyTheme.amber : SpyTheme.green }
+    private var accent: Color { scenario == .allSpies || scenario == .loneCivilian ? SpyTheme.amber : SpyTheme.green }
 
     var body: some View {
         VStack(spacing: 18) {
@@ -317,7 +310,7 @@ struct FanDrawRevealView: View {
         return ZStack {
             cardFace(icon: "questionmark", revealed: false)
                 .opacity(revealed ? 0 : 1)
-            cardFace(icon: scenario == .allSpies ? "eye.slash.fill" : "person.fill.checkmark", revealed: true)
+            cardFace(icon: revealedIcon(index), revealed: true)
                 .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
                 .opacity(revealed ? 1 : 0)
         }
@@ -326,6 +319,16 @@ struct FanDrawRevealView: View {
         .rotation3DEffect(.degrees(revealed ? 180 : 0), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
         .rotationEffect(.degrees(Double(index - 1) * (showOutcome ? 8 : 3)))
         .offset(y: showOutcome && index == 1 ? -5 : 0)
+    }
+
+    private func revealedIcon(_ index: Int) -> String {
+        switch scenario {
+        case .allSpies: "eye.slash.fill"
+        case .loneCivilian: index == 1 ? "person.fill.checkmark" : "eye.slash.fill"
+        case .splitWords: index < 2 ? "a.square.fill" : "b.square.fill"
+        case .uniqueWords: ["a.square.fill", "b.square.fill", "c.square.fill"][index]
+        case .noSpies, .standard: "person.fill.checkmark"
+        }
     }
 
     private func cardFace(icon: String, revealed: Bool) -> some View {
