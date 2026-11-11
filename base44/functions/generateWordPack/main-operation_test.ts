@@ -14,6 +14,11 @@ import {
 } from "./shared-word-pack-library.ts";
 import { WORD_PACK_CACHE_VERSION } from "./openai-word-pack-provider.ts";
 import { quotaKey, utcUsageDate } from "./quota.ts";
+import { prepareWordPackCacheRequest } from "./generation-cache.ts";
+import {
+  buildWordPackRequestResultRecord,
+  prepareWordPackIdempotency,
+} from "./generation-idempotency.ts";
 
 type Row = Record<string, any>;
 const APP_ID = "69a0e57fa939f578082f8091";
@@ -84,6 +89,7 @@ class GenerationHTTPStore {
   userID = "journal-user";
   tables = new Map<string, Row[]>();
   providerCalls = 0;
+  providerRequests: Row[] = [];
   providerWords = WORDS;
   quotaReservations = 0;
   journalStateAtProvider: string[] = [];
@@ -155,6 +161,7 @@ class GenerationHTTPStore {
       method === "POST"
     ) {
       this.providerCalls += 1;
+      this.providerRequests.push(structuredClone(body));
       this.journalStateAtProvider.push(
         this.rows("AiWordPackOperation")[0]?.state || "missing",
       );
@@ -502,6 +509,61 @@ Deno.test("actual generation handler preserves durable operation recovery across
       expectNoNewEffects(1, 1);
     });
 
+    for (const state of ["legacy-completed", "completed", "running", "prepared"] as const) {
+      await test.step(`historical whole-items-v2 ${state} request survives cache version migration`, async () => {
+        db = new GenerationHTTPStore();
+        const requestID = `historical-${state}`;
+        const identity = await prepareWordPackIdempotency({
+          userID: db.userID, requestID,
+          request: await prepareWordPackCacheRequest({
+            userID: db.userID, theme: "Musical instruments", language: "und",
+            promptVersion: "word-pack-2026-08-29-v5-gpt_5_4-whole-items-v2",
+            requestedCount: 12, exclusions: [],
+          }),
+        });
+        const now = new Date().toISOString();
+        if (state === "legacy-completed") {
+          db.rows("AiWordPackRequestResult").push({
+            id: "historical-result",
+            ...await buildWordPackRequestResultRecord({
+              identity,
+              result: { category: "AI GENERATED", words: WORDS.slice(0, 12), exhausted: false },
+            }),
+          });
+        } else {
+          db.rows("AiWordPackOperation").push({
+            id: "historical-operation", request_key: identity.requestKey,
+            user_id: identity.userID, request_id: identity.requestID,
+            request_fingerprint: identity.requestFingerprint,
+            operation_token: "historical-operation-token", state,
+            updated_at: now, created_date: now,
+            ...(state === "completed" ? {
+              result_category: "AI GENERATED", result_words: WORDS.slice(0, 12),
+              exhausted: false, completed_at: now,
+            } : {}),
+          });
+        }
+        const response = await invoke(requestID);
+        const payload = await response.json();
+        if (state === "running") {
+          assertEquals(response.status, 503);
+          assertEquals(payload.code, "generation_outcome_unknown");
+          expectNoNewEffects(0, 0);
+        } else {
+          assertEquals(response.status, 200);
+          assertEquals(payload.words, WORDS.slice(0, 12));
+          const resumed = state === "prepared" ? 1 : 0;
+          expectNoNewEffects(resumed, resumed);
+          const replay = await invoke(requestID);
+          assertEquals(replay.status, 200);
+          assertEquals((await replay.json()).words, payload.words);
+          expectNoNewEffects(resumed, resumed);
+        }
+        assertEquals((await invoke(requestID, 13)).status, 409);
+        assertEquals((await invoke(requestID, 12, {exclude_words: ["Piano"]})).status, 409);
+      });
+    }
+
     await test.step("generation and durable replay preserve commas and semicolons within each AI entry", async () => {
       db = new GenerationHTTPStore();
       db.providerWords = [
@@ -632,6 +694,51 @@ Deno.test("actual generation handler preserves durable operation recovery across
       } finally {
         sharedEnabled = false;
       }
+    });
+
+    await test.step("larger requests retain every existing name and generate only the missing words", async () => {
+      db = new GenerationHTTPStore();
+      library = new LibraryHTTPStore();
+      sharedEnabled = true;
+      try {
+        const first = await invoke("small-source", 5);
+        assertEquals(first.status, 200);
+        const original = (await first.json()).words;
+        db.providerWords = WORDS.slice(5);
+        db.userID = "second-player";
+        const larger = await invoke("larger-target", 7);
+        assertEquals(larger.status, 200);
+        const payload = await larger.json();
+        assertEquals(payload.words, WORDS.slice(0, 7));
+        assertEquals(payload.words.slice(0, 5), original);
+        assertEquals(payload.cache_hit, false);
+        assertEquals(db.providerRequests.at(-1)?.response_json_schema.properties.draft_words.maxItems, 2);
+        assert(db.providerRequests.at(-1)?.prompt.includes(JSON.stringify(original)));
+        assertEquals(db.providerCalls, 2);
+        assertEquals(db.quotaReservations, 2);
+        const replay = await invoke("larger-target", 7);
+        assertEquals((await replay.json()).words, payload.words);
+        assertEquals(db.providerCalls, 2);
+        assertEquals(db.quotaReservations, 2);
+      } finally { sharedEnabled = false; }
+    });
+
+    await test.step("top-up removes excluded stock and supports the full public exclusion allowance", async () => {
+      db = new GenerationHTTPStore();
+      library = new LibraryHTTPStore();
+      sharedEnabled = true;
+      try {
+        assertEquals((await invoke("source-before-exclusions", 5)).status, 200);
+        db.providerWords = WORDS.slice(5);
+        const exclusions = [WORDS[0], ...Array.from({ length: 199 }, (_, i) => `Used ${i}`)];
+        const response = await invoke("expanded-exclusions", 6, { exclude_words: exclusions });
+        assertEquals(response.status, 200);
+        assertEquals((await response.json()).words, WORDS.slice(1, 7));
+        assertEquals(db.providerRequests.at(-1)?.response_json_schema.properties.draft_words.maxItems, 2);
+        const prompt = db.providerRequests.at(-1)?.prompt;
+        assert(prompt.includes(JSON.stringify([...exclusions, ...WORDS.slice(1, 5)])));
+        assertEquals(db.providerCalls, 2);
+      } finally { sharedEnabled = false; }
     });
 
     await test.step("library outage stops before journal, point reservation and model, then the same request recovers", async () => {

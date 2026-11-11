@@ -95,7 +95,7 @@ Deno.test("cache keys exactly normalize user, theme, language, and prompt versio
   );
 });
 
-Deno.test("whole-item generation bypasses both older cache versions", async () => {
+Deno.test("canonical-name generation bypasses older split-item and whole-item caches", async () => {
   const legacy = await request({
     promptVersion: "word-pack-2026-08-29-v4-gpt_5_4",
   });
@@ -108,10 +108,14 @@ Deno.test("whole-item generation bypasses both older cache versions", async () =
   assertEquals(BASE44_WORD_PACK_MODEL, "gpt_5_4");
   assertEquals(
     WORD_PACK_CACHE_VERSION,
-    "word-pack-2026-08-29-v5-gpt_5_4-whole-items-v2",
+    "word-pack-2026-08-29-v5-gpt_5_4-canonical-names-v3",
   );
   assertNotEquals(current.cacheKey, legacy.cacheKey);
   assertNotEquals(current.cacheKey, splitItems.cacheKey);
+  const inconsistentNames = await request({
+    promptVersion: "word-pack-2026-08-29-v5-gpt_5_4-whole-items-v2",
+  });
+  assertNotEquals(current.cacheKey, inconsistentNames.cacheKey);
 });
 
 Deno.test("legacy theme-auto cache cannot collide with an explicit English locale", async () => {

@@ -1,0 +1,31 @@
+{
+  "build": 232,
+  "marketing_version": "1.0.4",
+  "production_mutated": false,
+  "ios": {
+    "passed": 18,
+    "failed": 0,
+    "skipped": 0
+  },
+  "base44": {
+    "passed": 149,
+    "handler_steps": 29,
+    "failed": 0
+  },
+  "native_integration": {
+    "passed": 18,
+    "failed": 0
+  },
+  "rewarded_regression": {
+    "passed": 33,
+    "failed": 0
+  },
+  "total_tests": 218,
+  "candidate_typechecks": [
+    "generateWordPack",
+    "nativeGameCenterWordPack",
+    "app-services"
+  ],
+  "bundle_isolation": "passed",
+  "independent_review": "no remaining blocking findings"
+}

@@ -59,6 +59,7 @@ import {
   pruneExpiredWordPackRequestResults,
   WordPackIdempotencyConflictError,
   WordPackIdempotencyUnavailableError,
+  WORD_PACK_REQUEST_FINGERPRINT_VERSION,
 } from "./generation-idempotency.ts";
 import {
   assertNoKnownNamedThemeDrift,
@@ -440,6 +441,8 @@ Deno.serve(async (req) => {
         userID: user.id,
         requestID,
         request: cacheRequest,
+        // Keep old completed/pending request identities while cache quality evolves.
+        fingerprintPromptVersion: WORD_PACK_REQUEST_FINGERPRINT_VERSION,
       })
       : null;
     retryTracker.bindValidatedRequest(idempotency);
@@ -779,18 +782,21 @@ Deno.serve(async (req) => {
 
             if (!cacheHit) {
               aiState = createAIInvocationState();
+              const retainedWords = sharedAccess?.seedWords ?? [];
+              const generationExclusions = [...excludedWords, ...retainedWords];
               const firstPass = await invokeWordPackLLM(
                 base44,
                 theme,
-                count,
-                excludedWords,
+                Math.max(2, count - retainedWords.length),
+                generationExclusions,
                 guard,
                 aiState,
                 retryTracker,
               );
-              words = filterSafeCommunityStrings(
-                removeExcludedWords(firstPass?.words || [], excludedWords),
-              ).slice(0, count);
+              const additions = filterSafeCommunityStrings(
+                removeExcludedWords(firstPass?.words || [], generationExclusions),
+              );
+              words = uniqueWords([...retainedWords, ...additions]).slice(0, count);
               assertNoKnownNamedThemeDrift(theme, words);
               exhausted = firstPass?.exhausted === true && words.length < count;
               if (exhausted) {

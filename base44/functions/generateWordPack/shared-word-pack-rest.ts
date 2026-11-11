@@ -1,5 +1,5 @@
 import {
-  selectSharedWordPackHit,
+  selectSharedWordPackStock,
   type SharedWordPackHit,
   SharedWordPackLibraryError,
   type SharedWordPackLibraryStore,
@@ -71,7 +71,7 @@ export function createSharedWordPackRESTStore(options: {
         p_cache_key: request.cacheKey,
       });
       if (!Array.isArray(records)) throw new SharedWordPackLibraryError();
-      return await selectSharedWordPackHit({ request, records });
+      return await selectSharedWordPackStock({ request, records });
     },
     async claim(cacheKey, token) {
       const claimed = await rpc("word_pack_library_claim", {
@@ -100,6 +100,7 @@ export function createSharedWordPackRESTStore(options: {
 
 export type SharedWordPackAccess = {
   hit: SharedWordPackHit | null;
+  seedWords: string[];
   token: string | null;
   release(): Promise<void>;
 };
@@ -111,7 +112,7 @@ export async function acquireSharedWordPackAccess(
   request: SharedWordPackRequest,
 ): Promise<SharedWordPackAccess> {
   const hit = await store.read(request);
-  if (hit) return { hit, token: null, release: async () => {} };
+  if (hit && !hit.needsGeneration) return { hit, seedWords: [], token: null, release: async () => {} };
   const token = crypto.randomUUID();
   if (!await store.claim(request.cacheKey, token)) {
     throw new SharedWordPackLibraryError(
@@ -126,11 +127,11 @@ export async function acquireSharedWordPackAccess(
   };
   try {
     const afterClaim = await store.read(request);
-    if (afterClaim) {
+    if (afterClaim && !afterClaim.needsGeneration) {
       await release();
-      return { hit: afterClaim, token: null, release: async () => {} };
+      return { hit: afterClaim, seedWords: [], token: null, release: async () => {} };
     }
-    return { hit: null, token, release };
+    return { hit: null, seedWords: afterClaim?.words ?? [], token, release };
   } catch (error) {
     await release();
     throw error;

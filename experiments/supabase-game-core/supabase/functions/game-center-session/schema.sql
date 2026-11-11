@@ -48,6 +48,7 @@ create table if not exists game_center_private.generation_requests (
   lease_id uuid,
   lease_until timestamptz,
   result jsonb,
+  seed_words jsonb,
   error_code text,
   created_at timestamptz not null default clock_timestamp(),
   updated_at timestamptz not null default clock_timestamp(),

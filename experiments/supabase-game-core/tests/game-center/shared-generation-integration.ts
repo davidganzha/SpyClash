@@ -38,11 +38,11 @@ const command = (overrides: Record<string, unknown> = {}) => ({
   service: 'legacy', action: 'generate', theme: 'Fruit', count: 2,
   request_id: crypto.randomUUID(), ...overrides,
 });
-const reply = (words: string[]) => Response.json({
+const reply = (words: string[], exhausted = false) => Response.json({
   status: 'completed', output: [{ type: 'message', role: 'assistant', content: [{
     type: 'output_text', text: JSON.stringify({
       draft_words: words, accepted_indices: words.map((_, index) => index),
-      replacement_words: [], accepted_replacement_indices: [], category: 'Words', exhausted: false,
+      replacement_words: [], accepted_replacement_indices: [], category: 'Words', exhausted,
     }),
   }] }],
 });
@@ -97,6 +97,7 @@ try {
     '../../supabase/migrations/20261105224817_rewarded_generation_credits.sql',
     '../../supabase/migrations/20261111184822_rewarded_generation_enrollment.sql',
     '../../supabase/migrations/20261111185732_shared_word_pack_library.sql',
+    '../../supabase/migrations/20261111213606_generation_shared_seed.sql',
   ]) await db.unsafe(await Deno.readTextFile(new URL(file, import.meta.url)));
 
   await check('another account receives a successful charged pack without AI, including prefer_fresh', async () => {
@@ -148,10 +149,137 @@ try {
     const a = await actor(), before = providerCalls;
     const missing = await generate(a, command({ exclude_words: ['APPLE', 'Pear'] }), provider(['Banana', 'Orange']));
     assert.equal(missing.status, 200, JSON.stringify(missing)); assert.equal(missing.body.cache_hit, false);
-    assert.deepEqual(missing.body.words, ['Banana', 'Orange']); assert.equal(providerCalls, before + 1);
+    assert.deepEqual(missing.body.words, ['Plum', 'Banana']); assert.equal(providerCalls, before + 1);
     const hit = await generate(await actor(), command({ exclude_words: ['Apple', 'Banana', 'Orange'] }), forbiddenProvider);
     assert.equal(hit.status, 200, JSON.stringify(hit)); assert.equal(hit.body.cache_hit, true);
     assert.deepEqual(new Set(hit.body.words), new Set(['Pear', 'Plum']));
+  });
+
+  await check('larger requests preserve the first 30 names and request the minimum two additions for one missing slot', async () => {
+    const first = await actor(), second = await actor(), theme = 'Constellations';
+    const names = Array.from({ length: 30 }, (_, index) => `Constellation ${index}`);
+    assert.equal((await generate(first, command({ theme, count: 30 }), provider(names))).status, 200);
+    let prompt = '', requested = 0;
+    const topUp: typeof fetch = async (_url, init) => {
+      providerCalls++;
+      const input = JSON.parse(String(init?.body));
+      prompt = input.input[0].content;
+      requested = input.text.format.schema.properties.draft_words.maxItems;
+      return reply(['Constellation 30', 'Constellation 31']);
+    };
+    const body = command({ theme, count: 31 }), before = providerCalls;
+    const larger = await generate(second, body, topUp);
+    assert.equal(larger.status, 200, JSON.stringify(larger));
+    assert.deepEqual(larger.body.words, [...names, 'Constellation 30']);
+    assert.equal(requested, 2); assert.ok(prompt.includes(JSON.stringify(names)));
+    assert.equal(larger.body.cache_hit, false); assert.equal(await used(second), 1);
+    assert.deepEqual(await generate(second, body, forbiddenProvider), larger);
+    assert.equal(providerCalls, before + 1); assert.equal(await used(second), 1);
+  });
+
+  await check('partial top-up retains five names and honors 200 original exclusions', async () => {
+    const theme = 'Garden flowers', names = ['Rose', 'Lily', 'Daisy', 'Tulip', 'Poppy'];
+    assert.equal((await generate(await actor(), command({ theme, count: 5 }), provider(names))).status, 200);
+    const exclusions = Array.from({ length: 200 }, (_, index) => `Used ${index}`);
+    const response = await generate(await actor(), command({ theme, count: 7, exclude_words: exclusions }), async (_url, init) => {
+      const input = JSON.parse(String(init?.body));
+      assert.equal(input.text.format.schema.properties.draft_words.maxItems, 2);
+      assert.ok(input.input[0].content.includes(JSON.stringify([...exclusions, ...names])));
+      return reply(['Violet', 'Iris']);
+    });
+    assert.equal(response.status, 200, JSON.stringify(response));
+    assert.deepEqual(response.body.words, [...names, 'Violet', 'Iris']);
+  });
+
+  await check('paid top-up recovery uses frozen seed after shared stock expires without a second provider call', async () => {
+    const theme = 'Tree species', names = ['Oak', 'Ash', 'Pine', 'Birch', 'Maple'];
+    assert.equal((await generate(await actor(), command({ theme, count: 5 }), provider(names))).status, 200);
+    const a = await actor(), body = command({ theme, count: 7 }), before = providerCalls;
+    let failures = 1;
+    const broken = failSQL(db, 'word_pack_library_publish', () => failures-- > 0);
+    const failed = await generate(a, body, provider(['Willow', 'Cedar']), config, broken);
+    assert.equal(failed.status, 503); assert.equal(failed.body.code, 'generation_persistence_retry');
+    const [pending] = await db`select state,result,seed_words from game_center_private.generation_requests where user_id=${a.id} and request_id=${body.request_id}`;
+    assert.equal(pending.result, null); assert.deepEqual(pending.seed_words, names);
+    await db`update public.word_pack_library_variants set generated_at=clock_timestamp()-interval '2 days',expires_at=clock_timestamp()-interval '1 day' where words @> '["Oak"]'::jsonb`;
+    const recovered = await generate(a, body, forbiddenProvider);
+    assert.equal(recovered.status, 200, JSON.stringify(recovered));
+    assert.deepEqual(recovered.body.words, [...names, 'Willow', 'Cedar']);
+    assert.equal(providerCalls, before + 1); assert.equal(await used(a), 1);
+    assert.equal('seed_words' in recovered.body, false);
+  });
+
+  await check('a legacy paid top-up still replays its frozen inputs when the shared rollout is disabled', async () => {
+    const theme = 'Mountain ranges', names = ['Alps', 'Andes'];
+    const legacy = { ...config, SPYCLASH_REWARDED_GENERATION_ENABLED: 'false' };
+    assert.equal((await generate(await actor(false), command({ theme }), provider(names), legacy)).status, 200);
+    const a = await actor(false), body = command({ theme, count: 4 }), before = providerCalls;
+    let failures = 1;
+    const broken = failSQL(db, 'word_pack_library_publish', () => failures-- > 0);
+    const failed = await generate(a, body, provider(['Himalayas', 'Rockies']), legacy, broken);
+    assert.equal(failed.status, 503); assert.equal(failed.body.code, 'generation_persistence_retry');
+    const disabled = { ...legacy, SPYCLASH_SHARED_WORD_PACKS_ENABLED: 'false' };
+    const recovered = await generate(a, body, forbiddenProvider, disabled);
+    assert.equal(recovered.status, 200, JSON.stringify(recovered));
+    assert.deepEqual(recovered.body.words, [...names, 'Himalayas', 'Rockies']);
+    assert.equal(providerCalls, before + 1); assert.equal(await used(a), 1);
+  });
+
+  await check('prior-version paid requests replay original full-count inputs without republishing obsolete quality', async () => {
+    const theme = 'Historic ships', a = await actor(), body = command({ theme }), before = providerCalls;
+    let failures = 1;
+    const broken = failSQL(db, 'word_pack_library_publish', () => failures-- > 0);
+    const failed = await generate(a, body, provider(['Victory', 'Cutty Sark']), config, broken);
+    assert.equal(failed.status, 503);
+    // A pre-upgrade provider journal has no seed column value. Its input was
+    // the original full-count request, and its result may use older quality.
+    await db`update game_center_private.generation_requests set seed_words=null where user_id=${a.id} and request_id=${body.request_id}`;
+    let completionFailures = 1;
+    const brokenCompletion = failSQL(db, "set state='complete',result", () => completionFailures-- > 0);
+    const deferred = await generate(a, body, forbiddenProvider, config, brokenCompletion);
+    assert.equal(deferred.status, 503);
+    const [pending] = await db`select seed_words from game_center_private.generation_requests where user_id=${a.id} and request_id=${body.request_id}`;
+    assert.equal(pending.seed_words, null);
+    const recovered = await generate(a, body, forbiddenProvider);
+    assert.equal(recovered.status, 200, JSON.stringify(recovered));
+    assert.deepEqual(recovered.body.words, ['Victory', 'Cutty Sark']);
+    assert.equal(providerCalls, before + 1); assert.equal(await used(a), 1);
+    const [published] = await db`select count(*)::int as count from public.word_pack_library_variants where words @> '["Cutty Sark"]'::jsonb`;
+    assert.equal(published.count, 0);
+  });
+
+  await check('exhausted top-ups keep existing names and verify only the remaining unseen items', async () => {
+    const theme = 'Primary additive colors', names = ['Red', 'Green'];
+    assert.equal((await generate(await actor(), command({ theme }), provider(names))).status, 200);
+    let calls = 0;
+    const expanded = await generate(await actor(), command({ theme, count: 5 }), async (_url, init) => {
+      const input = JSON.parse(String(init?.body));
+      const prompt = input.input[0].content;
+      calls++;
+      assert.ok(prompt.includes(JSON.stringify(calls === 1 ? names : [...names, 'Blue'])));
+      return reply(calls === 1 ? ['Blue'] : [], true);
+    });
+    assert.equal(expanded.status, 200, JSON.stringify(expanded));
+    assert.deepEqual(expanded.body.words, [...names, 'Blue']);
+    assert.equal(expanded.body.exhausted, true); assert.equal(calls, 2);
+    const hit = await generate(await actor(), command({ theme, count: 5 }), forbiddenProvider);
+    assert.equal(hit.status, 200); assert.deepEqual(hit.body.words, [...names, 'Blue']);
+    assert.equal(hit.body.exhausted, true); assert.equal(hit.body.cache_hit, true);
+  });
+
+  await check('unspent partial requests may recover from newly completed stock without provider configuration', async () => {
+    const theme = 'Gemstones', names = ['Ruby', 'Emerald'];
+    assert.equal((await generate(await actor(), command({ theme }), provider(names))).status, 200);
+    const a = await actor(), body = command({ theme, count: 4 }), noProvider = { ...config, OPENAI_API_KEY: '' };
+    const failed = await generate(a, body, forbiddenProvider, noProvider);
+    assert.equal(failed.status, 503); assert.equal(failed.body.code, 'native_generation_unconfigured');
+    assert.equal(await used(a), 0);
+    const filled = await generate(await actor(), command({ theme, count: 4 }), provider(['Sapphire', 'Diamond']));
+    assert.equal(filled.status, 200, JSON.stringify(filled));
+    const recovered = await generate(a, body, forbiddenProvider, noProvider);
+    assert.equal(recovered.status, 200, JSON.stringify(recovered));
+    assert.deepEqual(recovered.body.words, [...names, 'Sapphire', 'Diamond']);
+    assert.equal(recovered.body.cache_hit, true); assert.equal(await used(a), 1);
   });
 
   await check('database lookup failure never starts AI and refunds a reserved bonus', async () => {

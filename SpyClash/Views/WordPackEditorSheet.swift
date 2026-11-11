@@ -657,7 +657,7 @@ struct WordPackEditorSheet: View {
 
             addWordsField
 
-            Text(copy.wordsInputHint)
+            Text(wordsInputHint)
                 .font(SpyTheme.micro)
                 .foregroundStyle(SpyTheme.muted)
 
@@ -738,6 +738,7 @@ struct WordPackEditorSheet: View {
                 .onSubmit { addEnteredWords() }
                 .padding(.leading, 12)
                 .accessibilityLabel(addWordsLabel)
+                .accessibilityHint(wordsInputHint)
                 .accessibilityIdentifier("wordPacks.editor.addWordsInput")
 
             Button {
@@ -749,7 +750,7 @@ struct WordPackEditorSheet: View {
                     .frame(width: 48, height: 48)
             }
             .buttonStyle(SpyWebPressStyle())
-            .disabled(WordPackDraftNormalizer.analyzeWords(newWordsInput).words.isEmpty)
+            .disabled(draft.analyzeInput(newWordsInput).words.isEmpty)
             .accessibilityLabel(addWordsLabel)
             .accessibilityIdentifier("wordPacks.editor.addWords")
         }
@@ -772,6 +773,16 @@ struct WordPackEditorSheet: View {
         case .ru: "Нажми × у слова, чтобы удалить его из пака. Сохрани изменения."
         case .es: "Toca × en una palabra para eliminarla del paquete. Guarda los cambios."
         case .uk: "Натисни × біля слова, щоб видалити його з паку. Збережи зміни."
+        }
+    }
+
+    private var wordsInputHint: String {
+        guard draft.preservesWordPunctuation else { return copy.wordsInputHint }
+        switch appState.language {
+        case .en: return "Add words or names one at a time. Commas stay within a name."
+        case .ru: return "Добавляй слова или имена по одному. Запятые остаются частью имени."
+        case .es: return "Añade palabras o nombres de uno en uno. Las comas se conservan dentro del nombre."
+        case .uk: return "Додавай слова або імена по одному. Коми залишаються частиною імені."
         }
     }
 

@@ -1,0 +1,222 @@
+Check base44/tests/word-pack-provider-parity_test.ts
+Check base44/functions/generateWordPack/ai-provider-resilience_test.ts
+Check base44/functions/generateWordPack/billing-identity-lifecycle_test.ts
+Check base44/functions/generateWordPack/content-safety_test.ts
+Check base44/functions/generateWordPack/generation-cache_test.ts
+Check base44/functions/generateWordPack/generation-idempotency_test.ts
+Check base44/functions/generateWordPack/generation-operation_test.ts
+Check base44/functions/generateWordPack/generation-retry-contract_test.ts
+Check base44/functions/generateWordPack/generation-rewards_test.ts
+Check base44/functions/generateWordPack/generation-write-lifecycle_test.ts
+Check base44/functions/generateWordPack/main-operation_test.ts
+Check base44/functions/generateWordPack/membership_test.ts
+Check base44/functions/generateWordPack/openai-word-pack-provider_test.ts
+Check base44/functions/generateWordPack/quota_test.ts
+Check base44/functions/generateWordPack/shared-word-pack-library_test.ts
+Check base44/functions/generateWordPack/shared-word-pack-rest_test.ts
+Check base44/functions/generateWordPack/word-normalization_test.ts
+Check base44/functions/generateWordPack/word-pack-quality_test.ts
+running 1 test from ./base44/tests/word-pack-provider-parity_test.ts
+legacy, native relay, and native direct generation share identical naming and cache policy ... ok (13ms)
+running 5 tests from ./base44/functions/generateWordPack/ai-provider-resilience_test.ts
+AI provider retries 503 twice and succeeds on the third attempt ... ok (10ms)
+exhausted transient failures throw a sanitized provider error ... ok (0ms)
+non-retryable HTTP errors preserve the original error ... ok (0ms)
+transient classification accepts provider status shapes and transport messages ... ok (0ms)
+custom retry delays and callback metadata are deterministic ... ok (0ms)
+running 7 tests from ./base44/functions/generateWordPack/billing-identity-lifecycle_test.ts
+writer lease blocks deletion and initializes protected lifecycle ... ok (12ms)
+deleting state blocks writers and permits deletion retry after lease expiry ... ok (0ms)
+lost writer response and unreadable reconciliation clear unpublished acquisition ... ok (0ms)
+inactive duplicate initialization rows converge deterministically ... ok (10ms)
+live or deleting duplicate rows fail closed ... ok (0ms)
+client-writable User mirror cannot alter protected lifecycle ... ok (0ms)
+suspended writer cannot persist after lease expiry and deletion takeover ... ok (0ms)
+running 3 tests from ./base44/functions/generateWordPack/content-safety_test.ts
+AI pack safety catches zalup variants ... ok (12ms)
+AI word-pack input rejects objectionable themes before generation ... ok (0ms)
+AI word-pack output removes unsafe words and replaces unsafe category ... ok (0ms)
+running 9 tests from ./base44/functions/generateWordPack/generation-cache_test.ts
+cache keys exactly normalize user, theme, language, and prompt version ... ok (10ms)
+canonical-name generation bypasses older split-item and whole-item caches ... ok (0ms)
+legacy theme-auto cache cannot collide with an explicit English locale ... ok (0ms)
+telemetry dimensions expose only a per-user theme hash ... ok (0ms)
+cache retains multiple variants and applies TTL and exclusions on read ... ok (0ms)
+identical cache content is deduplicated without replacing other variants ... ok (0ms)
+an exhausted playable partial is a hit and prevents a futile refill ... ok (0ms)
+cache drops oversized generated words before persistence ... ok (0ms)
+cache prune physically removes only expired rows for the user ... ok (0ms)
+running 9 tests from ./base44/functions/generateWordPack/generation-idempotency_test.ts
+idempotency outage error is sanitized and retryable ... ok (6ms)
+idempotency key is user plus opaque request_id and fingerprint binds inputs ... ok (2ms)
+successful result replays exactly, including exhausted, without a second row ... ok (0ms)
+unexpired request_id reuse with different inputs fails closed ... ok (0ms)
+expired idempotency rows no longer replay or conflict ... ok (0ms)
+duplicate equivalent rows converge on the oldest completed result ... ok (0ms)
+lookup cannot hide a new active replay behind expired history ... ok (0ms)
+idempotency prune physically removes only expired rows for the user ... ok (0ms)
+cache-quality migration preserves historical replay identity without relaxing input binding ... ok (1ms)
+running 15 tests from ./base44/functions/generateWordPack/generation-operation_test.ts
+durable generation commits running before effects and replays the exact completed result ... ok (8ms)
+a killed invocation cannot rerun effects after the account lease and old result TTL expire ... ok (0ms)
+crash before running marker permits one exact-token takeover without effects from old owner ... ok (0ms)
+lost create and running-CAS responses reconcile without creating or executing twice ... ok (0ms)
+failed running confirmation prevents effects and leaves a durable unknown outcome ... ok (0ms)
+failed running CAS before commit allows a later prepared takeover ... ok (0ms)
+lost completion acknowledgement and transient reconciliation read never repeat execution ... ok (0ms)
+exhausted completion writes fail closed and never rerun effects ... ok (0ms)
+non-successful generation response is terminal for this request identity ... ok (0ms)
+duplicate rows, conflicting input, malformed success and wrong owners block provider work ... ok (0ms)
+the same request id with changed count or exclusions is rejected ... ok (0ms)
+replacement owner winning the running CAS prevents the losing caller from executing ... ok (0ms)
+account deletion boundary failure prevents journal creation and provider work ... ok (0ms)
+confirmed legacy replay preserves valid words when journal completion storage is unavailable ...
+------- post-test output -------
+generateWordPack journal completion deferred; replay result committed
+----- post-test output end -----
+confirmed legacy replay preserves valid words when journal completion storage is unavailable ... ok (0ms)
+journal result replay does not depend on legacy result retention or another store ... ok (0ms)
+running 17 tests from ./base44/functions/generateWordPack/generation-retry-contract_test.ts
+only validated pre-effect active_lease gets an automatic retry proof ... ok (9ms)
+only validated pre-effect cas_contention gets an automatic retry proof ... ok (0ms)
+only validated pre-effect typed shared_library_busy gets a 503 retry proof ... ok (0ms)
+only validated pre-effect typed shared_library_unavailable gets a 503 retry proof ... ok (0ms)
+configuration and unknown library errors never receive an automatic retry proof ... ok (0ms)
+validated request identity cannot override an explicit unsafe lifecycle decision ... ok (0ms)
+deletion, forged codes and unrelated errors cannot acquire a pre-effect proof ... ok (0ms)
+invalid request IDs cannot bind the server retry proof ... ok (0ms)
+failed write acquisition is safe but a failed write response is ambiguous ... ok (0ms)
+provider acquisition failure is safe before any provider or quota work ... ok (0ms)
+reserved quota and failed rollback cannot become safe to retry ... ok (0ms)
+second AI pass conflict does not authorize replaying the first provider call ... ok (0ms)
+unknown provider outcome and a crash before result persistence remain non-retryable ... ok (0ms)
+result commit followed by unreadable receipt does not issue a retry proof ... ok (0ms)
+concurrent same-ID generation replays its receipt with one quota reservation and provider call ... ok (1ms)
+simultaneous invocation trackers do not share effect state ... ok (0ms)
+handler binds validated identity and tracks both providers and all guarded writes ... ok (0ms)
+running 9 tests from ./base44/functions/generateWordPack/generation-rewards_test.ts
+reward preparation retries a lost create acknowledgement without duplicate attempt ... ok (14ms)
+previously issued unnamespaced attempt remains recoverable and earns once ... ok (0ms)
+verified reward duplicate and lost write acknowledgement mint one credit ... ok (0ms)
+reward rejects other owner, token, ad unit, amount, item and impossible event time ... ok (0ms)
+late delivery grants earned credit without imposing credit expiration ... ok (0ms)
+credit reservation is exclusive and definitive failure refunds once across lost ACK ... ok (0ms)
+successful credit spend cannot be refunded by stale failure or duplicate callback ... ok (0ms)
+status has exactly three daily free attempts and separate persistent bonus ... ok (0ms)
+disabled rollout never reads new storage or enables advertising ... ok (0ms)
+running 11 tests from ./base44/functions/generateWordPack/generation-write-lifecycle_test.ts
+generation retries transient active_lease before running its action ... ok (6ms)
+generation retries transient cas_contention before running its action ... ok (0ms)
+generation stops after bounded transient lease retries ... ok (0ms)
+late generation active_lease cannot replay charged quota and provider work ... ok (0ms)
+late generation cas_contention cannot replay charged quota and provider work ... ok (0ms)
+generation acquisition preserves an explicit non-retryable lifecycle decision ... ok (0ms)
+generation does not retry account deletion in progress ... ok (0ms)
+provider work does not retain the shared account writer lease ... ok (0ms)
+committed generation survives transient lease release failures ... ok (0ms)
+exhausted lease release never replaces a committed result ... ok (0ms)
+action error remains authoritative when lease release also fails ... ok (0ms)
+running 1 test from ./base44/functions/generateWordPack/main-operation_test.ts
+actual generation handler preserves durable operation recovery across SDK HTTP boundaries ...
+  successful generation journals before quota/provider and replay adds no effects ... ok (14ms)
+  historical whole-items-v2 legacy-completed request survives cache version migration ... ok (4ms)
+  historical whole-items-v2 completed request survives cache version migration ... ok (6ms)
+  historical whole-items-v2 running request survives cache version migration ... ok (2ms)
+  historical whole-items-v2 prepared request survives cache version migration ... ok (5ms)
+  generation and durable replay preserve commas and semicolons within each AI entry ... ok (3ms)
+  shared hit is a successful charged generation even with prefer_fresh, and replay is free ... ok (7ms)
+  each independent shared hit consumes a point and cached words do not bypass an exhausted balance ... ok (16ms)
+  shared hit spends an earned bonus once after daily points are exhausted ... ok (4ms)
+  a generated pack is reused by another account with a separate successful charge ... ok (8ms)
+  larger requests retain every existing name and generate only the missing words ... ok (9ms)
+  top-up removes excluded stock and supports the full public exclusion allowance ... ok (9ms)
+  library outage stops before journal, point reservation and model, then the same request recovers ... ok (6ms)
+  another topic producer causes a retryable response without a point charge ... ok (3ms)
+  library publication failure preserves a charged durable success and replay does not regenerate ... ok (3ms)
+  unknown provider outcome keeps its topic lease so another account cannot duplicate paid work ... ok (9ms)
+  disabled reward rollout preserves live unlimited access with the global LIMITLESS flag enabled ... ok (2ms)
+  lost provider result leaves running and retry cannot call provider or reserve quota again ... ok (2ms)
+  lost running confirmation stops before quota/provider and later retry remains blocked ... ok (2ms)
+  lost completion response reconciles the exact committed result ... ok (3ms)
+  completed journal serves exact words during old replay-store outage or expiry ... ok (8ms)
+  old durable result remains replayable if journal lookup is unavailable ... ok (3ms)
+  unavailable recovery stores fail before quota or provider ... ok (1ms)
+  completion outage preserves confirmed legacy result without repeating generation ... ok (3ms)
+  failed result persistence after provider cannot authorize a second execution ... ok (4ms)
+  loseLegacyCreateResponseOnce does not claim confirmed success but later replays the saved result ... ok (5ms)
+  failLegacyConfirmationOnce does not claim confirmed success but later replays the saved result ... ok (2ms)
+  reused identity with a changed count remains a conflict ... ok (3ms)
+  deletion during provider latency prevents late journal or replay-result recreation ... ok (2ms)
+actual generation handler preserves durable operation recovery across SDK HTTP boundaries ... ok (176ms)
+running 6 tests from ./base44/functions/generateWordPack/membership_test.ts
+legacy free is capped while CASADA generation is unlimited ... ok (5ms)
+CASADA removes the generator limit without inventing a provider ... ok (0ms)
+generation membership trusts only a valid provider entitlement ... ok (0ms)
+usage metadata preserves legacy free fields and CASADA is unlimited ... ok (0ms)
+newer revocation wins over a duplicate active provider row ... ok (0ms)
+admin grant receives unlimited generation policy ... ok (0ms)
+running 18 tests from ./base44/functions/generateWordPack/openai-word-pack-provider_test.ts
+word-pack intent recognizes named themes without overriding explicit type themes ... ok (10ms)
+word-pack language always follows theme wording and ignores client locale ... ok (0ms)
+word-pack prompt requires exact named entities instead of adjacent terms ... ok (0ms)
+canonical entity names and alias exclusions apply beyond named-theme heuristics ... ok (0ms)
+provider keeps comma-bearing boss names as complete response entries ... ok (2ms)
+local named-theme guard blocks the screenshot drift without rejecting direct themes ... ok (2ms)
+environment factory is opt-in when OPENAI_API_KEY is absent ... ok (0ms)
+provider sends strict Responses API JSON schema and returns typed result ... ok (0ms)
+provider schema accepts direct fictional character names for an explicit named theme ... ok (0ms)
+direct provider applies exclusions before accepting audited replacements ... ok (0ms)
+environment overrides model and endpoint without changing the API key contract ... ok (0ms)
+HTTP failures expose only sanitized retry metadata ... ok (0ms)
+quota exhaustion is sanitized and not marked retryable ... ok (0ms)
+structured refusals never leak provider refusal text ... ok (0ms)
+parser rejects an inconsistent exhausted result ... ok (0ms)
+parser rejects oversized generated text ... ok (0ms)
+provider accepts bounded public exclusions plus retained words and rejects overflow ... ok (0ms)
+invalid input and transport errors are bounded and sanitized ... ok (0ms)
+running 4 tests from ./base44/functions/generateWordPack/quota_test.ts
+quota keys are scoped to authenticated user and UTC date ... ok (5ms)
+duplicate quota rows are summed fail-closed ... ok (0ms)
+canonical quota record is deterministic ... ok (0ms)
+canonical quota record breaks identical timestamps by id ... ok (0ms)
+running 11 tests from ./base44/functions/generateWordPack/shared-word-pack-library_test.ts
+shared library is explicit opt-in and keys have no account scope ... ok (8ms)
+shared records retain only reusable words and keyed dimensions ... ok (0ms)
+a second request reuses existing words without an owner requirement ... ok (0ms)
+selection combines partial usable stock and removes duplicate and excluded words ... ok (0ms)
+one surviving word per variant can combine into a complete native pack ... ok (0ms)
+insufficient stock is a miss unless exact exclusions have verified exhaustion ... ok (0ms)
+expired, future, malformed and wrong-version records cannot supply hits ... ok (0ms)
+bounded backend clock skew does not hide a newly published pack ... ok (0ms)
+unsafe and known drifting words do not become reusable content ... ok (0ms)
+publication rejects incomplete generated packs and accepts native two-word requests ... ok (0ms)
+validated incomplete stock survives as seed without masquerading as a complete result ... ok (0ms)
+running 14 tests from ./base44/functions/generateWordPack/shared-word-pack-rest_test.ts
+shared REST uses server-only RPC and modern secret header without a JWT bearer ... ok (10ms)
+shared REST supports legacy service-role JWT in both required headers ... ok (0ms)
+shared REST works with Workers redirect modes and rejects redirects without forwarding credentials ... ok (0ms)
+shared REST rejects unconfigured or unsafe destinations before any request ... ok (0ms)
+transport, timeout, HTTP and malformed read failures never authorize a cache miss ... ok (0ms)
+shared REST distinguishes false claims from malformed boolean responses ... ok (0ms)
+shared preflight hit returns stock without a topic lease ... ok (0ms)
+shared preflight rereads under its claim before authorizing provider work ... ok (0ms)
+a result published during claim acquisition suppresses provider work ... ok (0ms)
+another worker's claim yields retryable busy without releasing its lease ... ok (0ms)
+failed reread releases only the owned topic lease and remains an error ... ok (0ms)
+cleanup response loss cannot invalidate a hit or confirmed miss ... ok (0ms)
+partial stock requires a lease and only the reread supplies retained words ... ok (0ms)
+partial stock never bypasses a busy lease or failed confirming read ... ok (0ms)
+running 2 tests from ./base44/functions/generateWordPack/word-normalization_test.ts
+structured boss names preserve punctuation instead of becoming extra words ... ok (12ms)
+normalization deduplicates whole entries without changing internal punctuation ... ok (0ms)
+running 7 tests from ./base44/functions/generateWordPack/word-pack-quality_test.ts
+single-pass quality audit keeps accepted drafts in order and appends replacements ... ok (6ms)
+single-pass quality audit deduplicates replacements before enforcing count ... ok (0ms)
+single-pass quality audit never re-accepts a rejected draft as a replacement ... ok (0ms)
+single-pass quality audit excludes forbidden draft and replacement words ... ok (0ms)
+single-pass quality schema binds draft, audit, replacements and exhaustion ... ok (0ms)
+single-pass quality gate fails closed on invalid or incomplete audits ... ok (0ms)
+single-pass quality gate permits a truthful exhausted short pack ... ok (0ms)
+
+ok | 149 passed (29 steps) | 0 failed (977ms)
+

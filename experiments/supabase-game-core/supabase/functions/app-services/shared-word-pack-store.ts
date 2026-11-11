@@ -1,6 +1,6 @@
 import { AppServiceError } from './contracts.ts';
 import {
-  selectSharedWordPackHit,
+  selectSharedWordPackStock,
   type SharedWordPackRequest,
   type SharedWordPackVariant,
 } from './word-generation/shared-word-pack-library.ts';
@@ -19,7 +19,7 @@ export function createSharedWordPackSQLStore(db: any) {
       try {
         const [row] = await db`select public.word_pack_library_read(${request.cacheKey}) as records`;
         if (!row || !Array.isArray(row.records)) throw unavailable();
-        return await selectSharedWordPackHit({ request, records: row.records });
+        return await selectSharedWordPackStock({ request, records: row.records });
       } catch { throw unavailable(); }
     },
     async claim(cacheKey: string, token: string): Promise<boolean> {

@@ -4,6 +4,69 @@ import XCTest
 
 @MainActor
 final class Base44ClientRoomActionTests: XCTestCase {
+    func testGeneratedBossNamesKeepCommasThroughPackSaveReopenAndUpdate() async throws {
+        let bossNames = [
+            "Маления, Клинок Микеллы",
+            "Астель, Рожденный Бездной",
+            "Двое из божественной кожи"
+        ]
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url), statusCode: 200, httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            if request.url?.lastPathComponent == "generateWordPack" {
+                let generated: [String: Any] = [
+                    "name": "Боссы Elden Ring", "category": "Elden Ring", "words": bossNames
+                ]
+                return (response, try JSONSerialization.data(withJSONObject: generated))
+            }
+            let body = try XCTUnwrap(recorder.requestBodies().last)
+            let saved: [String: Any] = [
+                "id": "boss-pack",
+                "name": try XCTUnwrap(body["name"] as? String),
+                "category": try XCTUnwrap(body["category"] as? String),
+                "words": try XCTUnwrap(body["words"] as? [String])
+            ]
+            return (response, try JSONSerialization.data(withJSONObject: saved))
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = makeClient()
+        let generated = try await client.generateWordPack(
+            theme: "Боссы Elden Ring", count: 10, requestID: UUID()
+        )
+        XCTAssertEqual(generated.words, bossNames)
+
+        var draft = WordPackDraft()
+        draft.applyGenerated(generated, fallbackName: "Боссы Elden Ring")
+        let saved = try await client.createWordPack(
+            name: draft.normalizedName, category: draft.normalizedCategory,
+            words: draft.wordAnalysis.words, ownerEmail: "test@example.com"
+        )
+        XCTAssertEqual(saved.words, bossNames)
+
+        var reopened = WordPackDraft(pack: saved)
+        reopened.addWords("  Маления, Клинок Микеллы  \nГодфри, первый повелитель Элдена")
+        let expectedUpdatedWords = bossNames + ["Годфри, первый повелитель Элдена"]
+        XCTAssertEqual(reopened.wordAnalysis.duplicateCount, 1)
+        let updated = try await client.updateWordPack(
+            pack: saved, name: reopened.normalizedName, category: reopened.normalizedCategory,
+            words: reopened.wordAnalysis.words
+        )
+        XCTAssertEqual(updated.words, expectedUpdatedWords)
+        XCTAssertEqual(WordPackDraft(pack: updated).wordAnalysis.words, expectedUpdatedWords)
+
+        let bodies = try recorder.requestBodies()
+        XCTAssertEqual(bodies.count, 3)
+        XCTAssertEqual(bodies[1]["action"] as? String, "create")
+        XCTAssertEqual(bodies[1]["words"] as? [String], bossNames)
+        XCTAssertEqual(bodies[2]["action"] as? String, "update")
+        XCTAssertEqual(bodies[2]["words"] as? [String], expectedUpdatedWords)
+    }
+
     func testExpiredQueuedCommandNeverSendsAndNextCommandCanProceed() async throws {
         let queue = RoomMutationQueue()
         let owner = try await queue.acquire()

@@ -283,10 +283,72 @@ Deno.test("word-pack prompt requires exact named entities instead of adjacent te
   assertEquals(BASE44_WORD_PACK_MODEL, "gpt_5_4");
   assertEquals(
     WORD_PACK_CACHE_VERSION,
-    "word-pack-2026-08-29-v5-gpt_5_4-whole-items-v2",
+    "word-pack-2026-08-29-v5-gpt_5_4-canonical-names-v3",
   );
   assert(WORD_PACK_SCHEMA_DESCRIPTION.includes("exact requested theme"));
   assert(!WORD_PACK_SCHEMA_DESCRIPTION.toLowerCase().includes("spyfall"));
+});
+
+Deno.test("canonical entity names and alias exclusions apply beyond named-theme heuristics", () => {
+  for (
+    const theme of [
+      "Боссы Elden Ring",
+      "Elden Ring bosses",
+      "Jefes de Elden Ring",
+      "Боси Elden Ring",
+    ]
+  ) {
+    const prompt = buildWordPackPrompt({
+      theme,
+      count: 5,
+      alreadyUsed: ["Двое из кожи богов", "Маления, Клинок Микеллы"],
+    });
+    assert(prompt.includes("established official localization"));
+    assert(
+      prompt.includes(
+        "preserve the original official spelling instead of inventing",
+      ),
+    );
+    assert(
+      prompt.includes(
+        "one established canonical name for each distinct entity",
+      ),
+    );
+    assert(prompt.includes("compare entity identity as well as spelling"));
+    assert(prompt.includes("Exclusions apply to the underlying entities too"));
+    assert(prompt.includes("ONE COMPLETE ITEM"));
+    assert(prompt.includes("Двое из кожи богов"));
+    assert(prompt.includes("Маления, Клинок Микеллы"));
+    assert(
+      wordPackWordsSchemaDescription(theme).includes(
+        "never multiple translations or aliases",
+      ),
+    );
+  }
+});
+
+Deno.test("provider keeps comma-bearing boss names as complete response entries", async () => {
+  const words = [
+    "Маления, Клинок Микеллы",
+    "Астель, Рожденный Бездной",
+    "Двое из кожи богов",
+  ];
+  const provider = createOpenAIWordPackProvider({
+    apiKey: "test-key",
+    fetch: (async () =>
+      completedResponse({
+        words,
+        category: "Боссы Elden Ring",
+        exhausted: false,
+      })) as typeof fetch,
+  });
+  const result = await provider.generate({
+    theme: "Боссы Elden Ring",
+    count: 3,
+  });
+  assertEquals(result.words, words);
+  assertEquals(result.words.length, 3);
+  assertEquals(result.qualityRejectedCount, 0);
 });
 
 Deno.test("local named-theme guard blocks the screenshot drift without rejecting direct themes", () => {
@@ -694,6 +756,57 @@ Deno.test("parser rejects oversized generated text", async () => {
   );
   assertEquals(error.status, 502);
   assertEquals(error.code, "openai_provider_invalid_response");
+});
+
+Deno.test("provider accepts bounded public exclusions plus retained words and rejects overflow", async () => {
+  const publicExclusions = Array.from(
+    { length: 200 },
+    (_, index) => `Used ${index}`,
+  );
+  const retainedWords = Array.from(
+    { length: 99 },
+    (_, index) => `Retained ${index}`,
+  );
+  let calls = 0;
+  let prompt = "";
+  const provider = createOpenAIWordPackProvider({
+    apiKey: "test-key",
+    fetch: (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      calls += 1;
+      const body = JSON.parse(String(init?.body));
+      prompt = body.input[0].content;
+      return completedResponse({
+        words: ["New one", "New two"],
+        category: "Items",
+        exhausted: false,
+      });
+    }) as typeof fetch,
+  });
+  const alreadyUsed = [...publicExclusions, ...retainedWords];
+  const result = await provider.generate({
+    theme: "Items",
+    count: 2,
+    alreadyUsed,
+  });
+  assertEquals(result.words, ["New one", "New two"]);
+  assert(prompt.includes("Used 199"));
+  assert(prompt.includes("Retained 98"));
+  // Exhaustion verification can reach the full internal cap of 300.
+  await provider.generate({
+    theme: "Items",
+    count: 2,
+    alreadyUsed: [...alreadyUsed, "Retained 99"],
+  });
+  assertEquals(calls, 2);
+  const overflow = await rejection(() =>
+    provider.generate({
+      theme: "Items",
+      count: 2,
+      alreadyUsed: [...alreadyUsed, "Retained 99", "Overflow"],
+    })
+  );
+  assertEquals(overflow.status, 400);
+  assertEquals(calls, 2);
 });
 
 Deno.test("invalid input and transport errors are bounded and sanitized", async () => {

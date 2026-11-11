@@ -69,6 +69,52 @@ final class WordPackDraftTests: XCTestCase {
         XCTAssertTrue(draft.isValid)
     }
 
+    func testGeneratedBossNamesRemainWholeWhenRemovedAndAdded() {
+        let malenia = "Маления, Клинок Микеллы"
+        let astel = "Астель, Рожденный Бездной"
+        var draft = WordPackDraft(name: "Manual", wordsText: "Paris,Madrid")
+        draft.applyGenerated(
+            GeneratedWordPack(
+                name: "Боссы Elden Ring", category: "Elden Ring",
+                words: [malenia, astel], aiLimit: nil, aiGenerationsToday: nil
+            ),
+            fallbackName: "Elden Ring"
+        )
+
+        XCTAssertEqual(draft.words, [malenia, astel])
+        XCTAssertTrue(draft.isValid)
+
+        draft.removeWord(malenia)
+        XCTAssertEqual(draft.words, [astel])
+        XCTAssertFalse(draft.isValid, "A name containing a comma is still only one entry")
+        XCTAssertFalse(draft.words.contains("Клинок Микеллы"))
+
+        draft.addWords("  Маления, Клинок Микеллы  \r\nГодфри, первый повелитель Элдена")
+        XCTAssertEqual(draft.words, [astel, malenia, "Годфри, первый повелитель Элдена"])
+        XCTAssertTrue(draft.isValid)
+
+        draft.removeWord(astel)
+        draft.removeWord(malenia)
+        draft.removeWord("Годфри, первый повелитель Элдена")
+        XCTAssertTrue(draft.words.isEmpty)
+        draft.addWords(astel)
+        XCTAssertEqual(draft.words, [astel], "An emptied generated pack must keep its entry format")
+    }
+
+    func testSavedPackPunctuationSurvivesUnrelatedRemovalAndAddition() {
+        let entries = ["Tyler, The Creator", "AC;DC", "Астель, Рожденный Бездной"]
+        var draft = WordPackDraft(pack: WordPack(
+            id: "test", name: "Names", words: entries
+        ))
+        XCTAssertEqual(draft.words, entries)
+
+        draft.removeWord("AC;DC")
+        draft.addWords("  TYLER, The Creator  \nМаления, Клинок Микеллы")
+
+        XCTAssertEqual(draft.words, [entries[0], entries[2], "Маления, Клинок Микеллы"])
+        XCTAssertEqual(draft.wordAnalysis.duplicateCount, 1)
+    }
+
     func testRemovingWordDeletesAllNormalizedDuplicatesFromTheDraft() {
         var draft = WordPackDraft(name: "Cities", wordsText: "Paris\nMadrid\nPARIS\nRome")
 

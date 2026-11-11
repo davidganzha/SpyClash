@@ -2,6 +2,7 @@ import {
   normalizeGeneratedWordPack,
   normalizeWordPackUserID,
   type PreparedWordPackCacheRequest,
+  prepareWordPackCacheRequest,
   type WordPackEntityStore,
   type WordPackResult,
 } from "./generation-cache.ts";
@@ -13,6 +14,10 @@ const CONTROL_CHARACTERS = /[\u0000-\u001F\u007F-\u009F]/u;
 const DAY_MILLISECONDS = 24 * 60 * 60 * 1_000;
 
 export const DEFAULT_WORD_PACK_IDEMPOTENCY_TTL_MILLISECONDS = DAY_MILLISECONDS;
+// Frozen at the deployed request-fingerprint namespace. Cache quality changes
+// must not strand a charged/pending request or turn a replay into a new action.
+export const WORD_PACK_REQUEST_FINGERPRINT_VERSION =
+  "word-pack-2026-08-29-v5-gpt_5_4-whole-items-v2";
 
 export class InvalidWordPackIdempotencyInputError extends Error {
   readonly status = 400 as const;
@@ -130,6 +135,8 @@ export async function prepareWordPackIdempotency(input: {
   userID: unknown;
   requestID: unknown;
   request: PreparedWordPackCacheRequest;
+  /** Server-owned compatibility namespace, never supplied by the caller body. */
+  fingerprintPromptVersion?: string;
 }): Promise<PreparedWordPackIdempotency> {
   const userID = normalizeWordPackUserID(input.userID);
   if (userID !== input.request.userID) {
@@ -142,12 +149,22 @@ export async function prepareWordPackIdempotency(input: {
     "request_id",
     128,
   );
+  const fingerprintRequest = input.fingerprintPromptVersion === undefined
+    ? input.request
+    : await prepareWordPackCacheRequest({
+      userID,
+      theme: input.request.normalizedTheme,
+      language: input.request.languageKey,
+      promptVersion: input.fingerprintPromptVersion,
+      requestedCount: input.request.requestedCount,
+      exclusions: input.request.exclusionKeys,
+    });
   const [requestKey, requestFingerprint] = await Promise.all([
     digestKey("awr1", REQUEST_KEY_DOMAIN, [userID, requestID]),
     digestKey("awf1", REQUEST_FINGERPRINT_DOMAIN, [
-      input.request.cacheKey,
-      String(input.request.requestedCount),
-      ...input.request.exclusionKeys,
+      fingerprintRequest.cacheKey,
+      String(fingerprintRequest.requestedCount),
+      ...fingerprintRequest.exclusionKeys,
     ]),
   ]);
   return {

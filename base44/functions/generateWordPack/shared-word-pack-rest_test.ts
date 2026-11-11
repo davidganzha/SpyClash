@@ -7,7 +7,7 @@ import {
 import {
   buildSharedWordPackVariant,
   prepareSharedWordPackRequest,
-  type SharedWordPackHit,
+  type SharedWordPackStock,
   SharedWordPackLibraryError,
   type SharedWordPackLibraryStore,
 } from "./shared-word-pack-library.ts";
@@ -30,7 +30,8 @@ const record = await buildSharedWordPackVariant({
     exhausted: false,
   },
 });
-const hit: SharedWordPackHit = {
+const hit: SharedWordPackStock = {
+  needsGeneration: false,
   words: record.words,
   exhausted: false,
   variantKey: "local-hit",
@@ -40,7 +41,7 @@ const origin = "https://library.example.test";
 const token = "809f955b-05f8-456a-a4b4-1d70a19b998b";
 
 class Store implements SharedWordPackLibraryStore {
-  reads: (SharedWordPackHit | null | Error)[] = [null, null];
+  reads: (SharedWordPackStock | null | Error)[] = [null, null];
   claimed = true;
   calls: string[] = [];
   claimToken = "";
@@ -314,5 +315,26 @@ Deno.test("cleanup response loss cannot invalidate a hit or confirmed miss", asy
     assertEquals(access.hit, secondRead);
     await access.release();
     assertEquals(store.calls, ["read", "claim", "read", "release"]);
+  }
+});
+
+Deno.test("partial stock requires a lease and only the reread supplies retained words", async () => {
+  const store = new Store();
+  store.reads = [{ ...hit, words: ["Piano"], needsGeneration: true },
+    { ...hit, words: ["Piano", "Guitar"], needsGeneration: true }];
+  const access = await acquireSharedWordPackAccess(store, request);
+  assertEquals(access.hit, null);
+  assertEquals(access.seedWords, ["Piano", "Guitar"]);
+  assertEquals(store.calls, ["read", "claim", "read"]);
+  await access.release();
+});
+
+Deno.test("partial stock never bypasses a busy lease or failed confirming read", async () => {
+  for (const failedRead of [false, true]) {
+    const store = new Store();
+    store.reads = [{ ...hit, words: ["Piano"], needsGeneration: true }, new SharedWordPackLibraryError()];
+    store.claimed = failedRead;
+    await assertRejects(() => acquireSharedWordPackAccess(store, request), SharedWordPackLibraryError);
+    assertEquals(store.calls, failedRead ? ["read", "claim", "read", "release"] : ["read", "claim"]);
   }
 });

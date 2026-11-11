@@ -8,6 +8,7 @@ import {
   buildSharedWordPackVariant,
   prepareSharedWordPackRequest,
   selectSharedWordPackHit,
+  selectSharedWordPackStock,
   SHARED_WORD_PACK_TTL_MILLISECONDS,
   sharedWordPackLibraryEnabled,
   type SharedWordPackRequest,
@@ -236,4 +237,20 @@ Deno.test("publication rejects incomplete generated packs and accepts native two
   assertEquals((await variant(native, ["Apple", "Pear"])).word_count, 2);
   await assertRejects(() => request({ requestedCount: 1 }));
   await assertRejects(() => request({ requestedCount: 101 }));
+});
+
+Deno.test("validated incomplete stock survives as seed without masquerading as a complete result", async () => {
+  const r = await request();
+  const records = [await variant(r)];
+  const bigger = await request({ requestedCount: 7 });
+  const stock = await selectSharedWordPackStock({ request: bigger, records, now: NOW });
+  assertEquals(stock?.words, WORDS);
+  assertEquals(stock?.needsGeneration, true);
+  assertEquals(stock?.exhausted, false);
+  assertEquals(await selectSharedWordPackHit({ request: bigger, records, now: NOW }), null);
+  const one = await selectSharedWordPackStock({ request: await request({ exclusions: WORDS.slice(0, 4) }), records, now: NOW });
+  assertEquals(one?.words, [WORDS[4]]);
+  assertEquals(one?.needsGeneration, true);
+  const expired = await selectSharedWordPackStock({ request: bigger, records, now: new Date(NOW.getTime() + SHARED_WORD_PACK_TTL_MILLISECONDS) });
+  assertEquals(expired, null);
 });

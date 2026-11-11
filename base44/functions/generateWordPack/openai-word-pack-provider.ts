@@ -71,6 +71,9 @@ export type OpenAIWordPackEnvironmentOptions = {
 export const WORD_PACK_SCHEMA_DESCRIPTION =
   "A safe word pool whose items are direct members or examples of the exact requested theme for a social-deduction party game.";
 
+// This base version is also part of the durable native relay input hash.
+// Keep it stable for pending requests; naming-policy revisions invalidate caches
+// through WORD_PACK_CACHE_VERSION below.
 export const WORD_PACK_PROMPT_VERSION = "word-pack-2026-08-29-v5";
 
 // Pin Base44's per-call model so an app-level default change cannot silently
@@ -79,7 +82,7 @@ export const WORD_PACK_PROMPT_VERSION = "word-pack-2026-08-29-v5";
 export const BASE44_WORD_PACK_MODEL = "gpt_5_4" as const;
 
 export const WORD_PACK_CACHE_VERSION =
-  `${WORD_PACK_PROMPT_VERSION}-${BASE44_WORD_PACK_MODEL}-whole-items-v2`;
+  `${WORD_PACK_PROMPT_VERSION}-${BASE44_WORD_PACK_MODEL}-canonical-names-v3`;
 
 export const WORD_PACK_CATEGORY_SCHEMA_DESCRIPTION =
   "A short, faithful display label for the exact requested theme, using the same language as the theme.";
@@ -1073,9 +1076,10 @@ export function assertNoKnownNamedThemeDrift(
 }
 
 export function wordPackWordsSchemaDescription(theme: string): string {
-  return wordPackThemeMode(theme) === "named_entities"
+  const answerType = wordPackThemeMode(theme) === "named_entities"
     ? "Unique items that preserve the exact requested answer type. If and only if the grammatical answer type is the real or fictional entities themselves, use their canonical proper names; otherwise return the exact requested works or items. Never replace connected works or attributes with entity names, and never return adjacent genres, roles, archetypes, tools, or vocabulary."
     : "Unique, concrete, recognizable items that are direct members or examples of the exact requested theme; never merely related or adjacent concepts.";
+  return `${answerType} Each array string is one complete item; preserve punctuation inside names. Use one established name per entity, never multiple translations or aliases of the same entity.`;
 }
 
 export class OpenAIWordPackProviderError extends Error {
@@ -1211,7 +1215,8 @@ function validateInput(input: WordPackGenerationInput) {
     count < 2 ||
     count > 100 ||
     !Array.isArray(alreadyUsed) ||
-    alreadyUsed.length > 200 ||
+    // Public exclusions (200) plus retained library/first-pass words (100).
+    alreadyUsed.length > 300 ||
     alreadyUsed.some((word) =>
       typeof word !== "string" || !word.trim() || word.length > 120
     )
@@ -1230,7 +1235,7 @@ function wordPackPrompt(input: ReturnType<typeof validateInput>): string {
   const exclusions = input.alreadyUsed.length
     ? `\n\nDO NOT repeat any of these already-used items: ${
       JSON.stringify(input.alreadyUsed)
-    }.`
+    }. Exclusions apply to the underlying entities too: do not return another translation, transliteration, nickname, shortened name, or alias of any excluded entity.`
     : "";
   const exactTypeRequirement = wordPackThemeMode(input.theme) ===
       "named_entities"
@@ -1240,7 +1245,7 @@ function wordPackPrompt(input: ReturnType<typeof validateInput>): string {
 - Never substitute adjacent genres, roles, archetypes, occupations, attributes, tools, locations, or vocabulary. For an anime-character theme, labels such as shonen, shojo, seinen, josei, mecha, isekai, swordsman, student, or ninja are invalid. For a rapper theme, microphone, beat, rhyme, studio, or concert are invalid.`
     : `- Every item MUST be a direct member or example of the exact supplied theme. Related objects, genres, roles, settings, attributes, tools, and general vocabulary are invalid unless the theme explicitly asks for them.`;
   const languageRequirement =
-    `- Use the SAME NATURAL LANGUAGE as the wording of the theme input. Infer it from the whole grammatical request, including unaccented Spanish and mixed phrases; never use an app, device, profile, or deprecated client locale to choose the output language. A nationality, country, culture, or medium named by the theme does not choose its language. If the theme contains only a language-neutral proper title, preserve official names and use English only for any unavoidable ordinary terms. Proper names may keep their official spelling or a widely recognized localization/transliteration.`;
+    `- Use the SAME NATURAL LANGUAGE as the wording of the theme input. Infer it from the whole grammatical request, including unaccented Spanish and mixed phrases; never use an app, device, profile, or deprecated client locale to choose the output language. A nationality, country, culture, or medium named by the theme does not choose its language. If the theme contains only a language-neutral proper title, preserve official names and use English only for any unavoidable ordinary terms. For proper names, prefer the established official localization in the theme language. If no official localized name is known, use a widely established name in that language; if that is uncertain, preserve the original official spelling instead of inventing a translation or transliteration.`;
 
   return `You are setting up a social-deduction party game. The exact theme/category is: ${
     JSON.stringify(input.theme)
@@ -1253,6 +1258,9 @@ Requirements:
 ${languageRequirement}
 - Preserve every scope modifier in the theme, including country, era, medium, genre, profession, and requested entity type.
 ${exactTypeRequirement}
+- Whenever the requested items are named entities (including game bosses, characters, groups, works, or products), use one established canonical name for each distinct entity. Never invent literal translations, combine parts from different names, or count aliases and alternate localizations as different items. Keep this naming policy consistent throughout the pack.
+- Each array string is ONE COMPLETE ITEM. Preserve commas, semicolons, apostrophes, and subtitles that belong to its name inside that same string; never split one name into multiple items.
+- During the self-audit, compare entity identity as well as spelling. Reject duplicate entities under different translations, transliterations, shortened names, or aliases, including aliases of excluded entities.
 - Before returning, silently verify every candidate with this test: "Is this item itself a truthful example or member of the exact supplied theme?" Remove any item that only has an association with the theme.
 - Brief names of real people, fictional characters, works, products, brands, and other well-known entities are allowed only when they directly answer the supplied theme. Do not reproduce dialogue, lyrics, plot text, logos, or stylistic imitation.
 - Items must be concrete terms that work as secret words in a party deduction game.

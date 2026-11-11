@@ -64,7 +64,7 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
     if(prior&&await nativeRelayHasUnknownOutcome(tx,input.actor.id,request.request_id)){
       await tx`update game_center_private.generation_requests set state='failed',charged=true,lease_id=null,lease_until=null,error_code='generation_outcome_unknown',updated_at=clock_timestamp()
         where user_id=${input.actor.id} and request_id=${request.request_id}`;
-      return {unknown:true,metered:Boolean(prior.charge_source&&prior.charge_source!=='legacy')};
+      return {unknown:true,metered:Boolean(prior.charge_source&&prior.charge_source!=='legacy'),hasSeedPlan:prior.seed_words!=null};
     }
     const [{today}]=await tx`select (clock_timestamp() at time zone 'UTC')::date::text as today`;
     const unlimited=await nativeGameCenterHasMembership(tx,input.actor.id);
@@ -77,9 +77,10 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
       on conflict(user_id,request_id) do update set state='pending',charged=true,
         usage_date=case when game_center_private.generation_requests.charged then game_center_private.generation_requests.usage_date else excluded.usage_date end,
         lease_id=excluded.lease_id,lease_until=excluded.lease_until,charge_source=excluded.charge_source,error_code=null,updated_at=clock_timestamp()`;
-    return {unlimited,used:used+(keepsCharge?0:1),metered:rewardsEnabled||Boolean(prior?.charged&&prior?.charge_source&&prior.charge_source!=='legacy')};
+    const resumeProvider=Boolean(prior&&(await tx`select 1 from game_center_private.generation_provider_calls where user_id=${input.actor.id} and request_id=${request.request_id} limit 1`).length);
+    return {unlimited,used:used+(keepsCharge?0:1),metered:rewardsEnabled||Boolean(prior?.charged&&prior?.charge_source&&prior.charge_source!=='legacy'),resumeProvider,legacyProviderReplay:resumeProvider&&prior?.seed_words==null};
   });
-  if(reservation.unknown)throw rewardsEnabled||reservation.metered||sharedEnabled?busy():terminalNativeAIOutcome();
+  if(reservation.unknown)throw rewardsEnabled||reservation.metered||sharedEnabled||reservation.hasSeedPlan?busy():terminalNativeAIOutcome();
   if(reservation.result)return evidenceFor(reservation.result);
   let qualityRejected=false;
   let sharedClaimed=false;
@@ -91,18 +92,45 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
     // A library result is a normal, charged generation. Even an explicit
     // regeneration first tries unused words; request replay remains above the
     // reservation and cannot spend another point.
-    let hit=sharedStore&&sharedRequest?await sharedStore.read(sharedRequest):null;
+    let stock=sharedStore&&sharedRequest?await sharedStore.read(sharedRequest):null;
+    // An in-flight request must recover its frozen provider inputs even if
+    // another account has since published a complete pack for this topic.
+    const resuming=reservation.resumeProvider;
+    let hit=!resuming&&stock&&!stock.needsGeneration?stock:null;
     if(sharedStore&&sharedRequest&&!hit){
       sharedClaimed=await sharedStore.claim(sharedRequest.cacheKey,leaseID);
-      hit=await sharedStore.read(sharedRequest);
+      stock=await sharedStore.read(sharedRequest);
+      hit=!resuming&&stock&&!stock.needsGeneration?stock:null;
       if(!hit&&!sharedClaimed)throw new AppServiceError('shared_generation_in_progress','This topic is being prepared. Retry this request shortly.',503,true);
     }
     let words:string[]=hit?.words||[],exhausted=hit?.exhausted||false;
     if(!hit){
+    const retainedWords=sharedEnabled||reservation.resumeProvider?await db.begin(async(tx:any)=>{
+      await requireNative(tx,input.actor.id);
+      const [current]=await tx`select seed_words from game_center_private.generation_requests
+        where user_id=${input.actor.id} and request_id=${request.request_id} and lease_id=${leaseID} and state='pending' and lease_until>clock_timestamp() for update`;
+      if(!current)throw busy();
+      if(reservation.resumeProvider&&current.seed_words!==null){
+        const seedWords=current.seed_words;
+        // Fail closed rather than change inputs for an already paid attempt.
+        const denied=new Set(request.exclude_words.map(wordPackComparisonKey));
+        if(!Array.isArray(seedWords)||seedWords.length>=request.count||
+          seedWords.some((word:unknown)=>typeof word!=='string'||!word.trim()||word.length>120||denied.has(wordPackComparisonKey(word)))||
+          new Set(seedWords.map(wordPackComparisonKey)).size!==seedWords.length)throw busy();
+        return seedWords as string[];
+      }
+      // Prior-version paid attempts used full-count input. Unspent attempts
+      // may replace their seed or use a newly completed library hit on retry.
+      if(reservation.resumeProvider)return [];
+      const seedWords=stock?.words??[];
+      await tx`update game_center_private.generation_requests set seed_words=${tx.json(seedWords)},updated_at=clock_timestamp()
+        where user_id=${input.actor.id} and request_id=${request.request_id} and lease_id=${leaseID} and state='pending'`;
+      return seedWords;
+    }):[];
     if(!nativeGenerationProviderConfigured(input.config))throw new AppServiceError('native_generation_unconfigured','Word generation is not available yet. Try again later.',503,true);
     const provider=input.config.APP_NATIVE_GAME_CENTER_AI_PROVIDER==='base44-managed'
       ?createNativeAIRelayProvider({db,config:input.config,actorID:input.actor.id,requestID:request.request_id,requestHash:hash,leaseID,fetch:dependencies.fetch})
-      :reservation.metered||sharedEnabled?createDurableNativeDirectProvider({db,config:input.config,actorID:input.actor.id,requestID:request.request_id,leaseID,fetch:dependencies.fetch})
+      :reservation.metered||sharedEnabled||reservation.resumeProvider?createDurableNativeDirectProvider({db,config:input.config,actorID:input.actor.id,requestID:request.request_id,leaseID,fetch:dependencies.fetch})
         :createOpenAIWordPackProvider({apiKey:input.config.OPENAI_API_KEY!,model:input.config.SPYCLASH_OPENAI_MODEL,timeoutMilliseconds:45_000,fetch:dependencies.fetch});
     const generate=async(count:number,excluded:string[])=>{
       // Recheck ownership before each external call; never continue provider
@@ -121,8 +149,8 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
         return {...generated,words:safe};
       });
     };
-    const first=await generate(request.count,request.exclude_words);
-    words=first.words;exhausted=first.exhausted&&words.length<request.count;
+    const first=await generate(Math.max(2,request.count-retainedWords.length),[...request.exclude_words,...retainedWords]);
+    words=[...retainedWords,...first.words];exhausted=first.exhausted&&words.length<request.count;
     if(exhausted){
       const second=await generate(Math.max(2,request.count-words.length),[...request.exclude_words,...words]);
       words=[...words,...second.words];exhausted=second.exhausted&&words.length<request.count;
@@ -133,7 +161,7 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
       if(pack.words.length<request.count&&!pack.exhausted)throw new Error('quality');
       return pack;
     });
-    const sharedVariant=sharedRequest&&!hit?await buildSharedWordPackVariant({request:sharedRequest,result:normalized}):null;
+    const sharedVariant=sharedRequest&&!hit&&!reservation.legacyProviderReplay?await buildSharedWordPackVariant({request:sharedRequest,result:normalized}):null;
     let result:any={name:request.theme,...normalized,...(sharedEnabled?{cache_hit:Boolean(hit)}:{}),ai_limit:reservation.unlimited?null:NATIVE_AI_DAILY_LIMIT,
       ai_generations_today:reservation.used,ai_remaining:reservation.unlimited?null:Math.max(0,NATIVE_AI_DAILY_LIMIT-reservation.used)};
     await db.begin(async(tx:any)=>{
@@ -151,8 +179,8 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
     });
     return evidenceFor(result);
   }catch(error){
-    if(input.config.APP_NATIVE_GAME_CENTER_AI_PROVIDER==='base44-managed'||reservation.metered||sharedEnabled){
-      const outcome=await settleNativeRelayFailure(db,input.actor.id,request.request_id,leaseID,qualityRejected,sharedEnabled).catch(()=> 'unknown');
+    if(input.config.APP_NATIVE_GAME_CENTER_AI_PROVIDER==='base44-managed'||reservation.metered||sharedEnabled||reservation.resumeProvider){
+      const outcome=await settleNativeRelayFailure(db,input.actor.id,request.request_id,leaseID,qualityRejected,sharedEnabled||reservation.resumeProvider).catch(()=> 'unknown');
       if(outcome==='unknown'){
         // The external request may still be running. Retain the bounded topic
         // lease so another account cannot immediately start the same paid work.

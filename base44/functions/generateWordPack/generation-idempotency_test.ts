@@ -4,12 +4,14 @@ import {
   assertRejects,
 } from "jsr:@std/assert@1";
 import { prepareWordPackCacheRequest } from "./generation-cache.ts";
+import { WORD_PACK_CACHE_VERSION } from "./openai-word-pack-provider.ts";
 import {
   lookupIdempotentWordPackResult,
   persistIdempotentWordPackResult,
   prepareWordPackIdempotency,
   pruneExpiredWordPackRequestResults,
   selectIdempotentWordPackResult,
+  WORD_PACK_REQUEST_FINGERPRINT_VERSION,
   WordPackIdempotencyConflictError,
   WordPackIdempotencyUnavailableError,
 } from "./generation-idempotency.ts";
@@ -310,4 +312,96 @@ Deno.test("idempotency prune physically removes only expired rows for the user",
     "active-target",
     "expired-other",
   ]);
+});
+
+Deno.test("cache-quality migration preserves historical replay identity without relaxing input binding", async () => {
+  const inputs = {
+    userID: "user-1",
+    theme: "Боссы Elden Ring",
+    language: "und",
+    requestedCount: 5,
+    exclusions: ["Маления, Клинок Микеллы"],
+  };
+  const historical = await prepareWordPackIdempotency({
+    userID: inputs.userID,
+    requestID: "pending-before-upgrade",
+    request: await prepareWordPackCacheRequest({
+      ...inputs,
+      promptVersion: "word-pack-2026-08-29-v5-gpt_5_4-whole-items-v2",
+    }),
+  });
+  const currentRequest = await prepareWordPackCacheRequest({
+    ...inputs,
+    promptVersion: WORD_PACK_CACHE_VERSION,
+  });
+  const prepare = async (overrides: Partial<typeof inputs> = {}) => {
+    const request = await prepareWordPackCacheRequest({
+      ...inputs,
+      ...overrides,
+      promptVersion: WORD_PACK_CACHE_VERSION,
+    });
+    return await prepareWordPackIdempotency({
+      userID: request.userID,
+      requestID: historical.requestID,
+      request,
+      fingerprintPromptVersion: WORD_PACK_REQUEST_FINGERPRINT_VERSION,
+    });
+  };
+  const current = await prepare();
+  assertEquals(current, historical);
+  assertNotEquals(
+    (await prepareWordPackIdempotency({
+      userID: inputs.userID,
+      requestID: historical.requestID,
+      request: currentRequest,
+    })).requestFingerprint,
+    historical.requestFingerprint,
+  );
+  const store = new MockStore();
+  await persistIdempotentWordPackResult({
+    store,
+    identity: historical,
+    now: NOW,
+    result: {
+      category: inputs.theme,
+      words: ["Астель, Рожденный Бездной", "Двое из кожи богов"],
+      exhausted: true,
+    },
+  });
+  assertEquals(
+    (await lookupIdempotentWordPackResult({
+      store,
+      identity: current,
+      now: NOW,
+    }))?.words,
+    ["Астель, Рожденный Бездной", "Двое из кожи богов"],
+  );
+  for (
+    const changed of [
+      { requestedCount: 6 },
+      { theme: "Elden Ring weapons" },
+      { exclusions: ["Двое из кожи богов"] },
+      { language: "en" },
+    ]
+  ) {
+    const conflicting = await prepare(changed);
+    assertEquals(conflicting.requestKey, historical.requestKey);
+    assertNotEquals(
+      conflicting.requestFingerprint,
+      historical.requestFingerprint,
+    );
+    await assertRejects(
+      () =>
+        lookupIdempotentWordPackResult({
+          store,
+          identity: conflicting,
+          now: NOW,
+        }),
+      WordPackIdempotencyConflictError,
+    );
+  }
+  assertNotEquals(
+    (await prepare({ userID: "user-2" })).requestKey,
+    historical.requestKey,
+  );
 });

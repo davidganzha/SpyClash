@@ -63,8 +63,11 @@ export type SharedWordPackHit = {
   expiresAt: string;
 };
 
+/** Validated stock can seed a top-up without being a complete cache hit. */
+export type SharedWordPackStock = SharedWordPackHit & { needsGeneration: boolean };
+
 export interface SharedWordPackLibraryStore {
-  read(request: SharedWordPackRequest): Promise<SharedWordPackHit | null>;
+  read(request: SharedWordPackRequest): Promise<SharedWordPackStock | null>;
   claim(cacheKey: string, token: string): Promise<boolean>;
   publish(record: SharedWordPackVariant, token: string): Promise<boolean>;
   release(cacheKey: string, token: string): Promise<void>;
@@ -196,11 +199,11 @@ export async function buildSharedWordPackVariant(input: {
   };
 }
 
-export async function selectSharedWordPackHit(input: {
+export async function selectSharedWordPackStock(input: {
   request: SharedWordPackRequest;
   records: unknown[];
   now?: Date;
-}): Promise<SharedWordPackHit | null> {
+}): Promise<SharedWordPackStock | null> {
   const now = (input.now ?? new Date()).getTime();
   if (!Number.isFinite(now)) {
     throw new InvalidWordPackCacheInputError("Lookup date is invalid.");
@@ -282,13 +285,13 @@ export async function selectSharedWordPackHit(input: {
     }
     if (words.length >= input.request.requestedCount) break;
   }
-  if (
-    words.length < 2 ||
-    (words.length < input.request.requestedCount && !exactExhaustion)
-  ) return null;
+  if (!words.length) return null;
   return {
     words,
-    exhausted: words.length < input.request.requestedCount,
+    // One surviving word is useful seed stock, but never a playable result.
+    needsGeneration: words.length < 2 ||
+      (words.length < input.request.requestedCount && !exactExhaustion),
+    exhausted: exactExhaustion && words.length < input.request.requestedCount,
     variantKey: await key("swh1", "spyclash:shared-word-pack-hit:v1", [
       input.request.cacheKey,
       ...sourceKeys,
@@ -296,4 +299,14 @@ export async function selectSharedWordPackHit(input: {
     ]),
     expiresAt: new Date(earliestExpiry).toISOString(),
   };
+}
+
+/** Callers that need a ready result must not mistake partial stock for a hit. */
+export async function selectSharedWordPackHit(
+  input: Parameters<typeof selectSharedWordPackStock>[0],
+): Promise<SharedWordPackHit | null> {
+  const stock = await selectSharedWordPackStock(input);
+  if (!stock || stock.needsGeneration) return null;
+  const { needsGeneration: _needsGeneration, ...hit } = stock;
+  return hit;
 }

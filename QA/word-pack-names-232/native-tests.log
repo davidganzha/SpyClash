@@ -1,0 +1,19 @@
+PASS another account receives a successful charged pack without AI, including prefer_fresh
+PASS shared cache preserves legacy quota for an unenrolled account and LIMITLESS for an enrolled account
+PASS cache hits consume daily points then one earned bonus exactly once
+PASS exclusions cause AI only when stock is insufficient, then pooled stock serves another account
+PASS larger requests preserve the first 30 names and request the minimum two additions for one missing slot
+PASS partial top-up retains five names and honors 200 original exclusions
+PASS paid top-up recovery uses frozen seed after shared stock expires without a second provider call
+PASS a legacy paid top-up still replays its frozen inputs when the shared rollout is disabled
+PASS prior-version paid requests replay original full-count inputs without republishing obsolete quality
+PASS exhausted top-ups keep existing names and verify only the remaining unseen items
+PASS unspent partial requests may recover from newly completed stock without provider configuration
+PASS database lookup failure never starts AI and refunds a reserved bonus
+PASS concurrent first requests for a topic start one provider and the waiting request later consumes one point
+PASS existing stock is available without provider configuration and misses refund their point
+PASS publication failure preserves paid output and charge; exact retry publishes without another AI call
+PASS legacy quotas remain ten and a definitive provider failure refunds only the failed request
+PASS an unknown legacy provider outcome retains its reservation and topic lease across accounts
+PASS disabled rollout ignores shared stock and preserves the original generation path
+PASS 18 shared native generation checks
