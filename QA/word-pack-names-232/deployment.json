@@ -1,0 +1,59 @@
+{
+  "approved_in_current_chat": true,
+  "date": "2026-11-11",
+  "source_commit": "bc479de2",
+  "supabase": {
+    "project": "bbkfsgnordtdiblgdzkg",
+    "function": "app-services",
+    "receipt": {
+      "id": "a271cf0c-f0c7-4589-8448-406e286082fa",
+      "slug": "app-services",
+      "name": "app-services",
+      "status": "ACTIVE",
+      "version": 23,
+      "created_at": 1791849203589,
+      "updated_at": 1794435462462,
+      "verify_jwt": true,
+      "import_map": true,
+      "entrypoint_path": "file:///tmp/user_fn_bbkfsgnordtdiblgdzkg_a271cf0c-f0c7-4589-8448-406e286082fa_23/source/app-services/index.ts",
+      "import_map_path": "file:///tmp/user_fn_bbkfsgnordtdiblgdzkg_a271cf0c-f0c7-4589-8448-406e286082fa_23/source/app-services/deno.json",
+      "ezbr_sha256": "6b6da08db5c58f054f7c72650688a4550371df9b328f63f56c8c4421c644b59d"
+    },
+    "verification": {
+      "version": 23,
+      "status": "ACTIVE",
+      "verify_jwt": true,
+      "files": 74,
+      "differences": [],
+      "missing": [],
+      "exactMatch": true
+    }
+  },
+  "migration": {
+    "name": "generation_shared_seed",
+    "registered_version": "20261111221629",
+    "local_file": "experiments/supabase-game-core/supabase/migrations/20261111213606_generation_shared_seed.sql",
+    "applied": true,
+    "column": "game_center_private.generation_requests.seed_words",
+    "type": "jsonb",
+    "rls": true,
+    "table_acl": "postgres only",
+    "result_invariant_preserved": true
+  },
+  "base44": {
+    "app": "69a0e57fa939f578082f8091",
+    "functions": [
+      "nativeGameCenterWordPack",
+      "generateWordPack"
+    ],
+    "runtime_files_verified": 24,
+    "unrelated_functions_unchanged": 20
+  },
+  "testflight_uploaded": false,
+  "paid_live_generation_performed": false,
+  "secrets_or_rollout_flags_changed": false,
+  "initial_relay_packaging_failure": {
+    "error": "Entry point not found in files",
+    "resolution": "Flattened pulled runtime layout for CLI; all 24 runtime file contents unchanged; named function deployments succeeded."
+  }
+}

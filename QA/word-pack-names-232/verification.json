@@ -1,7 +1,7 @@
 {
   "build": 232,
   "marketing_version": "1.0.4",
-  "production_mutated": false,
+  "production_mutated": true,
   "ios": {
     "passed": 18,
     "failed": 0,
@@ -27,5 +27,7 @@
     "app-services"
   ],
   "bundle_isolation": "passed",
-  "independent_review": "no remaining blocking findings"
+  "independent_review": "no remaining blocking findings",
+  "server_deployment": "verified; see deployment.json",
+  "testflight_uploaded": false
 }

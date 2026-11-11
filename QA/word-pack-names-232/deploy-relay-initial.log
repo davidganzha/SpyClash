@@ -1,0 +1,5 @@
+Found 1 function to deploy
+[1/1] Deploying nativeGameCenterWordPack...
+Error: nativeGameCenterWordPack  error: Error deploying function "nativeGameCenterWordPack": Entry point 'base44/functions/nativeGameCenterWordPack/entry.ts' not found in files
+1 error
+Error: CLI exited with code 1

@@ -1,0 +1,14 @@
+{
+  "app-services": {
+    "status": 401,
+    "response": "{\"code\":\"UNAUTHORIZED_NO_AUTH_HEADER\",\"message\":\"Missing authorization header\"}"
+  },
+  "generateWordPack": {
+    "status": 401,
+    "response": "{\"error\":\"Authentication required to view users\",\"retryable\":false}"
+  },
+  "nativeGameCenterWordPack": {
+    "status": 401,
+    "response": "{\"ok\":false,\"code\":\"invalid_relay_request\"}"
+  }
+}

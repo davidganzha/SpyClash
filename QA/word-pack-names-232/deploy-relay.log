@@ -1,0 +1,5 @@
+Found 1 function to deploy
+[1/1] Deploying nativeGameCenterWordPack...
+nativeGameCenterWordPack  deployed (12.4s)
+1 deployed
+Update available: 0.1.4 → 0.3.3. Run: npm install -g base44@latest

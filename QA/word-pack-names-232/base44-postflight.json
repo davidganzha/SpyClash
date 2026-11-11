@@ -1,0 +1,132 @@
+{
+  "functions": {
+    "generateWordPack": {
+      "exact_match": true,
+      "runtime_files": [
+        {
+          "file": "content-safety.ts",
+          "sha256": "817ba01e58d5eb8036a59148a20cc3e6a9b30df0ee33f254bf84e56e98629042"
+        },
+        {
+          "file": "generation-operation.ts",
+          "sha256": "7d2fa55d518f716ce9be9152f61be5b8afd146845ca7102459546a7eeacb7eef"
+        },
+        {
+          "file": "openai-word-pack-provider.ts",
+          "sha256": "69b748717ad66e75d4906b9443f6aec672b3ca3f8d730cb594452a4ab17715c4"
+        },
+        {
+          "file": "generation-cache.ts",
+          "sha256": "39365535caef5535036fb986c0746df4429a1e5cb9c20bb2df22810d5389e278"
+        },
+        {
+          "file": "generation-write-lifecycle.ts",
+          "sha256": "0b50f5159baf5271e085ca8363d030be840039e3a1b1ba236ad9f4d4e4e6179f"
+        },
+        {
+          "file": "generation-rewards.ts",
+          "sha256": "9e9ed71cc3ed57da819ad63af92334939a1ad870b06db8f31a21c58dd142bc74"
+        },
+        {
+          "file": "membership.ts",
+          "sha256": "c0ca269c61ef4df2a65646c4d8c0b033a06e218d6f44d6b3c2dc98ccd6090df4"
+        },
+        {
+          "file": "entry.ts",
+          "sha256": "d437d2a9057c6c2c4a7cd2511af11fd092a216141cbc219319801591262696b4"
+        },
+        {
+          "file": "generation-retry-contract.ts",
+          "sha256": "8855e7cd8e69c1c3ba64aaed667f7d0e3a8eb9e5e62994efb96159cf02b8d6e8"
+        },
+        {
+          "file": "word-pack-quality.ts",
+          "sha256": "c0aa06a9708d6b3a08930f0d9df35d848652e36fd8a71f0a7e72c0f870e2b5e6"
+        },
+        {
+          "file": "shared-word-pack-library.ts",
+          "sha256": "6c0e43856c82c905129761bcaaab32ce7bee6827083aa3f39a60a97644c81072"
+        },
+        {
+          "file": "generation-idempotency.ts",
+          "sha256": "c0fd8afdc9373bc18cca920d9d681f10b122aa025d5c9e36e48962b39413a0e0"
+        },
+        {
+          "file": "quota.ts",
+          "sha256": "4b77aeff53148483316fd5d443b2bbc03b6ff2fcf13b19acc90609f42c2c36be"
+        },
+        {
+          "file": "base44-context.ts",
+          "sha256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de"
+        },
+        {
+          "file": "ai-provider-resilience.ts",
+          "sha256": "98a314fafb31d5790b7c37730323ec93b80803be1c87be181a69d87bc868db45"
+        },
+        {
+          "file": "word-normalization.ts",
+          "sha256": "fa65bd50a34f22c7e7f6b680407cf5dc8db0308e03b05a57d1667715df594111"
+        },
+        {
+          "file": "billing-identity-lifecycle.ts",
+          "sha256": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25"
+        },
+        {
+          "file": "shared-word-pack-rest.ts",
+          "sha256": "b9d82c95dd3e196655b5b735fb2edc8160576ee43e0cb7ae1de2509b07412ab6"
+        }
+      ]
+    },
+    "nativeGameCenterWordPack": {
+      "exact_match": true,
+      "runtime_files": [
+        {
+          "file": "openai-word-pack-provider.ts",
+          "sha256": "69b748717ad66e75d4906b9443f6aec672b3ca3f8d730cb594452a4ab17715c4"
+        },
+        {
+          "file": "entry.ts",
+          "sha256": "2146d34e53b9b66775c3b7cce20ee0b6d210c551e8932ddf77279a2066bd73e7"
+        },
+        {
+          "file": "relay-protocol.ts",
+          "sha256": "468fd0dce940a62b6892103c5e86ea84d1f698aea97dd94fc0ccc40950039c9f"
+        },
+        {
+          "file": "word-pack-quality.ts",
+          "sha256": "c0aa06a9708d6b3a08930f0d9df35d848652e36fd8a71f0a7e72c0f870e2b5e6"
+        },
+        {
+          "file": "base44-context.ts",
+          "sha256": "16dfd39666facf2415fe509783fe820128b5ac101bfdb0b8a5a25f4c2bed814f"
+        },
+        {
+          "file": "handler.ts",
+          "sha256": "72105336abcb7b20753faa55cc998a4b2b7aac405491c34b8cf8f5a48a0d90c0"
+        }
+      ]
+    }
+  },
+  "unrelated_functions_preserved": [
+    "wordPackAction",
+    "checkSubscriptionV2",
+    "checkSubscription",
+    "stripe-entitlement-webhook",
+    "communityAction",
+    "autoRegisterUserV2",
+    "notificationAction",
+    "googleAuthCallback",
+    "createCheckout",
+    "appleAuthCallback",
+    "generationRewardAction",
+    "gameRoomAction",
+    "pushNotificationAction",
+    "deleteAccount",
+    "app-store-entitlement",
+    "autoRegisterUser",
+    "appleAuthBroker",
+    "mobileAuthCallback",
+    "advanceRound",
+    "deleteAccountPublic"
+  ]
+}
