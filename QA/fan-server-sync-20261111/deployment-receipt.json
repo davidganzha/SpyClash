@@ -1,0 +1,30 @@
+{
+  "project_id": "bbkfsgnordtdiblgdzkg",
+  "function": "full-game-core",
+  "previous_version": 15,
+  "deployed_version": 16,
+  "status": "ACTIVE",
+  "updated_at_utc": "2026-11-11T20:48:44.360Z",
+  "verify_jwt": true,
+  "server_bundle_sha256": "1b071b6680215b910239112072164993e93eb77c068efecbb4ab22de01115cce",
+  "candidate_manifest_sha256": "4df372776633d5dcfffc162f4601901f34d28ac8a407985ad59fb998b97917cd",
+  "verified_files": 44,
+  "exact_source_match": true,
+  "approval": {
+    "user_message": "\u0434\u0430",
+    "scope": "Publish the prepared full-game-core update to the SpyClash production server",
+    "chat": "current"
+  },
+  "verification": {
+    "predeploy_candidate_tests_passed": 38,
+    "typecheck": "passed",
+    "fresh_live_baseline_match": true,
+    "postdeploy_source_verification": "44/44 exact matches, no additional files",
+    "unauthenticated_http_status": 401,
+    "authenticated_room_write_test": "not performed; no test-room or account mutation was included"
+  },
+  "client_compatibility": "TestFlight 1.0.4 (230), no reinstall required",
+  "other_functions_changed": false,
+  "database_migration": false,
+  "production_changed": true
+}

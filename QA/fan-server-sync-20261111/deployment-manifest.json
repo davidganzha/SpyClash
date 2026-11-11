@@ -242,7 +242,7 @@
       "candidate_sha256": "ffb2554d847ef452d50750c7a0e57951826bbfe40a1dd11a22e88be058319937"
     }
   ],
-  "deployed": false,
+  "deployed": true,
   "candidate_manifest_sha256": "4df372776633d5dcfffc162f4601901f34d28ac8a407985ad59fb998b97917cd",
   "prepared_from_live_utc": "2026-11-11",
   "schema_check": "full_game_private.rooms.state is jsonb; no migration needed",
@@ -250,5 +250,6 @@
     "passed": 38,
     "failed": 0,
     "typecheck": "passed"
-  }
+  },
+  "deployment_receipt": "deployment-receipt.json"
 }
