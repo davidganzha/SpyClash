@@ -117,6 +117,60 @@ test('lost generation response keeps durable request for retry and rejects chang
   const evidence=await prepareLegacyExternal({actor:a,body,config:legacy},{fetch:fetcher,db});await call(dispatchLegacy,a,body,legacy,evidence);
   assert.equal(generationAttempts,2);assert.equal(providerInvocations,1);
 });
+test('proven library failure preserves its retry code and immutable reservation across legacy action aliases',async()=>{
+  for(const [action,code] of [['generate','shared_library_busy'],['generate_word_pack','shared_library_unavailable']]){
+    const a=await fixture(),credential='staging-legacy-test-credential';
+    const requests=[];let paidCalls=0;
+    const fetcher=async(url,options)=>{
+      if(url.endsWith('/me'))return Response.json({id:'library-retry-'+a.id});
+      requests.push(JSON.parse(options.body));
+      if(requests.length===1)return Response.json({code,retryable:true,retry_phase:'before_effects',effects_started:false,error:'PRIVATE_UPSTREAM_MESSAGE'},{status:503});
+      paidCalls++;
+      return Response.json({category:'Fruit',words:['Apple','Pear']});
+    };
+    const linkBody={action:'link',base44_access_token:credential};
+    await call(dispatchLegacy,a,linkBody,legacy,await prepareLegacyExternal({actor:a,body:linkBody,config:legacy},{fetch:fetcher}));
+    const body={action,request_id:crypto.randomUUID(),theme:'Fruit',count:2,base44_access_token:credential};
+    await assert.rejects(prepareLegacyExternal({actor:a,body,config:legacy},{fetch:fetcher,db}),error=>error.code===code&&error.status===503&&error.retryable&&!error.message.includes('PRIVATE'));
+    assert.equal(paidCalls,0);
+    const [reserved]=await db`select state from app_private.legacy_operations where user_id=${a.id} and request_id=${body.request_id}`;
+    assert.equal(reserved.state,'reserved');
+    await assert.rejects(prepareLegacyExternal({actor:a,body:{...body,count:3},config:legacy},{fetch:fetcher,db}),error=>error.code==='request_id_reused');
+    assert.equal(requests.length,1);
+    const evidence=await prepareLegacyExternal({actor:a,body,config:legacy},{fetch:fetcher,db});
+    const result=await call(dispatchLegacy,a,body,legacy,evidence);
+    assert.deepEqual(result.words,['Apple','Pear']);
+    assert.deepEqual(requests[0],requests[1]);
+    assert.equal(paidCalls,1);
+    const replay=await prepareLegacyExternal({actor:a,body,config:legacy},{fetch:fetcher,db});
+    assert.deepEqual(await call(dispatchLegacy,a,body,legacy,replay),result);
+    assert.equal(requests.length,2);
+    assert.equal(paidCalls,1);
+  }
+});
+test('definite daily allowance rejection reaches legacy callers without authorizing generation or losing request ownership',async()=>{
+  for(const fields of [{},{retryable:false}]){
+    const a=await fixture(),credential='staging-legacy-test-credential';
+    const requests=[];
+    const fetcher=async(url,options)=>{
+      if(url.endsWith('/me'))return Response.json({id:'quota-rejection-'+a.id});
+      requests.push(JSON.parse(options.body));
+      return Response.json({code:'daily_ai_limit_reached',...fields,error:'PRIVATE_QUOTA_MESSAGE'},{status:429});
+    };
+    const linkBody={action:'link',base44_access_token:credential};
+    await call(dispatchLegacy,a,linkBody,legacy,await prepareLegacyExternal({actor:a,body:linkBody,config:legacy},{fetch:fetcher}));
+    const body={action:'generate',request_id:crypto.randomUUID(),theme:'Fruit',count:2,base44_access_token:credential};
+    const rejected=error=>error.code==='daily_ai_limit_reached'&&error.status===429&&error.retryable===false&&!error.message.includes('PRIVATE');
+    await assert.rejects(prepareLegacyExternal({actor:a,body,config:legacy},{fetch:fetcher,db}),rejected);
+    await assert.rejects(prepareLegacyExternal({actor:a,body,config:legacy},{fetch:fetcher,db}),rejected);
+    assert.deepEqual(requests[0],requests[1]);
+    await assert.rejects(prepareLegacyExternal({actor:a,body:{...body,count:3},config:legacy},{fetch:fetcher,db}),error=>error.code==='request_id_reused');
+    assert.equal(requests.length,2);
+    const [reserved]=await db`select state,response from app_private.legacy_operations where user_id=${a.id} and request_id=${body.request_id}`;
+    assert.equal(reserved.state,'reserved');
+    assert.equal(reserved.response,null);
+  }
+});
 test('push transport outage retries once eligible; competing workers cannot claim same lease',async()=>{
   const a=await fixture();const body={action:'register_device',installation_id:crypto.randomUUID(),apns_token:crypto.randomUUID().replaceAll('-','').repeat(2),environment:'sandbox',bundle_id:TEST_PUSH_BUNDLE,alert_authorized:true};await call(dispatchPush,a,body,config);
   const event={id:crypto.randomUUID(),event_type:'friend_request',recipient_id:a.id,data:{title:'Test',body:'Retry'}};

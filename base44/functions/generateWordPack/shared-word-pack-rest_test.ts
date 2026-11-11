@@ -80,7 +80,7 @@ Deno.test("shared REST uses server-only RPC and modern secret header without a J
       assertEquals(headers.get("authorization"), null);
       assertEquals(headers.get("content-type"), "application/json");
       assertEquals(init?.method, "POST");
-      assertEquals(init?.redirect, "error");
+      assertEquals(init?.redirect, "manual");
       assert(init?.signal instanceof AbortSignal);
       const url = String(input), body = JSON.parse(String(init?.body));
       calls.push({ url, body });
@@ -128,6 +128,31 @@ Deno.test("shared REST supports legacy service-role JWT in both required headers
     },
   });
   assertEquals(await store.read(request), null);
+});
+
+Deno.test("shared REST works with Workers redirect modes and rejects redirects without forwarding credentials", async () => {
+  for (const status of [200, 301, 302, 303, 307, 308]) {
+    const calls: string[] = [];
+    const store = createSharedWordPackRESTStore({
+      url: origin,
+      secret: "sb_secret_local_fixture",
+      fetch: (input, init) => {
+        // Match Workers' request-construction restriction. The previous
+        // redirect:error implementation fails even for an ordinary 200 read.
+        if (init?.redirect === "error") throw new TypeError("Unsupported redirect mode");
+        calls.push(String(input));
+        assertEquals(init?.redirect, "manual");
+        return Promise.resolve(status === 200 ? Response.json([record]) :
+          new Response(null, { status, headers: { Location: "https://other.example.test/private" } }));
+      },
+    });
+    if (status === 200) {
+      assertEquals((await acquireSharedWordPackAccess(store, request)).hit?.words, record.words);
+    } else {
+      await assertRejects(() => acquireSharedWordPackAccess(store, request), SharedWordPackLibraryError);
+    }
+    assertEquals(calls, [`${origin}/rest/v1/rpc/word_pack_library_read`]);
+  }
 });
 
 Deno.test("shared REST rejects unconfigured or unsafe destinations before any request", () => {

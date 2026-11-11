@@ -1,0 +1,51 @@
+{
+  "incident_window_utc": [
+    "2026-11-11T20:40:00Z",
+    "2026-11-11T20:43:00Z"
+  ],
+  "base44_generateWordPack": {
+    "time_utc": "2026-11-11T20:41:16Z",
+    "status": 503,
+    "message": "Word library is temporarily unavailable. Retry this request."
+  },
+  "legacy_operation": {
+    "created_at_utc": "2026-11-11T20:41:15.485178Z",
+    "state": "reserved",
+    "word_count": 0
+  },
+  "library_gateway_logs": {
+    "window_utc": [
+      "2026-11-11T19:00:00Z",
+      "2026-11-11T21:05:00Z"
+    ],
+    "requests": [
+      {
+        "time_utc": "2026-11-11T19:22:14.970Z",
+        "status": 200,
+        "client": "Python-urllib/3.9"
+      },
+      {
+        "time_utc": "2026-11-11T19:22:15.871Z",
+        "status": 401,
+        "client": "Python-urllib/3.9"
+      }
+    ],
+    "requests_in_incident_window": 0
+  },
+  "deployed_base44_source": {
+    "file": "shared-word-pack-rest.ts",
+    "unsupported_option": "redirect: error",
+    "confirmed_from_function_pull": true
+  },
+  "existing_same_runtime_fix": "89625a093bc2ad9cad74d44f389611b0cd464c77",
+  "platform_reference": "https://developers.cloudflare.com/workers/runtime-apis/request/",
+  "separate_native_error": {
+    "time_utc": "2026-11-11T20:41:08Z",
+    "provider_error": "quality_failed",
+    "request_error": "generation_quality_failed",
+    "charged": false,
+    "later_native_requests_succeeded": true
+  },
+  "production_changes_performed": false,
+  "paid_live_generation_performed": false
+}

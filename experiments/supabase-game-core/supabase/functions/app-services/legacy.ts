@@ -18,6 +18,25 @@ function generatorBody(body:Record<string,any>) {
   return {theme:body.theme.trim(),count:body.count,exclude_words:excluded,prefer_fresh:body.prefer_fresh===true,request_id:requireUUID(body.request_id,'request_id')};
 }
 
+/** Preserve recognized allowance rejections and explicit proof that retrying
+ * this request cannot repeat paid work. Raw provider messages stay server-side. */
+export async function legacyGenerationFailure(response:Response):Promise<AppServiceError> {
+  if(response.status===503||response.status===429){
+    const failure=await boundedJSON(response).catch(()=>null);
+    // This is a definitive allowance rejection, distinct from generic upstream
+    // throttling. Older Base44 responses omit retryable for this known code.
+    if(response.status===429&&failure?.code==='daily_ai_limit_reached'
+      &&(failure.retryable===false||!Object.hasOwn(failure,'retryable'))){
+      return new AppServiceError('daily_ai_limit_reached','Daily AI generation limit reached. Try again tomorrow.',429,false);
+    }
+    if(response.status===503&&failure?.retryable===true&&failure.retry_phase==='before_effects'&&failure.effects_started===false){
+      if(failure.code==='shared_library_busy')return new AppServiceError('shared_library_busy','This topic is being prepared. Retry the same request shortly.',503,true);
+      if(failure.code==='shared_library_unavailable')return new AppServiceError('shared_library_unavailable','Word library is temporarily unavailable. Retry this request.',503,true);
+    }
+  }
+  return new AppServiceError('legacy_generation_unavailable','Base44 did not complete the word generation. Retry the saved request.',response.status>=500?503:response.status,response.status>=500);
+}
+
 /** Performs no generator call. The authenticated legacy credential is verified
  * against the configured existing Base44 app before its ID can become a durable mapping. */
 export async function prepareLegacyExternal(input:Input,dependencies:{fetch?:typeof fetch,db?:any}={}) {
@@ -42,7 +61,7 @@ export async function prepareLegacyExternal(input:Input,dependencies:{fetch?:typ
       // request UUID. A lost ACK leaves our reservation and retries this exact ID.
       const response=await fetcher(destination.origin+'/api/apps/'+destination.appID+'/functions/generateWordPack',{
         method:'POST',headers,redirect:'error',body:JSON.stringify(request),signal:AbortSignal.timeout(60_000)});
-      if(!response.ok)throw new AppServiceError('legacy_generation_unavailable','Base44 did not complete the word generation. Retry the saved request.',response.status>=500?503:response.status,response.status>=500);
+      if(!response.ok)throw await legacyGenerationFailure(response);
       const generated=await boundedJSON(response);
       if(typeof generated.category!=='string'||!Array.isArray(generated.words)||!generated.words.length||generated.words.length>200
         ||generated.words.some((w:unknown)=>typeof w!=='string'||!w.trim()||w.length>200))throw new AppServiceError('invalid_generated_pack','Base44 returned an invalid word pack.',502,true);

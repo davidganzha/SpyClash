@@ -56,6 +56,70 @@ final class SupabaseSharedGenerationRetryTests: XCTestCase {
         XCTAssertEqual(fixture.requests[0], fixture.requests[1])
     }
 
+    func testTransientClientFailuresKeepOriginalIntentForTheNextAttempt() async throws {
+        let failures: [SharedGenerationRetryFixture.Reply] = [
+            .init(status: 408, body: #"{"code":"request_timeout","retryable":false}"#),
+            .init(status: 425, body: #"{"code":"too_early","retryable":false}"#),
+            .init(status: 429, body: #"{"code":"rate_limited","retryable":false}"#),
+            .init(status: 429, body: #"{"code":"rate_limited","retryable":true}"#),
+            .init(status: 429, body: #"{"code":"ai_limit_reached","retryable":true}"#),
+            .init(status: 409, body: #"{"code":"active_lease","retryable":true}"#),
+            .init(status: 409, body: #"{"code":"legacy_generation_unavailable","message":"Base44 did not complete the word generation. Retry the saved request.","retryable":false}"#),
+            .init(status: 429, body: #"{"code":"legacy_generation_unavailable","retryable":false}"#),
+            .init(status: 409, body: #"{"code":"request_id_reused","retryable":false}"#),
+            .init(status: 400, body: #"{"code":"temporary_rejection","retryable":true}"#),
+        ]
+        for reply in failures {
+            let fixture = SharedGenerationRetryFixture(responses: [reply, .success], sleep: { _ in XCTFail("Unrelated failure retried automatically") })
+            defer { fixture.close() }
+            let originalID = UUID()
+            do { _ = try await fixture.generate(requestID: originalID); XCTFail("Failure unexpectedly succeeded") }
+            catch let error as Base44Error { XCTAssertEqual(error.statusCode, reply.status) }
+
+            // A changed input must not overwrite an unresolved generation.
+            var changed = fixture.body(requestID: UUID())
+            changed["count"] = .number(12)
+            do {
+                let _: GeneratedWordPack = try await fixture.auth.service("legacy", action: "generate", fields: changed, write: true)
+                XCTFail("Unresolved request was replaced")
+            } catch let error as Base44Error { XCTAssertEqual(error.code, "app_action_recovery_required") }
+            XCTAssertEqual(fixture.requests.count, 1)
+
+            // A reopened form may suggest a fresh UUID, but must replay the
+            // original payload and consume only its confirmed result.
+            _ = try await fixture.generate(requestID: UUID())
+            XCTAssertEqual(fixture.requests.count, 2)
+            XCTAssertEqual(fixture.requests[0], fixture.requests[1])
+            XCTAssertEqual(fixture.requests[1]["request_id"].string, originalID.uuidString.lowercased())
+        }
+    }
+
+    func testDefinitiveGenerationFailureAllowsNewInputsAndRequestID() async throws {
+        let failures: [SharedGenerationRetryFixture.Reply] = [
+            .init(status: 400, body: #"{"code":"invalid_theme","retryable":false}"#),
+            .init(status: 403, body: #"{"code":"content_blocked","retryable":false}"#),
+            .init(status: 422, body: #"{"code":"word_pack_quality_failed","retryable":false}"#),
+            .init(status: 429, body: #"{"code":"ai_limit_reached","retryable":false}"#),
+            .init(status: 429, body: #"{"code":"daily_ai_limit_reached","retryable":false}"#),
+        ]
+        for reply in failures {
+            let fixture = SharedGenerationRetryFixture(responses: [reply, .success])
+            defer { fixture.close() }
+            let originalID = UUID()
+            do { _ = try await fixture.generate(requestID: originalID); XCTFail("Failure unexpectedly succeeded") }
+            catch let error as Base44Error { XCTAssertEqual(error.statusCode, reply.status) }
+
+            let nextID = UUID()
+            var changed = fixture.body(requestID: nextID)
+            changed["count"] = .number(12)
+            let _: GeneratedWordPack = try await fixture.auth.service("legacy", action: "generate", fields: changed, write: true)
+            XCTAssertEqual(fixture.requests.count, 2)
+            XCTAssertEqual(fixture.requests[1]["request_id"].string, nextID.uuidString.lowercased())
+            XCTAssertEqual(fixture.requests[1]["count"], .number(12))
+            XCTAssertNotEqual(fixture.requests[0]["request_id"], fixture.requests[1]["request_id"])
+        }
+    }
+
     func testRetryBudgetIsBoundedAndKeepsUnacknowledgedUUID() async throws {
         var delays: [Duration] = []
         let fixture = SharedGenerationRetryFixture(responses: [.busy], sleep: { delays.append($0) })

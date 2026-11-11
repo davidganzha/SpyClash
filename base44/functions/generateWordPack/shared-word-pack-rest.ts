@@ -52,7 +52,9 @@ export function createSharedWordPackRESTStore(options: {
           headers,
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(8_000),
-          redirect: "error",
+          // Base44's Workers runtime rejects "error" before sending. Manual
+          // keeps credentials on this origin; the non-2xx check rejects 3xx.
+          redirect: "manual",
         },
       );
       if (!response.ok) throw new Error();

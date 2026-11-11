@@ -262,6 +262,7 @@ final class SupabaseAppSession {
         body["service"] = .string(service); body["action"] = .string(action)
         let epoch = generation
         let isAppStoreDelivery = write && service == "membership" && action == "sync_transaction"
+        let isWordPackGeneration = write && service == "legacy" && action == "generate"
         let isAccountDeletion = write && service == "profile" && action == "delete" && fields["deletion_scope"]?.string == "account"
         let isNativeAccountDeletion = isAccountDeletion && isNativeGameCenterSession
         let deliveryLease = isAppStoreDelivery ? try await appStoreDeliveryQueue.acquire(timeout: 120) : nil
@@ -293,7 +294,7 @@ final class SupabaseAppSession {
             let value: JSONValue
             if isAppStoreDelivery {
                 value = try await appStoreDeliveryRequest(body: .object(wireBody), actorID: actorID, token: credential, epoch: epoch, permitsRevalidation: token == nil)
-            } else if write && service == "legacy" && action == "generate" {
+            } else if isWordPackGeneration {
                 value = try await sharedLibraryGenerationRequest(body: .object(wireBody), actorID: actorID, token: credential, epoch: epoch, permitsRevalidation: token == nil)
             } else {
                 value = try await authenticatedRequest(path: "/functions/v1/app-services", body: .object(wireBody), token: credential, epoch: epoch, permitsRevalidation: token == nil)
@@ -314,7 +315,7 @@ final class SupabaseAppSession {
             if write, let requestID = body["request_id"]?.string { try mutationJournal.acknowledge(actorID: actorID, requestID: requestID) }
             return result
         } catch let error as Base44Error {
-            if isAppStoreDelivery || isAccountDeletion {
+            if isAppStoreDelivery || isAccountDeletion || isWordPackGeneration {
                 try Task.checkCancellation()
                 guard epoch == generation, userID == actorID else { throw CancellationError() }
             }
@@ -323,6 +324,7 @@ final class SupabaseAppSession {
             if write, let status = error.statusCode, (400..<500).contains(status), status != 401,
                !isAppStoreDelivery || Self.isDefinitiveAppStoreFailure(error),
                !isAccountDeletion || Self.isDefinitiveAccountDeletionFailure(error),
+               !isWordPackGeneration || Self.isDefinitiveGenerationFailure(error),
                let requestID = body["request_id"]?.string {
                 try mutationJournal.acknowledge(actorID: actorID, requestID: requestID)
             }
@@ -361,6 +363,20 @@ final class SupabaseAppSession {
     }
 
     private static let sharedLibraryRetryCodes: Set<String> = ["shared_generation_in_progress", "shared_library_busy", "shared_library_unavailable"]
+
+    private static func isDefinitiveGenerationFailure(_ error: Base44Error) -> Bool {
+        // Throttling, timeouts and conflicts do not settle a saved generation.
+        // The legacy bridge can omit the upstream conflict's retryable flag;
+        // keep its UUID so a later attempt cannot repeat its charge.
+        guard let status = error.statusCode else { return false }
+        if status == 429, !error.retryable,
+           ["ai_limit_reached", "daily_ai_limit_reached"].contains(error.code) {
+            // These quota rejections occur before generation is reserved. Once
+            // the allowance changes, the user may choose another topic/count.
+            return true
+        }
+        return (400..<500).contains(status) && ![401, 408, 409, 425, 429].contains(status) && !error.retryable
+    }
 
     private func recoverAppStoreTransaction(_ saved: [String: JSONValue], actorID: String, credential: String,
                                             legacyToken: String?, epoch: UUID, permitsRevalidation: Bool) async throws {

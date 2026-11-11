@@ -1,0 +1,128 @@
+TAP version 13
+# (node:19639) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: membership preserves universal and gated weekly; forged evidence cannot grant
+ok 1 - membership preserves universal and gated weekly; forged evidence cannot grant
+  ---
+  duration_ms: 96.916208
+  type: 'test'
+  ...
+# Subtest: verified canonical transaction enforces immutable owner and older status cannot overwrite
+ok 2 - verified canonical transaction enforces immutable owner and older status cannot overwrite
+  ---
+  duration_ms: 25.732625
+  type: 'test'
+  ...
+# Subtest: encrypted token binds actor and topic; duplicate registration and event enqueue are idempotent
+ok 3 - encrypted token binds actor and topic; duplicate registration and event enqueue are idempotent
+  ---
+  duration_ms: 32.694542
+  type: 'test'
+  ...
+# Subtest: hidden notification and deleted-account outbox work is cancelled before delivery
+ok 4 - hidden notification and deleted-account outbox work is cancelled before delivery
+  ---
+  duration_ms: 22.327917
+  type: 'test'
+  ...
+# Subtest: legacy bridge rejects redirected canonical app and binds verified identity before durable generation
+ok 5 - legacy bridge rejects redirected canonical app and binds verified identity before durable generation
+  ---
+  duration_ms: 56.213042
+  type: 'test'
+  ...
+# Subtest: import dry run rejects conflicting identity ownership and source drift
+ok 6 - import dry run rejects conflicting identity ownership and source drift
+  ---
+  duration_ms: 0.369208
+  type: 'test'
+  ...
+# Subtest: Supabase JWT is rejected before any legacy HTTP request
+ok 7 - Supabase JWT is rejected before any legacy HTTP request
+  ---
+  duration_ms: 1.713792
+  type: 'test'
+  ...
+# Subtest: lost generation response keeps durable request for retry and rejects changed body
+ok 8 - lost generation response keeps durable request for retry and rejects changed body
+  ---
+  duration_ms: 28.928959
+  type: 'test'
+  ...
+# Subtest: proven library failure preserves its retry code and immutable reservation across legacy action aliases
+ok 9 - proven library failure preserves its retry code and immutable reservation across legacy action aliases
+  ---
+  duration_ms: 66.464792
+  type: 'test'
+  ...
+# Subtest: definite daily allowance rejection reaches legacy callers without authorizing generation or losing request ownership
+ok 10 - definite daily allowance rejection reaches legacy callers without authorizing generation or losing request ownership
+  ---
+  duration_ms: 43.311333
+  type: 'test'
+  ...
+# Subtest: push transport outage retries once eligible; competing workers cannot claim same lease
+ok 11 - push transport outage retries once eligible; competing workers cannot claim same lease
+  ---
+  duration_ms: 25.436666
+  type: 'test'
+  ...
+# Subtest: committed live events preserve privacy, replay dedup, and terminal end after room advanced
+ok 12 - committed live events preserve privacy, replay dedup, and terminal end after room advanced
+  ---
+  duration_ms: 50.5745
+  type: 'test'
+  ...
+# Subtest: import dry run reports unresolved verified mappings without writing content
+ok 13 - import dry run reports unresolved verified mappings without writing content
+  ---
+  duration_ms: 4.500416
+  type: 'test'
+  ...
+# Subtest: expired claimed tail reclaimed by another worker is never sent by stale owner
+ok 14 - expired claimed tail reclaimed by another worker is never sent by stale owner
+  ---
+  duration_ms: 19.943333
+  type: 'test'
+  ...
+# (node:19640) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: legacy generation preserves proven pre-effect shared-library failures for installed-client retry
+ok 15 - legacy generation preserves proven pre-effect shared-library failures for installed-client retry
+  ---
+  duration_ms: 19.324416
+  type: 'test'
+  ...
+# Subtest: legacy generation never upgrades partial, contradictory or unrelated errors into safe library retries
+ok 16 - legacy generation never upgrades partial, contradictory or unrelated errors into safe library retries
+  ---
+  duration_ms: 3.481167
+  type: 'test'
+  ...
+# Subtest: legacy generation requires exact retry status and preserves non-server rejection status
+ok 17 - legacy generation requires exact retry status and preserves non-server rejection status
+  ---
+  duration_ms: 0.185459
+  type: 'test'
+  ...
+# Subtest: legacy generation preserves only definite daily allowance rejections and sanitizes their message
+ok 18 - legacy generation preserves only definite daily allowance rejections and sanitizes their message
+  ---
+  duration_ms: 0.497417
+  type: 'test'
+  ...
+# Subtest: legacy generation safely falls back on malformed, oversized or interrupted error responses
+ok 19 - legacy generation safely falls back on malformed, oversized or interrupted error responses
+  ---
+  duration_ms: 1.85825
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1252.993834
