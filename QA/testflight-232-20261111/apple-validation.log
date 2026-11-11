@@ -1,0 +1,15 @@
+Running altool at path '/Applications/Xcode.app/Contents/SharedFrameworks/ContentDelivery.framework/Resources/altool'...
+
+2026-11-11 22:26:56.298  INFO: [ContentDelivery.Uploader.856C18440]
+==========================================
+VERIFY SUCCEEDED with no errors
+==========================================
+{
+  "details" : {
+
+  },
+  "os-version" : "Version 26.5.2 (Build 25F84)",
+  "success-message" : "No errors validating archive at '/Users/davidganzha/Documents/SpyClash/output/TestFlight-232-20261111/SpyClash-1.0.4-232.ipa'.",
+  "tool-path" : "/Applications/Xcode.app/Contents/SharedFrameworks/ContentDelivery.framework/Resources",
+  "tool-version" : "26.40.1 (174001)"
+}

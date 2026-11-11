@@ -1,6 +1,6 @@
 # Word-pack names and reuse — build 232
 
-Status: **server changes published on 11 November 2026 after explicit approval in this chat**. Supabase `app-services` is ACTIVE at version 23; both Base44 generators match the approved candidate. No TestFlight/App Store upload or paid live generation was performed.
+Status: **server changes published on 11 November 2026 after explicit approval in this chat**. Supabase `app-services` is ACTIVE at version 23; both Base44 generators match the approved candidate. Build **1.0.4 (232)** is now available in the internal TestFlight group after separate explicit approval; see [delivery evidence](../testflight-232-20261111/README.md). No App Store release or paid live generation was performed.
 
 Base: `ee3037ec` (generation-library-recovery-231). The default checkout was an older build-149 branch; work was isolated on `davidganzha/word-pack-names-232` so the current product and generation-recovery changes are retained. Marketing version remains 1.0.4.
 
@@ -40,7 +40,7 @@ The three generators should be updated in one approved rollout to converge their
 
 Fresh live source snapshots and prepared overlays are under `.local/word-pack-names-232/`. The overlay preserves the live reward-enrollment behavior rather than publishing unrelated branch changes. A rollback can restore the saved runtime files; keep the additive column and paid-operation history.
 
-The punctuation fix is an iOS change and requires a separately approved app delivery. A server update alone cannot change the installed editor.
+The punctuation fix is an iOS change. Its separately approved delivery is complete in TestFlight build 232; testers must install that update to receive the editor fix.
 
 ## Final verification
 
@@ -61,7 +61,7 @@ The initial bundle-isolation invocation used the wrong shell and was rerun with 
 - Base44 read-back matches all **18** standard-generator and **6** relay runtime files. All **20** unrelated functions remain byte-for-byte unchanged.
 - All three unauthenticated endpoint probes returned **401**, before any generation work. This checks publication/authentication, not real generation quality or point deductions.
 - The first relay deployment was rejected for the pulled archive entry-path layout. The CLI package was flattened without changing any runtime file bytes; the named relay retry and subsequent standard-generator deployment each reported exactly one function deployed.
-- No secret, quota/ad flag, existing user pack, or request history was modified. The iOS punctuation fix still requires a separate app delivery.
+- No secret, quota/ad flag, existing user pack, or request history was modified. The iOS punctuation fix was subsequently delivered in TestFlight build 232.
 
 The post-migration security advisor reported informational RLS-without-policy notices for server-only tables, plus an unrelated [disabled leaked-password protection warning](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection). This rollout did not change authentication configuration or client privileges.
 

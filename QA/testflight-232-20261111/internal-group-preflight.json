@@ -1,0 +1,58 @@
+{
+  "data" : {
+    "type" : "betaGroups",
+    "id" : "47a13858-b43b-44a1-bf3e-285722cec320",
+    "attributes" : {
+      "publicLinkLimit" : null,
+      "iosBuildsAvailableForAppleSiliconMac" : true,
+      "createdDate" : "2026-09-09T12:26:38.715Z",
+      "publicLinkEnabled" : null,
+      "publicLink" : null,
+      "hasAccessToAllBuilds" : false,
+      "publicLinkId" : null,
+      "isInternalGroup" : true,
+      "name" : "LIMITLESS Internal QA",
+      "feedbackEnabled" : true,
+      "publicLinkLimitEnabled" : null,
+      "iosBuildsAvailableForAppleVision" : true
+    },
+    "relationships" : {
+      "app" : {
+        "links" : {
+          "self" : "https://api.appstoreconnect.apple.com/v1/betaGroups/47a13858-b43b-44a1-bf3e-285722cec320/relationships/app",
+          "related" : "https://api.appstoreconnect.apple.com/v1/betaGroups/47a13858-b43b-44a1-bf3e-285722cec320/app"
+        }
+      },
+      "builds" : {
+        "links" : {
+          "self" : "https://api.appstoreconnect.apple.com/v1/betaGroups/47a13858-b43b-44a1-bf3e-285722cec320/relationships/builds",
+          "related" : "https://api.appstoreconnect.apple.com/v1/betaGroups/47a13858-b43b-44a1-bf3e-285722cec320/builds"
+        }
+      },
+      "betaRecruitmentCriteria" : {
+        "links" : {
+          "self" : "https://api.appstoreconnect.apple.com/v1/betaGroups/47a13858-b43b-44a1-bf3e-285722cec320/relationships/betaRecruitmentCriteria",
+          "related" : "https://api.appstoreconnect.apple.com/v1/betaGroups/47a13858-b43b-44a1-bf3e-285722cec320/betaRecruitmentCriteria"
+        }
+      },
+      "betaRecruitmentCriterionCompatibleBuildCheck" : {
+        "links" : {
+          "self" : "https://api.appstoreconnect.apple.com/v1/betaGroups/47a13858-b43b-44a1-bf3e-285722cec320/relationships/betaRecruitmentCriterionCompatibleBuildCheck",
+          "related" : "https://api.appstoreconnect.apple.com/v1/betaGroups/47a13858-b43b-44a1-bf3e-285722cec320/betaRecruitmentCriterionCompatibleBuildCheck"
+        }
+      },
+      "betaTesters" : {
+        "links" : {
+          "self" : "https://api.appstoreconnect.apple.com/v1/betaGroups/47a13858-b43b-44a1-bf3e-285722cec320/relationships/betaTesters",
+          "related" : "https://api.appstoreconnect.apple.com/v1/betaGroups/47a13858-b43b-44a1-bf3e-285722cec320/betaTesters"
+        }
+      }
+    },
+    "links" : {
+      "self" : "https://api.appstoreconnect.apple.com/v1/betaGroups/47a13858-b43b-44a1-bf3e-285722cec320"
+    }
+  },
+  "links" : {
+    "self" : "https://api.appstoreconnect.apple.com/v1/betaGroups/47a13858-b43b-44a1-bf3e-285722cec320"
+  }
+}

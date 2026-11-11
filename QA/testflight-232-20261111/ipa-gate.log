@@ -1,0 +1,2 @@
+unity release configuration; live reward delivery is not established by this check
+iOS Release bundle gate passed: com.spyclash.ios 1.0.4 (232), public Supabase package; backend deployment/readiness not verified, 1024px opaque App Store icon present, Live Activity extension embedded, effective signed entitlements verified (aps-environment=production, Sign in with Apple=Default), no audio files or playback paths, privacy manifest exact with Purchase History, Apple StoreKit and expected LIMITLESS product present, no local StoreKit configuration or retired commerce copy.
