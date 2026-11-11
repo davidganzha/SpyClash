@@ -9,6 +9,7 @@ import {
   FAN_ALL_SPIES_TARGET,
   FAN_NO_SPIES_TARGET,
   fanSettings,
+  sampleFanScenario,
 } from "../../supabase/functions/full-game-core/rules/fan-mode-policy.ts";
 import { aggregateCompetitiveStats, aggregateCompetitiveRoleStats, competitiveRatingDelta } from "../../supabase/functions/full-game-core/rules/competitive-stats.ts";
 import { aggregateAchievementStats } from "../../supabase/functions/app-services/policies/achievements.ts";
@@ -22,7 +23,7 @@ const actors: GameActor[] = Array.from(
     full_name: `Agent ${i}`,
   }),
 );
-const caps = ["multi_spy_v1", "fan_mode_v1", "fan_mode_v2"];
+const caps = ["multi_spy_v1", "fan_mode_v1", "fan_mode_v2", "fan_mode_v3"];
 class Mission {
   room: GameRecord | null = null;
   now = Date.parse("2026-11-05T12:00:00Z");
@@ -56,7 +57,7 @@ class Mission {
     this.history.push(...result.history || []);
     return result;
   }
-  lobby(all = 50, none = 20, count = 4) {
+  lobby(all = 50, none = 20, count = 4, extra: GameRecord = {}) {
     this.send("create_room", 0, { client_capabilities: caps });
     for (let i = 1; i < count; i++) {
       this.send("join_room", i, { client_capabilities: caps });
@@ -80,6 +81,7 @@ class Mission {
           word: "Airport",
           enabled: true,
         }],
+        ...extra,
       },
     });
     return this;
@@ -388,4 +390,124 @@ Deno.test("updated FAN client restores a stored v1 room and refreshes its own ca
   m.send("request_vote", 1);
   assert.ok(m.room!.players[1].client_capabilities.includes("fan_mode_v2"));
   assert.ok(!m.room!.players[0].client_capabilities.includes("fan_mode_v2"));
+});
+
+
+const extraDeals = ["split_words", "unique_words", "lone_civilian"] as const;
+function extraDealMission(scenario: typeof extraDeals[number], count = 4) {
+  return new Mission().lobby(0, 0, count, {
+    [`fan_${scenario}_chance`]: 99,
+    lobby_word_count: count,
+    lobby_word_pool: Array.from({ length: count }, (_, i) => ({ id: `word-${i}`, word: `Word ${i}`, enabled: true })),
+  });
+}
+
+Deno.test("FAN extra probability boundaries preserve old defaults and reject invalid totals", () => {
+  const defaults = fanSettings({});
+  assert.equal(defaults.fan_split_words_chance, 0);
+  assert.equal(defaults.fan_unique_words_chance, 0);
+  assert.equal(defaults.fan_lone_civilian_chance, 0);
+  const settings = { fan_all_spies_chance: 10, fan_no_spies_chance: 10, fan_split_words_chance: 20, fan_unique_words_chance: 20, fan_lone_civilian_chance: 20 };
+  for (const [roll, scenario] of [[0, "all_spies"], [9, "all_spies"], [10, "no_spies"], [19, "no_spies"], [20, "split_words"], [39, "split_words"], [40, "unique_words"], [59, "unique_words"], [60, "lone_civilian"], [79, "lone_civilian"], [80, "standard"], [99, "standard"]] as const) {
+    assert.equal(sampleFanScenario(settings, () => roll), scenario);
+  }
+  for (const field of extraDeals.map((s) => `fan_${s}_chance`)) {
+    for (const value of [-1, 100, 1.5, "15", NaN]) rejects(() => fanSettings({ [field]: value }), "fan_settings_invalid");
+  }
+  rejects(() => fanSettings({ ...settings, fan_lone_civilian_chance: 41 }), "fan_settings_invalid");
+});
+
+Deno.test("FAN new deals freeze balanced/private words and a lone civilian across odd/even rosters", () => {
+  for (const scenario of extraDeals) for (const count of [3, 4, 5, 12]) {
+    const m = extraDealMission(scenario, count);
+    m.send("arm_roulette", 0, { expected_lobby_revision: m.room!.lobby_revision });
+    const frozen = structuredClone(m.room!);
+    m.random = .999;
+    m.send("arm_roulette", 0);
+    assert.equal(m.room!.fan_scenario, scenario);
+    assert.deepEqual(m.room!.spy_emails, frozen.spy_emails);
+    assert.deepEqual(m.room!.fan_player_words, frozen.fan_player_words);
+    const words = Object.values(m.room!.fan_player_words) as string[];
+    assert.equal(m.room!.spy_emails.length, scenario === "lone_civilian" ? count - 1 : 0);
+    assert.equal(words.length, scenario === "lone_civilian" ? 1 : count);
+    assert.equal(new Set(words).size, scenario === "split_words" ? 2 : scenario === "unique_words" ? count : 1);
+    if (scenario === "split_words") {
+      const firstCount = words.filter((w) => w === words[0]).length;
+      assert.ok(Math.abs(firstCount - (count - firstCount)) <= 1);
+    }
+    m.now += 3001;
+    m.send("complete_game_start", 1);
+    for (let i = 0; i < count; i++) m.send("mark_role_card_read", i);
+    assert.equal(m.room!.status, "playing");
+    assert.equal(m.room!.winner, "");
+    for (const actor of actors.slice(0, count)) {
+      const view = projectGame(m.room!, actor);
+      assert.equal(view.fan_scenario, undefined);
+      assert.equal(view.fan_player_words, undefined);
+      assert.equal(view.word, m.room!.fan_player_words[actor.email] || "CLASSIFIED");
+      assert.equal(view.secret_word, view.word);
+      assert.deepEqual(view.revealed_spy_emails, []);
+      assert.ok(view.spy_emails.length <= 1);
+      assert.equal(view.exclusion_vote_threshold, count - 1);
+    }
+    m.open();
+    for (let i = 1; i < count; i++) m.vote(i, actors[0].email);
+    assert.equal(m.room!.winner, "draw");
+    assert.equal(m.history.length, count);
+    assert.ok(m.history.every((h) => h.won === null && !h.ranked && h.fan_scenario === scenario));
+    assert.equal(aggregateCompetitiveStats(m.history).size, 0);
+    assert.equal(aggregateAchievementStats(m.history).size, 0);
+    for (const actor of actors.slice(0, count)) {
+      const view = projectGame(m.room!, actor);
+      assert.equal(view.fan_scenario, scenario);
+      assert.deepEqual(view.fan_player_words, frozen.fan_player_words);
+    }
+  }
+});
+
+Deno.test("FAN unique words reject insufficient distinct enabled words before any start is committed", () => {
+  const m = new Mission().lobby(0, 0, 4, { fan_unique_words_chance: 1 });
+  m.random = .99;
+  const lobby = structuredClone(m.room);
+  rejects(() => m.send("arm_roulette", 0, { expected_lobby_revision: m.room!.lobby_revision }), "fan_word_pool_incomplete");
+  assert.deepEqual(m.room, lobby);
+  m.room!.lobby_word_pool.push({ id: "dupe", word: " MUSEUM ", enabled: true }, { id: "disabled", word: "Bridge", enabled: false });
+  rejects(() => m.send("arm_roulette", 0, { expected_lobby_revision: m.room!.lobby_revision }), "fan_word_pool_incomplete");
+});
+
+Deno.test("FAN extra deals require v3 without forcing old-only FAN rooms to upgrade", () => {
+  const oldCaps = ["multi_spy_v1", "fan_mode_v1", "fan_mode_v2"];
+  const legacy = new Mission().lobby();
+  assert.ok(projectGame(legacy.room!, actors[0], oldCaps));
+  for (const scenario of extraDeals) {
+    const m = extraDealMission(scenario);
+    rejects(() => projectGame(m.room!, actors[0], oldCaps), "client_update_required");
+    rejects(() => m.send("join_room", 4, { client_capabilities: oldCaps }), "client_update_required");
+    m.room!.players[1].client_capabilities = oldCaps;
+    rejects(() => m.send("arm_roulette", 0, { expected_lobby_revision: m.room!.lobby_revision }), "client_update_required");
+    m.send("join_room", 1);
+    m.start();
+    assert.ok(projectGame(m.room!, actors[1], caps));
+  }
+});
+
+Deno.test("FAN extra deals replay with fresh assignments and clear maps when returning to lobby", () => {
+  for (const scenario of extraDeals) {
+    const m = extraDealMission(scenario).start();
+    m.open();
+    for (let i = 1; i < 4; i++) m.vote(i, actors[0].email);
+    m.room!.fan_player_words["stale@example.test"] = "Previous round";
+    const source = m.room!.match_id;
+    m.random = .2;
+    for (let i = 0; i < 4; i++) m.send("vote_play_again", i, { expected_match_id: source });
+    assert.equal(m.room!.status, "roulette");
+    assert.equal(m.room!.fan_scenario, scenario);
+    assert.equal(m.room!.fan_player_words["stale@example.test"], undefined);
+    assert.equal(Object.keys(m.room!.fan_player_words).length, scenario === "lone_civilian" ? 1 : 4);
+    assert.equal(projectGame(m.room!, actors[0]).fan_player_words, undefined);
+    m.send("leave_room", 3);
+    assert.equal(m.room!.status, "waiting");
+    assert.equal(m.room!.fan_scenario, "");
+    assert.deepEqual(m.room!.fan_player_words, {});
+  }
 });

@@ -201,8 +201,12 @@ export function projectRoomForClient(
       "finished"
     ? canonicalSpyEmails(room)[0] || clean(room.spy_email)
     : viewerSpyEmail;
+  const personalWord = isFanMode(room)
+    ? room.fan_player_words?.[normalizedEmail(viewer?.email)]
+    : undefined;
+  const personalWordRequired = isFanMode(room) && ["split_words", "unique_words"].includes(room.fan_scenario);
   const safeWord = safeCommunityTextForDisplay(
-    room.word || room.secret_word,
+    personalWord || (personalWordRequired ? "CLASSIFIED" : room.word || room.secret_word),
     "CLASSIFIED",
   );
   const isAssociationState = clean(room.game_mode) === "associations";
@@ -324,7 +328,17 @@ export function projectRoomForClient(
         : "",
     terminal_reconciliation_pending: terminalReconciliationPending(room),
     winner: clean(room.winner),
-    ...(roomStatus === "finished" && isFanMode(room) ? { fan_scenario: clean(room.fan_scenario), fan_result_reason: clean(room.fan_result_reason) } : {}),
+    ...(roomStatus === "finished" && isFanMode(room) ? {
+      fan_scenario: clean(room.fan_scenario),
+      fan_result_reason: clean(room.fan_result_reason),
+      fan_player_words: Object.fromEntries(
+        safeObjectList(room.players).flatMap((player) => {
+          const email = normalizedEmail(player.email);
+          const word = room.fan_player_words?.[email];
+          return word ? [[email, safeCommunityTextForDisplay(word, "CLASSIFIED")]] : [];
+        }),
+      ),
+    } : {}),
     round_number: Number(room.round_number || 1),
     current_asker_email: clean(room.current_asker_email),
     current_answerer_email: clean(room.current_answerer_email),

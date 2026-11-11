@@ -348,8 +348,8 @@ final class FanVotingUITests: XCTestCase {
         XCTAssertTrue(playerChoice.isSelected)
     }
 
-    func testBothAnomaliesRevealAPlayfulDrawForHostAndGuest() {
-        for scenario in ["all_spies", "no_spies"] {
+    func testAllFanScenariosRevealAPlayfulDrawForHostAndGuest() {
+        for scenario in ["all_spies", "no_spies", "split_words", "unique_words", "lone_civilian"] {
             for guest in [false, true] {
                 app.terminate()
                 app.launchArguments = [
@@ -364,7 +364,13 @@ final class FanVotingUITests: XCTestCase {
                 let result = app.otherElements["fanMode.result.draw"]
                 XCTAssertTrue(result.waitForExistence(timeout: 10))
                 let revealedScenario = app.staticTexts["fanMode.result.scenario"]
-                let expectedScenario = scenario == "all_spies" ? "ВСЕ БЫЛИ ШПИОНАМИ" : "ШПИОНОВ НЕ БЫЛО"
+                let expectedScenarios = [
+                    "all_spies": "ВСЕ БЫЛИ ШПИОНАМИ", "no_spies": "ШПИОНОВ НЕ БЫЛО",
+                    "split_words": "У ВАС БЫЛО ДВА РАЗНЫХ СЛОВА",
+                    "unique_words": "У КАЖДОГО БЫЛО СВОЁ СЛОВО",
+                    "lone_civilian": "ТОЛЬКО ОДИН ИГРОК НЕ БЫЛ ШПИОНОМ"
+                ]
+                let expectedScenario = expectedScenarios[scenario]!
                 let revealed = XCTNSPredicateExpectation(
                     predicate: NSPredicate(format: "label == %@", expectedScenario), object: revealedScenario
                 )
@@ -373,8 +379,35 @@ final class FanVotingUITests: XCTestCase {
                 XCTAssertFalse(app.staticTexts["СИСТЕМА ПОБЕДИЛА"].exists)
                 XCTAssertFalse(app.buttons["fanMode.vote.no_spies"].exists)
                 XCTAssertFalse(app.buttons["fanMode.vote.all_spies"].exists)
+                if scenario == "split_words" || scenario == "unique_words" {
+                    XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "onlineRoom.result.playerWords").firstMatch.exists)
+                    XCTAssertFalse(app.staticTexts["onlineRoom.result.word"].exists)
+                } else {
+                    XCTAssertEqual(app.staticTexts["onlineRoom.result.word"].exists, scenario != "all_spies")
+                }
                 attachScreenshot("fan-draw-\(scenario)-\(guest ? "guest" : "host")")
             }
+        }
+    }
+
+    func testLocalNewDealsRevealTheCorrectWords() {
+        for scenario in ["split_words", "unique_words", "lone_civilian"] {
+            app.terminate()
+            app.launchArguments = [
+                "--spyclash-ui-preview", "--spyclash-preview-tab=local",
+                "--spyclash-preview-local-phase=fan-draw", "--spyclash-preview-lang=ru",
+                "--spyclash-preview-local-fan-scenario=\(scenario)"
+            ]
+            app.launch()
+            XCTAssertTrue(app.otherElements["fanMode.result.draw"].waitForExistence(timeout: 10))
+            if scenario == "lone_civilian" {
+                XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "localGame.results.word").firstMatch.exists)
+                XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "localGame.results.playerWords").firstMatch.exists)
+            } else {
+                XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "localGame.results.playerWords").firstMatch.exists)
+                XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "localGame.results.word").firstMatch.exists)
+            }
+            attachScreenshot("fan-local-draw-\(scenario)")
         }
     }
 

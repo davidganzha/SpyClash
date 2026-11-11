@@ -13,6 +13,129 @@ final class FanModeTests: XCTestCase {
         XCTAssertEqual(FanModeSettings(isEnabled: true, allSpiesChance: 0, noSpiesChance: 0).scenario(roll: 0), .standard)
     }
 
+    func testAllFiveProbabilityRangesAndNormalization() {
+        let settings = FanModeSettings(isEnabled: true, allSpiesChance: 7, noSpiesChance: 11,
+                                       splitWordsChance: 17, uniqueWordsChance: 23, loneCivilianChance: 29)
+        let actual = Dictionary(grouping: (0..<100).map { settings.scenario(roll: $0) }, by: { $0 }).mapValues(\.count)
+        XCTAssertEqual(actual, [.allSpies: 7, .noSpies: 11, .splitWords: 17, .uniqueWords: 23,
+                                .loneCivilian: 29, .standard: 13])
+        let malformed = FanModeSettings(isEnabled: true, allSpiesChance: -5, noSpiesChance: 21,
+                                        splitWordsChance: 300, uniqueWordsChance: 32, loneCivilianChance: -1).normalized
+        XCTAssertEqual(malformed.noSpiesChance, 21)
+        XCTAssertEqual(malformed.splitWordsChance, 79)
+        XCTAssertEqual(malformed.uniqueWordsChance, 0)
+        XCTAssertEqual(malformed.standardChance, 0)
+        XCTAssertEqual(malformed, malformed.normalized)
+    }
+
+    func testEveryChanceSliderKeepsItsValueAndTotalFits() {
+        for scenario in FanScenario.surprises {
+            var settings = FanModeSettings(isEnabled: true, allSpiesChance: 20, noSpiesChance: 20,
+                                           splitWordsChance: 20, uniqueWordsChance: 20, loneCivilianChance: 20)
+            settings.setChance(99, for: scenario)
+            XCTAssertEqual(settings.chance(for: scenario), 99)
+            XCTAssertEqual(settings, settings.normalized)
+            XCTAssertEqual(FanScenario.surprises.reduce(0) { $0 + settings.chance(for: $1) }, 100)
+            settings.setChance(-3, for: scenario)
+            XCTAssertEqual(settings.chance(for: scenario), 0)
+        }
+    }
+
+    func testStoredLegacySettingsKeepTheirOriginalProbabilities() throws {
+        let legacy = Data(#"{"isEnabled":true,"allSpiesChance":35,"noSpiesChance":25}"#.utf8)
+        let decoded = try JSONDecoder().decode(FanModeSettings.self, from: legacy)
+        XCTAssertEqual(decoded, FanModeSettings(isEnabled: true, allSpiesChance: 35, noSpiesChance: 25))
+        XCTAssertEqual(decoded.standardChance, 40)
+        let allSettings = FanModeSettings(isEnabled: true, splitWordsChance: 20, uniqueWordsChance: 10, loneCivilianChance: 5)
+        XCTAssertEqual(try JSONDecoder().decode(FanModeSettings.self, from: JSONEncoder().encode(allSettings)), allSettings)
+    }
+
+    func testTwoWordsAreSplitEvenlyAndEveryoneGetsOnlyOne() throws {
+        for playerCount in [3, 4, 5, 8, 12] {
+            for _ in 0..<10 {
+                let deal = try XCTUnwrap(FanDealPolicy.deal(scenario: .splitWords, playerCount: playerCount,
+                                                          word: "Apple", pool: ["Apple", "Pear", "Plum"]))
+                XCTAssertTrue(deal.spyIndices.isEmpty)
+                XCTAssertEqual(Set(deal.playerWords.keys), Set(0..<playerCount))
+                let groups = Dictionary(grouping: deal.playerWords.values, by: { $0 }).mapValues(\.count)
+                XCTAssertEqual(groups.count, 2)
+                XCTAssertNotNil(groups["Apple"])
+                XCTAssertEqual(groups.values.sorted(), [playerCount / 2, playerCount - playerCount / 2])
+            }
+        }
+    }
+
+    func testDistinctWordsNeverRepeatOrCountBlankAndCaseDuplicates() throws {
+        XCTAssertEqual(FanDealPolicy.distinctWords([" Apple ", "APPLE", "", "  ", "Pear", "pear", "ＡＰＰＬＥ"]), ["Apple", "Pear"])
+        XCTAssertNil(FanDealPolicy.deal(scenario: .uniqueWords, playerCount: 3, word: "Apple",
+                                       pool: ["apple", "PEAR", " pear ", " "]))
+        XCTAssertNil(FanDealPolicy.deal(scenario: .splitWords, playerCount: 4, word: "Apple", pool: [" APPLE "]))
+        let pool = (0..<12).map { "Word \($0)" }
+        for playerCount in [3, 5, 12] {
+            let deal = try XCTUnwrap(FanDealPolicy.deal(scenario: .uniqueWords, playerCount: playerCount,
+                                                      word: pool[0], pool: pool))
+            XCTAssertTrue(deal.spyIndices.isEmpty)
+            XCTAssertEqual(Set(deal.playerWords.keys), Set(0..<playerCount))
+            XCTAssertEqual(Set(deal.playerWords.values).count, playerCount)
+            XCTAssertTrue(deal.playerWords.values.contains(pool[0]))
+        }
+    }
+
+    func testLoneCivilianIsTheOnlyPlayerWithAWord() throws {
+        for playerCount in [3, 4, 8, 12] {
+            for _ in 0..<10 {
+                let deal = try XCTUnwrap(FanDealPolicy.deal(scenario: .loneCivilian, playerCount: playerCount,
+                                                          word: "Apple", pool: ["Apple", "Pear"]))
+                XCTAssertEqual(Set(deal.spyIndices).count, playerCount - 1)
+                XCTAssertEqual(deal.playerWords.count, 1)
+                let civilian = try XCTUnwrap(deal.playerWords.keys.first)
+                XCTAssertFalse(deal.spyIndices.contains(civilian))
+                XCTAssertEqual(deal.playerWords[civilian], "Apple")
+            }
+        }
+    }
+
+    @MainActor
+    func testNewLobbyProbabilitiesAndFinishedAssignmentsUseWireKeys() throws {
+        let settings = FanModeSettings(isEnabled: true, splitWordsChance: 20, uniqueWordsChance: 10, loneCivilianChance: 5)
+        let payload = LobbyStatePayload(gameMode: .questions, gameDurationSeconds: 900, fanSettings: settings,
+                                       lobbyWordSource: .ai, lobbySourcePackID: nil, lobbySourceName: "Test",
+                                       lobbyTheme: nil, lobbyCategory: "Test", lobbyWordCount: 2,
+                                       lobbyWordCountMode: .custom, lobbyWordPool: [.init(word: "Apple"), .init(word: "Pear")])
+        let encoded = try JSONEncoder().encode(payload)
+        let keys = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertEqual(keys["fan_split_words_chance"] as? Int, 20)
+        XCTAssertEqual(keys["fan_unique_words_chance"] as? Int, 10)
+        XCTAssertEqual(keys["fan_lone_civilian_chance"] as? Int, 5)
+        XCTAssertEqual(try JSONDecoder().decode(LobbyStatePayload.self, from: encoded), payload)
+        for keyPath in [\LobbyStatePayload.fanSplitWordsChance, \.fanUniqueWordsChance, \.fanLoneCivilianChance] {
+            var changed = payload
+            changed[keyPath: keyPath] += 1
+            XCTAssertFalse(payload.equivalentForLobbySync(to: changed))
+        }
+        var legacyKeys = keys
+        for key in ["fan_split_words_chance", "fan_unique_words_chance", "fan_lone_civilian_chance"] { legacyKeys.removeValue(forKey: key) }
+        let legacy = try JSONDecoder().decode(LobbyStatePayload.self, from: JSONSerialization.data(withJSONObject: legacyKeys))
+        XCTAssertEqual(legacy.fanSplitWordsChance, 0)
+        XCTAssertEqual(legacy.fanUniqueWordsChance, 0)
+        XCTAssertEqual(legacy.fanLoneCivilianChance, 0)
+
+        var room = GameRoom.previewRoom(status: "finished")
+        room.fanModeEnabled = true
+        room.fanAllSpiesChance = settings.allSpiesChance
+        room.fanNoSpiesChance = settings.noSpiesChance
+        room.fanSplitWordsChance = settings.splitWordsChance
+        room.fanUniqueWordsChance = settings.uniqueWordsChance
+        room.fanLoneCivilianChance = settings.loneCivilianChance
+        room.fanPlayerWords = ["first@example.com": "Apple", "second@example.com": "Pear"]
+        room.fanScenario = FanScenario.splitWords.rawValue
+        room.winner = "draw"
+        let decoded = try JSONDecoder().decode(GameRoom.self, from: JSONEncoder().encode(room))
+        XCTAssertEqual(decoded.fanSettings, settings)
+        XCTAssertEqual(decoded.fanPlayerWords, room.fanPlayerWords)
+        XCTAssertEqual(FinishedRoomResultPolicy.fanDrawScenario(in: decoded), .splitWords)
+    }
+
     func testOnlyPlayersCanReceiveVotes() {
         for invalidTarget in [-1, -2, 0, 9] {
             XCTAssertNil(FanVotePolicy.appending(voter: 0, target: invalidTarget, active: [0, 1, 2], votes: []))

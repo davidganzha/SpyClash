@@ -1,7 +1,7 @@
 // @ts-nocheck -- Original dynamic room documents retain their native JSON contract.
 // Rules are vendored from the original game; persistence and external side effects
 // are replaced by one atomic PostgreSQL transaction owned by the handler.
-import { fanSettings, isFanMode, fanScenario, fanAssignmentCount, assertFanCapablePlayer, assertFanCapableRoster, fanVoteTransition } from "./rules/fan-mode-policy.ts";
+import { fanSettings, isFanMode, fanScenario, fanAssignmentCount, assertFanCapablePlayer, assertFanCapableRoster, fanVoteTransition, assertFanWordPool, assignFanPlayerWords } from "./rules/fan-mode-policy.ts";
 import { requireSafeCommunityText, safeCommunityAvatar, safeCommunityDisplayName } from "./rules/content-safety.ts";
 import { projectRoomForClient } from "./rules/room-projection.ts";
 import { assertAuthoritativeLobbyReady, hasAuthoritativeLobbyState, lobbyMutationPatch, validateLobbyMutation, lobbyStateFromRoom, selectedAuthoritativeLobbyWordPool } from "./rules/lobby-state-policy.ts";
@@ -229,6 +229,7 @@ function validatedStartPatch(room, payload, assignment) {
   return {
     fan_scenario: assignment.fan_scenario || "",
     fan_result_reason: "",
+    fan_player_words: payload.fan_player_words || {},
     spy_email: spyEmail,
     spy_emails: spyEmails,
     secret_word: secretWord,
@@ -282,6 +283,7 @@ function replayResetPatch(room, user, body, requiresReplayVotes = true) {
     spy_emails: [],
     fan_scenario: "",
     fan_result_reason: "",
+    fan_player_words: {},
     secret_word: "",
     word: "",
     category: "",
@@ -397,7 +399,7 @@ export function reduceGame(input: GameInput): GameTransition {
     const spies = canonicalSpyEmails(room);
     for (const player of players(room)) {
       const isSpy = spies.includes(player.email);
-      history.push({ match_id: intent.match_id, result_key: gameHistoryResultKey(intent.match_id, player.user_id), player_user_id: player.user_id, player_email: player.email, room_code: room.code, match_type: "online", ranked: !isFanMode(room) && spies.length === 1, fan_mode_enabled: isFanMode(room), fan_scenario: fanScenario(room) || "", role: isSpy ? "spy" : "detective", word: displayWord(room) || "CLASSIFIED", category: clean(room.category) || "CLASSIC", winner: room.winner, player_count: players(room).length, spy_count: spies.length, won: room.winner === "draw" ? null : room.winner === "all" ? true : room.winner === "system" ? false : room.winner === "spy" ? isSpy : !isSpy });
+      history.push({ match_id: intent.match_id, result_key: gameHistoryResultKey(intent.match_id, player.user_id), player_user_id: player.user_id, player_email: player.email, room_code: room.code, match_type: "online", ranked: !isFanMode(room) && spies.length === 1, fan_mode_enabled: isFanMode(room), fan_scenario: fanScenario(room) || "", role: isSpy ? "spy" : "detective", word: room.fan_player_words?.[clean(player.email).toLowerCase()] || displayWord(room) || "CLASSIFIED", category: clean(room.category) || "CLASSIC", winner: room.winner, player_count: players(room).length, spy_count: spies.length, won: room.winner === "draw" ? null : room.winner === "all" ? true : room.winner === "system" ? false : room.winner === "spy" ? isSpy : !isSpy });
     }
     const recipients = terminalOutboxCommitRecipientUserIDs(room);
     emit("game_finished", room.game_finished_event_id, { winner: room.winner, recipient_user_ids: recipients });
@@ -532,11 +534,13 @@ export function reduceGame(input: GameInput): GameTransition {
       if (!Number.isInteger(body.expected_lobby_revision) || body.expected_lobby_revision !== Number(room.lobby_revision)) failure("Lobby settings changed", "lobby_revision_conflict");
       const state = lobbyStateFromRoom(room), pool = selectedAuthoritativeLobbyWordPool(room);
       if (pool.length < 2) failure("Choose at least two enabled words", "lobby_word_pool_incomplete");
+      assertFanWordPool(room, pool);
       const order = [...players(room)];
       for (let i = order.length - 1; i > 0; i--) { const j = randomIndex(i + 1); [order[i], order[j]] = [order[j], order[i]]; }
       const word = pool[randomIndex(pool.length)].word;
       const plan = { word, secret_word: word, word_pool: pool, category: state.lobby_category || state.lobby_source_name || "CLASSIC", game_mode: state.game_mode, game_duration_seconds: state.game_duration_seconds, current_asker_email: order[0].email, current_answerer_email: order[1].email };
       const assignment = serverSpyAssignment(room, randomIndex);
+      plan.fan_player_words = assignFanPlayerWords(room, assignment, word, pool, randomIndex);
       const question = plan.game_mode === "questions" ? initialQuestionTurn({ activePlayers: players(room), currentAskerEmail: plan.current_asker_email, currentAnswererEmail: plan.current_answerer_email, randomIndex }) : null;
       patch({ ...validatedStartPatch(room, plan, assignment), ...(question ? { current_answer: encodeQuestionTurnOrderState(question.state) } : {}), ...serverIntroStartPatch(at), status: "roulette", roulette_target_email: plan.current_asker_email, game_started_at: null, game_paused_at: null, game_paused_total_seconds: 0 }); break;
     }

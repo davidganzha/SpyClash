@@ -371,6 +371,7 @@ function abandonedPreTimerMatchPatch(): Room {
     spy_emails: [],
     fan_scenario: "",
     fan_result_reason: "",
+    fan_player_words: {},
     secret_word: "",
     word: "",
     category: "",

@@ -3492,7 +3492,10 @@ struct LocalGameView: View {
                             .spyWebEntrance(delay: 0.10, duration: 0.52, y: 18)
 
                     }
-                    if winner != .draw || session.fanScenario != .allSpies {
+                    if winner == .draw && session.hasIndividualWords {
+                        localResultPlayerWordsPanel(session)
+                            .spyWebEntrance(delay: 0.16, duration: 0.50, y: 16)
+                    } else if winner != .draw || session.fanScenario != .allSpies {
                         localResultWordPanel(session)
                             .spyWebEntrance(delay: 0.16, duration: 0.50, y: 16)
                             .accessibilityIdentifier("localGame.results.word")
@@ -3545,6 +3548,36 @@ struct LocalGameView: View {
             }
             .accessibilityIdentifier("localGame.results")
         }
+    }
+
+    private func localResultPlayerWordsPanel(_ session: LocalSession) -> some View {
+        SpyPanel(accent: SpyTheme.amber) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(localized(en: "WHO HAD WHICH WORD", ru: "У КОГО КАКОЕ СЛОВО", es: "LA PALABRA DE CADA JUGADOR", uk: "У КОГО ЯКЕ СЛОВО"))
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(SpyTheme.dim)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(session.players.indices, id: \.self) { index in
+                    let player = session.players[index]
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("\(player.avatar) \(player.name)")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.white)
+                        Text(session.word(for: player).uppercased())
+                            .font(.system(size: 17, weight: .black, design: .monospaced))
+                            .foregroundStyle(SpyTheme.amber)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("localGame.results.playerWord.\(index)")
+                    if index < session.players.count - 1 {
+                        Rectangle().fill(SpyTheme.stroke).frame(height: 1)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityIdentifier("localGame.results.playerWords")
     }
 
     private func localResultWordPanel(_ session: LocalSession) -> some View {
@@ -4162,6 +4195,19 @@ struct LocalGameView: View {
             return
         }
 
+        if fanSettings.isEnabled,
+           fanSettings.normalized.uniqueWordsChance > 0,
+           FanDealPolicy.distinctWords(localPlayablePool).count < names.count {
+            status = localized(
+                en: "EVERYONE GETS A DIFFERENT WORD: SELECT AT LEAST \(names.count) DISTINCT ACTIVE WORDS",
+                ru: "У ВСЕХ РАЗНЫЕ СЛОВА: ВЫБЕРИ ХОТЯ БЫ \(names.count) РАЗНЫХ АКТИВНЫХ СЛОВ",
+                es: "UNA PALABRA DISTINTA PARA CADA UNO: ELIGE AL MENOS \(names.count) PALABRAS ACTIVAS DISTINTAS",
+                uk: "У ВСІХ РІЗНІ СЛОВА: ОБЕРИ ЩОНАЙМЕНШЕ \(names.count) РІЗНИХ АКТИВНИХ СЛІВ"
+            )
+            HapticManager.shared.fire(.notification(.warning))
+            return
+        }
+
         guard let word = pickLocalWord() else {
             status = localized(
                 en: "WORD POOL IS UNAVAILABLE",
@@ -4177,16 +4223,23 @@ struct LocalGameView: View {
             GameRoom.maximumSpyCount(forPlayerCount: names.count)
         )
         let scenario = fanSettings.scenario(roll: Int.random(in: 0..<100))
-        let spyIndices: [Int]
-        switch scenario {
-        case .allSpies: spyIndices = Array(names.indices)
-        case .noSpies: spyIndices = []
-        case .standard:
-            spyIndices = LocalSpyAssignmentPolicy.randomSpyIndices(
-                playerCount: names.count,
-                requestedSpyCount: fanSettings.isEnabled ? 1 : selectedSpyCount
+        guard let deal = FanDealPolicy.deal(
+            scenario: scenario,
+            playerCount: names.count,
+            word: word.word,
+            pool: word.pool,
+            standardSpyCount: fanSettings.isEnabled ? 1 : selectedSpyCount
+        ) else {
+            status = localized(
+                en: "NOT ENOUGH DISTINCT WORDS FOR THIS DEAL",
+                ru: "ДЛЯ ЭТОЙ РАЗДАЧИ НЕ ХВАТАЕТ РАЗНЫХ СЛОВ",
+                es: "NO HAY SUFICIENTES PALABRAS DISTINTAS PARA ESTE REPARTO",
+                uk: "ДЛЯ ЦІЄЇ РОЗДАЧІ БРАКУЄ РІЗНИХ СЛІВ"
             )
+            HapticManager.shared.fire(.notification(.warning))
+            return
         }
+        let spyIndices = deal.spyIndices
         let spyIndexSet = Set(spyIndices)
         let localPlayers = names.enumerated().map { index, name in
             LocalPlayer(name: name, avatar: avatars[safe: index] ?? "🕵️", isSpy: spyIndexSet.contains(index))
@@ -4202,7 +4255,8 @@ struct LocalGameView: View {
             mode: mode,
             spiesKnowEachOther: fanSettings.isEnabled ? false : spiesKnowEachOther,
             fanEnabled: fanSettings.isEnabled,
-            fanScenario: scenario
+            fanScenario: scenario,
+            playerWords: deal.playerWords
         )
         surveyGameID = UUID()
         surveyAccountID = appState.user?.id
@@ -4238,7 +4292,7 @@ struct LocalGameView: View {
         player: LocalPlayer,
         session: LocalSession
     ) -> MissionRoleCardContent {
-        player.isSpy ? .spy : .detective(word: session.word)
+        player.isSpy ? .spy : .detective(word: session.word(for: player))
     }
 
     private func localRoleTeammates(
@@ -5135,12 +5189,30 @@ struct LocalGameView: View {
             .flatMap(FanScenario.init(rawValue:))
         let previewFanScenario = requestedFanScenario ?? (normalized == "fan-draw" ? .allSpies : .standard)
         let previewFanEnabled = requestedFanScenario != nil || normalized == "fan-draw"
-        let previewPlayers = basePreview.players.map { player in
+        let previewSpyIndices: [Int]
+        switch previewFanScenario {
+        case .standard: previewSpyIndices = basePreview.spyIndices
+        case .allSpies: previewSpyIndices = Array(basePreview.players.indices)
+        case .noSpies, .splitWords, .uniqueWords: previewSpyIndices = []
+        case .loneCivilian: previewSpyIndices = Array(basePreview.players.indices.dropFirst())
+        }
+        let previewPlayers = basePreview.players.enumerated().map { index, player in
             LocalPlayer(
                 id: player.id, name: player.name, avatar: player.avatar,
-                isSpy: previewFanScenario == .allSpies || (previewFanScenario == .standard && player.isSpy)
+                isSpy: previewSpyIndices.contains(index)
             )
         }
+        let previewPlayerWords = Dictionary(uniqueKeysWithValues: previewPlayers.indices.compactMap { index -> (Int, String)? in
+            guard !previewPlayers[index].isSpy else { return nil }
+            switch previewFanScenario {
+            case .splitWords:
+                return (index, basePreview.pool[index < (previewPlayers.count + 1) / 2 ? 0 : 1])
+            case .uniqueWords:
+                return (index, basePreview.pool[index])
+            default:
+                return (index, basePreview.word)
+            }
+        })
         let preview = LocalSession(
             word: basePreview.word,
             category: basePreview.category,
@@ -5150,7 +5222,8 @@ struct LocalGameView: View {
             mode: previewLocalMode ?? basePreview.mode,
             spiesKnowEachOther: basePreview.spiesKnowEachOther,
             fanEnabled: previewFanEnabled,
-            fanScenario: previewFanScenario
+            fanScenario: previewFanScenario,
+            playerWords: previewPlayerWords
         )
 
         players = preview.players.map(\.name)
@@ -5538,7 +5611,7 @@ private struct LocalForgotCardRecoveryView: View {
                 revealForgottenCard()
             } label: {
                 MissionRoleCard(
-                    role: player.isSpy ? .spy : .detective(word: request.session.word),
+                    role: player.isSpy ? .spy : .detective(word: request.session.word(for: player)),
                     category: request.session.category,
                     theme: cardTheme,
                     accent: cardAccent,
@@ -5793,7 +5866,7 @@ private struct RoleRevealCard: View {
                         .tracking(0.12)
                         .foregroundStyle(SpyTheme.dim)
                         .spyFitted(scale: 0.66, alignment: .center)
-                    Text(session.word.uppercased())
+                    Text(session.word(for: player).uppercased())
                         .font(.system(size: 32, weight: .black, design: .default))
                         .tracking(0.04)
                         .foregroundStyle(SpyTheme.red)
@@ -6076,6 +6149,16 @@ private struct LocalSession: Equatable {
     let spiesKnowEachOther: Bool
     var fanEnabled = false
     var fanScenario = FanScenario.standard
+    var playerWords: [Int: String] = [:]
+
+    var hasIndividualWords: Bool {
+        fanEnabled && (fanScenario == .splitWords || fanScenario == .uniqueWords)
+    }
+
+    func word(for player: LocalPlayer) -> String {
+        guard let index = players.firstIndex(where: { $0.id == player.id }) else { return word }
+        return playerWords[index] ?? word
+    }
 
     var spyPlayers: [LocalPlayer] {
         players.filter(\.isSpy)

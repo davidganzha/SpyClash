@@ -1244,6 +1244,9 @@ extension LobbyStatePayload {
             fanModeEnabled == other.fanModeEnabled &&
             fanAllSpiesChance == other.fanAllSpiesChance &&
             fanNoSpiesChance == other.fanNoSpiesChance &&
+            fanSplitWordsChance == other.fanSplitWordsChance &&
+            fanUniqueWordsChance == other.fanUniqueWordsChance &&
+            fanLoneCivilianChance == other.fanLoneCivilianChance &&
             lobbyWordSource == other.lobbyWordSource &&
             canonicalLobbyText(lobbySourcePackID) == canonicalLobbyText(other.lobbySourcePackID) &&
             canonicalLobbyText(lobbySourceName) == canonicalLobbyText(other.lobbySourceName) &&
@@ -2790,6 +2793,9 @@ final class AppState: NSObject {
         room.fanModeEnabled = payload.fanModeEnabled
         room.fanAllSpiesChance = payload.fanAllSpiesChance
         room.fanNoSpiesChance = payload.fanNoSpiesChance
+        room.fanSplitWordsChance = payload.fanSplitWordsChance
+        room.fanUniqueWordsChance = payload.fanUniqueWordsChance
+        room.fanLoneCivilianChance = payload.fanLoneCivilianChance
         room.lobbySchemaVersion = 2
         room.lobbyRevision = revision
         room.lobbyWordSource = payload.lobbyWordSource.rawValue
@@ -6257,7 +6263,7 @@ final class AppState: NSObject {
                 previewRoom.spiesKnowEachOther = false
                 previewRoom.players = previewRoom.playersList.map { player in
                     var player = player
-                    player.clientCapabilities = ["multi_spy_v1", "fan_mode_v1", "fan_mode_v2"]
+                    player.clientCapabilities = ["multi_spy_v1", "fan_mode_v1", "fan_mode_v2", "fan_mode_v3"]
                     return player
                 }
                 if previewRoom.isVotingActive, let voterEmail = user?.email {
@@ -6285,7 +6291,16 @@ final class AppState: NSObject {
                 previewRoom.fanScenario = scenario.rawValue
                 previewRoom.fanResultReason = "player_ejected"
                 previewRoom.winner = "draw"
-                previewRoom.spyEmails = scenario == .allSpies ? previewRoom.playersList.map(\.email) : []
+                let previewWords = ["МОРЕ", "ГОРА", "ЛЕС", "ГОРОД", "РЕКА", "ОСТРОВ", "ПЛЯЖ", "ОЗЕРО", "ПОЛЕ", "ПАРК", "МОСТ", "ДОМ"]
+                let playerEmails = previewRoom.playersList.map(\.email)
+                let deal = FanDealPolicy.deal(scenario: scenario, playerCount: playerEmails.count,
+                                              word: previewWords[0], pool: previewWords)
+                previewRoom.spyEmails = deal?.spyIndices.map { playerEmails[$0] } ?? []
+                previewRoom.fanPlayerWords = deal.map { deal in
+                    Dictionary(uniqueKeysWithValues: deal.playerWords.map { (playerEmails[$0.key].trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), $0.value) })
+                }
+                previewRoom.word = previewWords[0]
+                previewRoom.secretWord = previewWords[0]
                 previewRoom.spyEmail = previewRoom.spyEmails?.first
                 previewRoom.voteRequests = []
                 previewRoom.detectiveVotes = []

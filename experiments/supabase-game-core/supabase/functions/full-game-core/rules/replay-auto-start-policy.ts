@@ -1,4 +1,4 @@
-import { assertFanCapableRoster } from "./fan-mode-policy.ts";
+import { assertFanCapableRoster, assertFanWordPool, assignFanPlayerWords } from "./fan-mode-policy.ts";
 import { requireSafeCommunityText } from "./content-safety.ts";
 import {
   hasAuthoritativeLobbyState,
@@ -187,6 +187,7 @@ export function replayAutoStartPatch(
     spy_emails: [],
     fan_scenario: "",
     fan_result_reason: "",
+    fan_player_words: {},
   };
   assertMultiSpyCapableRoster(replayRoom);
   assertFanCapableRoster(replayRoom);
@@ -196,6 +197,7 @@ export function replayAutoStartPatch(
   const askerEmail = clean(order[0]?.email);
   const answererEmail = clean(order[1]?.email);
   const pool = canonicalReplayPool(replayRoom);
+  assertFanWordPool(replayRoom, pool);
   const secretWord = pool[randomIndex(pool.length)].word;
   const assignment = serverSpyAssignment(replayRoom, randomIndex);
   const lobbyState = hasAuthoritativeLobbyState(replayRoom)
@@ -237,6 +239,7 @@ export function replayAutoStartPatch(
     replay_source_match_id: sourceMatchID,
     fan_scenario: assignment.fan_scenario || "",
     fan_result_reason: "",
+    fan_player_words: assignFanPlayerWords(replayRoom, assignment, secretWord, pool, randomIndex),
     spy_email: assignment.spy_email,
     spy_emails: assignment.spy_emails,
     secret_word: secretWord,

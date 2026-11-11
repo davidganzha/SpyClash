@@ -3713,6 +3713,9 @@ struct LobbyStatePayload: Codable, Hashable {
     var fanModeEnabled: Bool = false
     var fanAllSpiesChance: Int = 15
     var fanNoSpiesChance: Int = 15
+    var fanSplitWordsChance: Int = 0
+    var fanUniqueWordsChance: Int = 0
+    var fanLoneCivilianChance: Int = 0
     var lobbyWordSource: LobbyWordSource
     var lobbySourcePackID: String?
     var lobbySourceName: String?
@@ -3730,6 +3733,9 @@ struct LobbyStatePayload: Codable, Hashable {
         case fanModeEnabled = "fan_mode_enabled"
         case fanAllSpiesChance = "fan_all_spies_chance"
         case fanNoSpiesChance = "fan_no_spies_chance"
+        case fanSplitWordsChance = "fan_split_words_chance"
+        case fanUniqueWordsChance = "fan_unique_words_chance"
+        case fanLoneCivilianChance = "fan_lone_civilian_chance"
         case lobbyWordSource = "lobby_word_source"
         case lobbySourcePackID = "lobby_source_pack_id"
         case lobbySourceName = "lobby_source_name"
@@ -3762,6 +3768,9 @@ struct LobbyStatePayload: Codable, Hashable {
         self.fanModeEnabled = fanSettings.isEnabled
         self.fanAllSpiesChance = fanSettings.normalized.allSpiesChance
         self.fanNoSpiesChance = fanSettings.normalized.noSpiesChance
+        self.fanSplitWordsChance = fanSettings.normalized.splitWordsChance
+        self.fanUniqueWordsChance = fanSettings.normalized.uniqueWordsChance
+        self.fanLoneCivilianChance = fanSettings.normalized.loneCivilianChance
         if fanSettings.isEnabled { self.spyCount = 1 }
         self.lobbyWordSource = lobbyWordSource
         self.lobbySourcePackID = lobbySourcePackID
@@ -3782,6 +3791,9 @@ struct LobbyStatePayload: Codable, Hashable {
         fanModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .fanModeEnabled) ?? false
         fanAllSpiesChance = try container.decodeIfPresent(Int.self, forKey: .fanAllSpiesChance) ?? 15
         fanNoSpiesChance = try container.decodeIfPresent(Int.self, forKey: .fanNoSpiesChance) ?? 15
+        fanSplitWordsChance = try container.decodeIfPresent(Int.self, forKey: .fanSplitWordsChance) ?? 0
+        fanUniqueWordsChance = try container.decodeIfPresent(Int.self, forKey: .fanUniqueWordsChance) ?? 0
+        fanLoneCivilianChance = try container.decodeIfPresent(Int.self, forKey: .fanLoneCivilianChance) ?? 0
         lobbyWordSource = try container.decode(LobbyWordSource.self, forKey: .lobbyWordSource)
         lobbySourcePackID = try container.decodeIfPresent(String.self, forKey: .lobbySourcePackID)
         lobbySourceName = try container.decodeIfPresent(String.self, forKey: .lobbySourceName)
@@ -3815,6 +3827,10 @@ struct GameRoom: Codable, Identifiable, Hashable {
     var fanModeEnabled: Bool? = nil
     var fanAllSpiesChance: Int? = nil
     var fanNoSpiesChance: Int? = nil
+    var fanSplitWordsChance: Int? = nil
+    var fanUniqueWordsChance: Int? = nil
+    var fanLoneCivilianChance: Int? = nil
+    var fanPlayerWords: [String: String]? = nil
     var fanScenario: String? = nil
     var fanResultReason: String? = nil
     var serverExclusionVoteThreshold: Int?
@@ -4091,6 +4107,10 @@ struct GameRoom: Codable, Identifiable, Hashable {
         case fanModeEnabled = "fan_mode_enabled"
         case fanAllSpiesChance = "fan_all_spies_chance"
         case fanNoSpiesChance = "fan_no_spies_chance"
+        case fanSplitWordsChance = "fan_split_words_chance"
+        case fanUniqueWordsChance = "fan_unique_words_chance"
+        case fanLoneCivilianChance = "fan_lone_civilian_chance"
+        case fanPlayerWords = "fan_player_words"
         case fanScenario = "fan_scenario"
         case fanResultReason = "fan_result_reason"
         case serverExclusionVoteThreshold = "exclusion_vote_threshold"

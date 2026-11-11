@@ -346,7 +346,7 @@ export function serverSpyAssignment(
       }
       return { spy_emails: existing, spy_email: existing[0] || "", fan_scenario: scenario };
     }
-    const assigned = count === 0 ? [] : count === participantEmails.length ? participantEmails : sampleUniqueSpyEmails(participantEmails, 1, randomIndex);
+    const assigned = count === 0 ? [] : count === participantEmails.length ? participantEmails : sampleUniqueSpyEmails(participantEmails, count, randomIndex);
     return { spy_emails: assigned, spy_email: assigned[0] || "", fan_scenario: scenario };
   }
   const count = validatedLobbySpyCount(
