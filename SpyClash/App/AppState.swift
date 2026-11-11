@@ -3996,19 +3996,19 @@ final class AppState: NSObject {
         switch language {
         case .ru:
             return expired
-                ? "Время входа истекло. Нажми «Продолжить с Google», чтобы начать заново."
+                ? "Время входа истекло. Попробуй войти ещё раз."
                 : "Не удалось завершить вход. Попробуй войти ещё раз."
         case .uk:
             return expired
-                ? "Час входу минув. Натисни «Продовжити з Google», щоб почати знову."
+                ? "Час входу минув. Спробуй увійти ще раз."
                 : "Не вдалося завершити вхід. Спробуй увійти ще раз."
         case .es:
             return expired
-                ? "La sesión de acceso caducó. Pulsa Continuar con Google para empezar de nuevo."
+                ? "La sesión de acceso caducó. Inténtalo de nuevo."
                 : "No se pudo completar el acceso. Inténtalo de nuevo."
         default:
             return expired
-                ? "Sign-in expired. Tap Continue with Google to start again."
+                ? "Sign-in expired. Please try again."
                 : "Unable to complete sign-in. Please try again."
         }
     }

@@ -12,53 +12,65 @@ final class AuthenticationEntryUITests: XCTestCase {
         let login = app.buttons["welcome.login"]
         XCTAssertTrue(login.waitForExistence(timeout: 10))
         login.tap()
-        XCTAssertTrue(app.buttons["auth.google"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: 10))
     }
 
     override func tearDown() async throws { app.terminate() }
 
-    func testWelcomeOpensAvailableAuthenticationControls() {
-        XCTAssertTrue(app.buttons["auth.google"].isEnabled)
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Apple'")).firstMatch.exists)
-        XCTAssertTrue(app.textFields.firstMatch.exists)
+    func testLoginOffersConfiguredProvidersAndEmailWithoutGoogle() {
+        assertAvailableAuthenticationControls()
+
+        enterEmail("login-preview@example.com")
+        app.buttons["CONTINUE"].tap()
+
+        XCTAssertTrue(app.secureTextFields.firstMatch.waitForExistence(timeout: 10))
+        XCTAssertEqual(app.secureTextFields.count, 1)
+        let unlock = app.buttons["UNLOCK"]
+        XCTAssertTrue(unlock.waitForExistence(timeout: 5))
+        XCTAssertFalse(unlock.isEnabled)
+        XCTAssertTrue(app.buttons["login-preview@example.com"].exists)
+        XCTAssertTrue(app.buttons["FORGOT PASSPHRASE?"].exists)
     }
 
-    /// Explicit opt-in: starts real OAuth transactions, enters no credentials,
-    /// and cancels at the provider form. This is not a successful-account-login test.
-    func testLiveGoogleFormCanBeCancelledAndStartedAgain() throws {
-        let environment = ProcessInfo.processInfo.environment
-        try XCTSkipUnless(environment["SPYCLASH_RUN_LIVE_AUTH_UI"] == "1" || environment["TEST_RUNNER_SPYCLASH_RUN_LIVE_AUTH_UI"] == "1")
-        for attempt in 1...2 {
-            let google = app.buttons["auth.google"]
-            XCTAssertTrue(google.isEnabled)
-            google.tap()
-            let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-            if springboard.alerts.firstMatch.waitForExistence(timeout: 2) {
-                let continueButton = springboard.alerts.buttons.matching(NSPredicate(format: "label IN {'Continue', 'Продолжить', 'Продовжити', 'Continuar'}")).firstMatch
-                XCTAssertTrue(continueButton.exists)
-                continueButton.tap()
-            }
-            let web = app.webViews.firstMatch
-            XCTAssertTrue(web.waitForExistence(timeout: 30))
-            let accountField = web.textFields.matching(NSPredicate(format: "label CONTAINS[c] 'email' OR label CONTAINS[c] 'почт' OR label CONTAINS[c] 'пошт' OR label CONTAINS[c] 'электрон' OR label CONTAINS[c] 'correo'")).firstMatch
-            XCTAssertTrue(accountField.waitForExistence(timeout: 30), "The Google account field must load before cancellation")
-            let usableForm = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: accountField)
-            XCTAssertEqual(XCTWaiter.wait(for: [usableForm], timeout: 15), .completed)
-            accountField.tap()
-            // A Simulator hardware keyboard can suppress the software keyboard.
-            // Assert focus on the actual provider field, not keyboard visibility.
-            let focusedField = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hasFocus == true"), object: accountField)
-            XCTAssertEqual(XCTWaiter.wait(for: [focusedField], timeout: 10), .completed)
-            XCTAssertFalse(web.staticTexts.matching(NSPredicate(format: "label CONTAINS 'invalid_state'")).firstMatch.exists)
-            let screenshot = XCTAttachment(screenshot: app.screenshot())
-            screenshot.name = "live-google-form-attempt-\(attempt)"
-            screenshot.lifetime = .keepAlways
-            add(screenshot)
-            let cancel = app.buttons.matching(NSPredicate(format: "label IN {'Cancel', 'Close', 'Отменить', 'Закрыть', 'Скасувати', 'Закрити', 'Cancelar', 'Cerrar'}")).allElementsBoundByIndex.first { $0.isHittable }
-            XCTAssertNotNil(cancel)
-            cancel?.tap()
-            let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: google)
-            XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
+    func testRegistrationOffersConfiguredProvidersAndEmailWithoutGoogle() {
+        app.buttons["REQUEST ACCESS"].tap()
+        let joinNetwork = app.buttons["JOIN THE NETWORK"]
+        XCTAssertTrue(joinNetwork.waitForExistence(timeout: 10))
+        assertAvailableAuthenticationControls()
+
+        enterEmail("registration-preview@example.com")
+        joinNetwork.tap()
+
+        XCTAssertTrue(app.secureTextFields.element(boundBy: 1).waitForExistence(timeout: 10))
+        XCTAssertEqual(app.secureTextFields.count, 2)
+        let createCredentials = app.buttons["CREATE CREDENTIALS"]
+        XCTAssertTrue(createCredentials.waitForExistence(timeout: 5))
+        XCTAssertFalse(createCredentials.isEnabled)
+        XCTAssertTrue(app.buttons["registration-preview@example.com"].exists)
+        XCTAssertTrue(app.staticTexts["// CONFIRM PASSPHRASE"].exists)
+    }
+
+    private func assertAvailableAuthenticationControls(file: StaticString = #filePath, line: UInt = #line) {
+        let apple = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Apple'")).firstMatch
+        XCTAssertTrue(apple.waitForExistence(timeout: 5), file: file, line: line)
+        XCTAssertTrue(apple.isEnabled, file: file, line: line)
+        let gameCenter = app.buttons["auth.gamecenter"]
+        // Standard Debug omits Game Center; SupabaseDebug runs set this flag to 1.
+        let expectsGameCenter = ProcessInfo.processInfo.environment["SPYCLASH_EXPECT_GAME_CENTER"] == "1"
+        XCTAssertEqual(gameCenter.exists, expectsGameCenter, file: file, line: line)
+        if expectsGameCenter {
+            XCTAssertTrue(gameCenter.isEnabled, file: file, line: line)
         }
+        XCTAssertTrue(app.textFields.firstMatch.exists, file: file, line: line)
+        XCTAssertFalse(app.buttons["auth.google"].exists, file: file, line: line)
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Google'")).firstMatch.exists, file: file, line: line)
+    }
+
+    /// Advancing from email to password is local. Neither test submits credentials
+    /// or opens a provider, so no live authentication transaction is started.
+    private func enterEmail(_ email: String) {
+        let field = app.textFields.firstMatch
+        field.tap()
+        field.typeText(email)
     }
 }

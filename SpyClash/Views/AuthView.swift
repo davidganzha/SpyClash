@@ -186,7 +186,6 @@ struct AuthView: View {
                 if SupabaseAppRuntime.permitsGameCenterSignIn { gameCenterButton }
 #endif
                 appleButton
-                googleButton
                 divider
                 emailField
                 Button {
@@ -234,7 +233,6 @@ struct AuthView: View {
                 if SupabaseAppRuntime.permitsGameCenterSignIn { gameCenterButton }
 #endif
                 appleButton
-                googleButton
                 divider
                 emailField
                 Button {
@@ -470,26 +468,6 @@ struct AuthView: View {
         }
     }
 #endif
-
-    private var googleButton: some View {
-        Button {
-            HapticManager.shared.fire(.buttonPress)
-            Task { await appState.loginWithGoogle() }
-        } label: {
-            HStack(spacing: 10) {
-                if appState.isBusy {
-                    SpySpinner(size: 18, accent: SpyTheme.red)
-                } else {
-                    Image(systemName: "g.circle.fill")
-                }
-                Text(copy.continueWithGoogle)
-            }
-        }
-        .buttonStyle(SpyButtonStyle(variant: .ghost))
-        .accessibilityIdentifier("auth.google")
-        .disabled(appState.isBusy || !SupabaseAppRuntime.permitsGoogleSignIn)
-        .opacity(appState.isBusy || !SupabaseAppRuntime.permitsGoogleSignIn ? 0.62 : 1)
-    }
 
     private var appleButton: some View {
         // Both callbacks belong to this rendered button instance. Reading
