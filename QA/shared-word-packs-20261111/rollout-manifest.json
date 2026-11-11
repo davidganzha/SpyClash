@@ -1,5 +1,5 @@
 {
-  "status": "prepared_not_deployed",
+  "status": "activated",
   "base_commit": "4149a0442c0b863a3db1d088bf276d6f5d796fcb",
   "build": 229,
   "supabase": {
@@ -63,7 +63,8 @@
   },
   "rollout_flag": "SPYCLASH_SHARED_WORD_PACKS_ENABLED",
   "notes": [
-    "Candidates preserve unrelated deployed source, including existing ad routes and reward configuration.",
-    "No migration, function deployment, secret change, or rollout enablement has been performed."
-  ]
+    "Activated with explicit confirmation in this chat; see activation.json for receipts and verification limits.",
+    "Baseline versions/hashes above describe the inspected pre-activation source. Candidates preserved unrelated deployed code and existing quota/ad settings."
+  ],
+  "activation_receipt": "activation.json"
 }

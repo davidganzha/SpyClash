@@ -1,6 +1,6 @@
 # Shared word-pack library — build 229
 
-Status: implemented and locally verified; **not deployed or enabled for users**.
+Status: **activated on the production server on 11 November 2026 after explicit approval in this chat**. Supabase `app-services` is now version 20; Base44 `generateWordPack` and both shared-library flags are configured. See `activation.json` for the deployment receipt.
 
 The feature reuses generated words across accounts through one Supabase library. Both the Base44 generator and native Game Center generator check the same exact normalized theme / theme-language policy / generator-version key before calling a model. Matching folds case, whitespace and Unicode compatibility; it does not infer topic aliases or merge different scopes. The existing theme-derived language policy is preserved.
 
@@ -41,15 +41,17 @@ All providers and ad rewards in automated checks are fixtures. SQL checks create
 
 Local logs and exact deployment candidates are under `.local/shared-word-packs/`. `rollout-manifest.json` records immutable source hashes and the inspected live server baselines. The candidates preserve unrelated deployed code rather than deploying the entire working branch.
 
-## Pending production activation
+## Production activation completed
 
-Requires fresh user confirmation in this chat under `AGENTS.md` before any of these operations:
+The user explicitly approved the following named operations in this chat, and all four are complete:
 
 1. Apply the single additive migration to Supabase project **spyclash-game-core**, `bbkfsgnordtdiblgdzkg`.
 2. Deploy the prepared **app-services** function candidate to that project, preserving its existing JWT verification and unrelated deployed source.
 3. Deploy only **generateWordPack** to Base44 app `69a0e57fa939f578082f8091`.
 4. Configure Base44 server-only `SPYCLASH_WORD_LIBRARY_SUPABASE_URL` and `SPYCLASH_WORD_LIBRARY_SUPABASE_SECRET` for that Supabase project, then enable `SPYCLASH_SHARED_WORD_PACKS_ENABLED=true` on both backends. This is the only new rollout flag; do not change existing quota/ad flags.
 
-Before activation, re-fetch and compare the live function baselines in the manifest. Stop and reconcile any drift. After activation, verify access restrictions and use an explicitly approved test account/request to prove a miss followed by a cross-account hit and exactly one point per successful request. These write-producing live checks have not been run.
+Live baselines were re-fetched and matched before deployment. After deployment, both function sources matched their approved candidates. Server REST reads returned 200; direct client RPC access returned 401. Both tables and all four RPCs deny anonymous/authenticated roles and allow the server role. A transaction on the live database verified claiming, publication, readback and fencing, then rolled back all test records. The generation endpoint still rejects unauthenticated requests. Existing Supabase configuration digests were unchanged except the new rollout flag.
+
+A paid generation and point deduction on real user accounts were **not** exercised during activation. Their behavior was verified by the local handler, PostgreSQL and client tests above. The Supabase security advisor reported only the expected informational RLS-without-policy notice for the server-only library; client access remains revoked. No new iOS App Store/TestFlight build was published, so the client retry enhancements arrive with build 229 when it is released.
 
 Rollback: set the shared-library flag to false on both backends. Keep the additive tables and durable account request records; do not delete charged-operation history. App Store/TestFlight publication is a separate action and is not part of this prepared server activation.
