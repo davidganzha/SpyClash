@@ -1,0 +1,26 @@
+{
+  "checked_at_utc": "2026-11-11T20:23:51.433Z",
+  "app_id": "6793534085",
+  "builds": [
+    {
+      "id": "10a3e703-cc8f-44dc-8302-8f9a312d1f68",
+      "version": "230",
+      "marketing_version": "1.0.4",
+      "processing_state": "VALID",
+      "uploaded_date": "2026-11-11T12:20:19-08:00",
+      "uses_non_exempt_encryption": false,
+      "beta": {
+        "autoNotifyEnabled": true,
+        "internalBuildState": "IN_BETA_TESTING",
+        "externalBuildState": "READY_FOR_BETA_SUBMISSION"
+      },
+      "groups": [
+        {
+          "id": "47a13858-b43b-44a1-bf3e-285722cec320",
+          "name": "LIMITLESS Internal QA",
+          "internal": true
+        }
+      ]
+    }
+  ]
+}

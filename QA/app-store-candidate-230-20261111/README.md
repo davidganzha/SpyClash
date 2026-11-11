@@ -43,8 +43,14 @@ or UI acceptance is claimed by this rebuild.
 
 ## Server and release boundary
 
-No App Store upload, App Review submission, TestFlight promotion, backend
-deployment, secret change or advertising activation was performed in this rebuild.
+After the user explicitly requested TestFlight upload, the exact IPA was uploaded
+to app `6793534085` at 20:19 UTC on 11 November 2026. Apple accepted it with no
+errors; delivery UUID `10a3e703-cc8f-44dc-8302-8f9a312d1f68`. Processing completed successfully (`VALID`). The build was assigned to the same
+existing internal group as build 218, **LIMITLESS Internal QA**, at 20:23 UTC.
+Its verified internal state is **IN_BETA_TESTING**. [Availability receipt](testflight-status.json),
+[group-assignment receipt](testflight-group-assignment.json).
+No App Review submission, public release, backend deployment, secret change or
+advertising activation was performed. See [upload receipt](testflight-upload.json).
 
 The shared-library activation receipt from the other task records `app-services`
 v20. The old build-228 server packages were prepared against v19 and are now
@@ -60,5 +66,6 @@ The advertising release still requires approved server rollout, Unity S2S
 activation/secret, current privacy declarations and real callback/purchase/device
 acceptance described in the [prior candidate report](../app-store-candidate-20261111/README.md).
 Compilation, fixtures and Apple package validation do not establish those live
-behaviors. The verified IPA can be uploaded for controlled acceptance after the
-exact build-230 upload is approved.
+behaviors. The uploaded IPA is available for controlled acceptance in the existing internal
+QA group. No external group, public beta review or public App Store release was
+changed. Server changes and real purchase/reward/device acceptance remain separate.

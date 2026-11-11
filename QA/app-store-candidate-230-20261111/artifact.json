@@ -22,7 +22,7 @@
     "lone_civilian": 2,
     "standard": 90
   },
-  "uploaded": false,
+  "uploaded": true,
   "production_changed_by_this_rebuild": false,
   "apple_archive_validation": "passed, no errors",
   "apple_validation_utc": "2026-11-11T20:12:47Z",
@@ -36,5 +36,18 @@
     "passed": 154,
     "handler_steps_passed": 23,
     "failed": 0
+  },
+  "testflight_delivery": {
+    "delivery_uuid": "10a3e703-cc8f-44dc-8302-8f9a312d1f68",
+    "uploaded_at_utc": "2026-11-11T20:19:01Z",
+    "app_id": "6793534085",
+    "processing": "VALID",
+    "approval": "User explicitly requested upload to TestFlight in the current chat.",
+    "build_id": "10a3e703-cc8f-44dc-8302-8f9a312d1f68",
+    "internal_build_state": "IN_BETA_TESTING",
+    "internal_group": "LIMITLESS Internal QA",
+    "internal_group_id": "47a13858-b43b-44a1-bf3e-285722cec320",
+    "verified_at_utc": "2026-11-11T20:23:51.433Z",
+    "app_store_connect_url": "https://appstoreconnect.apple.com/apps/6793534085/testflight/ios/10a3e703-cc8f-44dc-8302-8f9a312d1f68"
   }
 }

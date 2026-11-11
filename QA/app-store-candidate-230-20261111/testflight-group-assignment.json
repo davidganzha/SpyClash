@@ -1,0 +1,16 @@
+{
+  "assigned_at_utc": "2026-11-11T20:23:50.408Z",
+  "app_id": "6793534085",
+  "build_id": "10a3e703-cc8f-44dc-8302-8f9a312d1f68",
+  "version": "1.0.4",
+  "build": "230",
+  "group_id": "47a13858-b43b-44a1-bf3e-285722cec320",
+  "group_name": "LIMITLESS Internal QA",
+  "group_is_internal": true,
+  "http_status": 204,
+  "existing_group": true,
+  "testers_added": false,
+  "external_group_changed": false,
+  "app_review_submitted": false,
+  "public_release": false
+}
