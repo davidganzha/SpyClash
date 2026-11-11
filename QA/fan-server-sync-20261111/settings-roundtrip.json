@@ -1,0 +1,24 @@
+{
+  "requested": {
+    "fan_all_spies_chance": 5,
+    "fan_no_spies_chance": 10,
+    "fan_split_words_chance": 15,
+    "fan_unique_words_chance": 20,
+    "fan_lone_civilian_chance": 25
+  },
+  "live_v15": {
+    "fan_all_spies_chance": 5,
+    "fan_no_spies_chance": 10,
+    "fan_split_words_chance": null,
+    "fan_unique_words_chance": null,
+    "fan_lone_civilian_chance": null
+  },
+  "candidate_after_save_and_read": {
+    "fan_all_spies_chance": 5,
+    "fan_no_spies_chance": 10,
+    "fan_split_words_chance": 15,
+    "fan_unique_words_chance": 20,
+    "fan_lone_civilian_chance": 25
+  },
+  "result": "PASS: live v15 reproduces missing fields; candidate preserves all five"
+}

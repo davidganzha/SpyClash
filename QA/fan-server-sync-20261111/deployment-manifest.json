@@ -1,0 +1,254 @@
+{
+  "project_id": "bbkfsgnordtdiblgdzkg",
+  "function": "full-game-core",
+  "baseline_version": 15,
+  "baseline_bundle_sha256": "246743a6237f8ea06bc6515977c3270d581b4d827556a0391c9d64248a1c0f6e",
+  "source_commit": "8e26385c",
+  "client_compatibility": "TestFlight 1.0.4 (230)",
+  "entrypoint_path": "full-game-core/index.ts",
+  "import_map_path": "full-game-core/deno.json",
+  "verify_jwt": true,
+  "changed_files": [
+    "full-game-core/engine.ts",
+    "full-game-core/rules/active-game-lobby-return-policy.ts",
+    "full-game-core/rules/competitive-stats.ts",
+    "full-game-core/rules/fan-mode-policy.ts",
+    "full-game-core/rules/game-timer-policy.ts",
+    "full-game-core/rules/multi-spy-policy.ts",
+    "full-game-core/rules/replay-auto-start-policy.ts",
+    "full-game-core/rules/room-projection.ts",
+    "full-game-core/rules/room-result-policy.ts",
+    "full-game-core/service.ts"
+  ],
+  "files": [
+    {
+      "file": "app-services/account-gate.ts",
+      "live_sha256": "c8f3c162b768965caee4279761ce5ee16d6181d20264af2c32e64acf883b6b20",
+      "candidate_sha256": "c8f3c162b768965caee4279761ce5ee16d6181d20264af2c32e64acf883b6b20"
+    },
+    {
+      "file": "app-services/billing-rules/apple-entitlement.ts",
+      "live_sha256": "cbc76d8a7500defa7170c00668f796b83831c1d0fa2af61d0ac01ab52f2e9664",
+      "candidate_sha256": "cbc76d8a7500defa7170c00668f796b83831c1d0fa2af61d0ac01ab52f2e9664"
+    },
+    {
+      "file": "app-services/billing-rules/apple-subscription-status.ts",
+      "live_sha256": "3dcd0223033f0524e14c75c4745ced9f19910aede55a3ef4639cf1e46ace5366",
+      "candidate_sha256": "3dcd0223033f0524e14c75c4745ced9f19910aede55a3ef4639cf1e46ace5366"
+    },
+    {
+      "file": "app-services/billing-rules/limitless-rollout.ts",
+      "live_sha256": "4b554789725e48c10c56d2ecd9294d2f1f95949c7d556d5a1ff95fc606a20b02",
+      "candidate_sha256": "4b554789725e48c10c56d2ecd9294d2f1f95949c7d556d5a1ff95fc606a20b02"
+    },
+    {
+      "file": "app-services/contracts.ts",
+      "live_sha256": "b794347818f730710a6b0b9622bf6583781d9f24c332e905372b98191476d0a3",
+      "candidate_sha256": "b794347818f730710a6b0b9622bf6583781d9f24c332e905372b98191476d0a3"
+    },
+    {
+      "file": "app-services/integration-crypto.ts",
+      "live_sha256": "27b6ea3966e7844d4114d76525902da5a9b0a4253185a52858042225c14cb970",
+      "candidate_sha256": "27b6ea3966e7844d4114d76525902da5a9b0a4253185a52858042225c14cb970"
+    },
+    {
+      "file": "app-services/legacy-billing.ts",
+      "live_sha256": "6ab49a565985df9d9e60556ee15f5c2c4eb10c7e17119d706d9198f858ebb403",
+      "candidate_sha256": "6ab49a565985df9d9e60556ee15f5c2c4eb10c7e17119d706d9198f858ebb403"
+    },
+    {
+      "file": "app-services/legacy-provider.ts",
+      "live_sha256": "41ea1277efb74f98e15c8adac83ff91c82bc427a802aba2e829e314c1447ca03",
+      "candidate_sha256": "41ea1277efb74f98e15c8adac83ff91c82bc427a802aba2e829e314c1447ca03"
+    },
+    {
+      "file": "app-services/membership.ts",
+      "live_sha256": "6991c6d56fa7a9475ba877bf7b82e4e7b9096a05249ff962012c6d1c0240000f",
+      "candidate_sha256": "6991c6d56fa7a9475ba877bf7b82e4e7b9096a05249ff962012c6d1c0240000f"
+    },
+    {
+      "file": "app-services/native-apple.ts",
+      "live_sha256": "ba7bdd9a65f20501f057f78290203361a9b9a983cb2158a4bb7c308ee50a45f2",
+      "candidate_sha256": "ba7bdd9a65f20501f057f78290203361a9b9a983cb2158a4bb7c308ee50a45f2"
+    },
+    {
+      "file": "app-services/native-game-center.ts",
+      "live_sha256": "a7506648fac186abab3dbf1cd0bbbf6c66a7b93215de2b589e9a69218eb1c442",
+      "candidate_sha256": "a7506648fac186abab3dbf1cd0bbbf6c66a7b93215de2b589e9a69218eb1c442"
+    },
+    {
+      "file": "full-game-core/deno.json",
+      "live_sha256": "fa0a2b84dda16ce3da477576c9c16de04368302cd170425853b731027fb48a83",
+      "candidate_sha256": "fa0a2b84dda16ce3da477576c9c16de04368302cd170425853b731027fb48a83"
+    },
+    {
+      "file": "full-game-core/engine.ts",
+      "live_sha256": "bd60c1f65f86716d29fcd1e647ae77f9b84507083f80b9ebda94089ce2c16c75",
+      "candidate_sha256": "47d610c1d053eefc8bfb1cfdd82b98290a9691813fe00f4cdbe133d8fa5bc502"
+    },
+    {
+      "file": "full-game-core/handler.ts",
+      "live_sha256": "b3c505227356b69459b5eed834c199e97c843f5ef88776c58e1365151acb8f78",
+      "candidate_sha256": "b3c505227356b69459b5eed834c199e97c843f5ef88776c58e1365151acb8f78"
+    },
+    {
+      "file": "full-game-core/index.ts",
+      "live_sha256": "fd50e28c94aae041a42e98b70372198c970f95099b189e9d05f601619eebbdd5",
+      "candidate_sha256": "fd50e28c94aae041a42e98b70372198c970f95099b189e9d05f601619eebbdd5"
+    },
+    {
+      "file": "full-game-core/leaderboard-service.ts",
+      "live_sha256": "569a4f55257f5066a104f0f152fb2678da873b94f4951191e5e4563c34438818",
+      "candidate_sha256": "569a4f55257f5066a104f0f152fb2678da873b94f4951191e5e4563c34438818"
+    },
+    {
+      "file": "full-game-core/rules/active-game-lobby-return-policy.ts",
+      "live_sha256": "d67856f4ab64edba468c48d25a58134b2067d701890823ba16dd1493a68decd7",
+      "candidate_sha256": "ac77f8e56b1f92b30b8db54c32a5a80f2f5bde917a306d32d1fa18980c7b2b67"
+    },
+    {
+      "file": "full-game-core/rules/association-turn-order.ts",
+      "live_sha256": "5dc3497378f59ed654d85ef8e0f0669e7497a4094fd67f76465a7e352ed81ffa",
+      "candidate_sha256": "5dc3497378f59ed654d85ef8e0f0669e7497a4094fd67f76465a7e352ed81ffa"
+    },
+    {
+      "file": "full-game-core/rules/competitive-stats.ts",
+      "live_sha256": "058bfd9029172554a0f648c8b23b78e788b7b1f6b9e89502974ff9bdc64d0a45",
+      "candidate_sha256": "b4af87f26a96d223300a0c689247dadb409f419ad494bdc7a86d0bdca4680c95"
+    },
+    {
+      "file": "full-game-core/rules/content-safety.ts",
+      "live_sha256": "9d2698787d133a6eb4a7807c9765ceafdcf726671839621248189cfcb634e84b",
+      "candidate_sha256": "9d2698787d133a6eb4a7807c9765ceafdcf726671839621248189cfcb634e84b"
+    },
+    {
+      "file": "full-game-core/rules/detective-vote-policy.ts",
+      "live_sha256": "74e51a572605127319b48c018fd6fb8169f96237077c56a2d9f76f2ec9cad5c4",
+      "candidate_sha256": "74e51a572605127319b48c018fd6fb8169f96237077c56a2d9f76f2ec9cad5c4"
+    },
+    {
+      "file": "full-game-core/rules/fan-mode-policy.ts",
+      "live_sha256": "097ec6e284fb4cfc06a403f8713c095be159babd8773172723ef29656e8a5b48",
+      "candidate_sha256": "9546a9b13df1cacb8ad0ccf05c1763a8d43e2cab13857c0939e1ff5c4fccea76"
+    },
+    {
+      "file": "full-game-core/rules/finished-room-departure-policy.ts",
+      "live_sha256": "d27b46836bb44f1d8086af6bcb03481f16ac801b993117c9539c427fbb18ab14",
+      "candidate_sha256": "d27b46836bb44f1d8086af6bcb03481f16ac801b993117c9539c427fbb18ab14"
+    },
+    {
+      "file": "full-game-core/rules/game-history-idempotency.ts",
+      "live_sha256": "8e27cd9df57aa9cdf7ee2c0164bf9a92e40fa70c93227946a5d3b748f44502d0",
+      "candidate_sha256": "8e27cd9df57aa9cdf7ee2c0164bf9a92e40fa70c93227946a5d3b748f44502d0"
+    },
+    {
+      "file": "full-game-core/rules/game-round.ts",
+      "live_sha256": "85c38cfba7b78ec6dbb5060d8478c5c4ebd454d835f1999f700030bdfc3684af",
+      "candidate_sha256": "85c38cfba7b78ec6dbb5060d8478c5c4ebd454d835f1999f700030bdfc3684af"
+    },
+    {
+      "file": "full-game-core/rules/game-timer-policy.ts",
+      "live_sha256": "33837768c2a60210a3ef2b5cc68ca1c76f821cfc5fdbd0e845f0ac5f595a78ee",
+      "candidate_sha256": "b18f5a64f5020d5f131ba3434cdd061adb8741641ef55b4864e73a5c26c157c1"
+    },
+    {
+      "file": "full-game-core/rules/leaderboard.ts",
+      "live_sha256": "1127d3b778fb47c6e8bc0ea3b176ec84e2e99638f2db35d3ce2ea8e575b34b94",
+      "candidate_sha256": "1127d3b778fb47c6e8bc0ea3b176ec84e2e99638f2db35d3ce2ea8e575b34b94"
+    },
+    {
+      "file": "full-game-core/rules/lobby-host-transfer-policy.ts",
+      "live_sha256": "19fa2d97fdf7d4caaf98afdebddd55f5497ddb7a18fe071fa8fcaddd83ef91f2",
+      "candidate_sha256": "19fa2d97fdf7d4caaf98afdebddd55f5497ddb7a18fe071fa8fcaddd83ef91f2"
+    },
+    {
+      "file": "full-game-core/rules/lobby-kick-policy.ts",
+      "live_sha256": "37eb0383c205282027e5420bb2aef6a73955dd8fa67d27e568e4fb83f2eb74a6",
+      "candidate_sha256": "37eb0383c205282027e5420bb2aef6a73955dd8fa67d27e568e4fb83f2eb74a6"
+    },
+    {
+      "file": "full-game-core/rules/lobby-state-policy.ts",
+      "live_sha256": "394ddfd69db1047c043ef0b5c87ba8157ba0d9b341bd067a2e5917bff2248f2a",
+      "candidate_sha256": "394ddfd69db1047c043ef0b5c87ba8157ba0d9b341bd067a2e5917bff2248f2a"
+    },
+    {
+      "file": "full-game-core/rules/multi-spy-policy.ts",
+      "live_sha256": "eb60f222a9ed283292f68f2be7a4561001aa48da1e51ee21de98f4a14df897c5",
+      "candidate_sha256": "7513c66a19b074502c591186aa2ffac96ac9974af7c67f45318e3288b834c267"
+    },
+    {
+      "file": "full-game-core/rules/question-turn-order.ts",
+      "live_sha256": "8da578fb29e840b1aa9c5b967fac64475f4eb8bb0ac83922e4ce2c279af361ef",
+      "candidate_sha256": "8da578fb29e840b1aa9c5b967fac64475f4eb8bb0ac83922e4ce2c279af361ef"
+    },
+    {
+      "file": "full-game-core/rules/replay-auto-start-policy.ts",
+      "live_sha256": "ec70cc5e92f27d06c81edc1346783e8ec89ebe576338eca90a37ba4eaad41a12",
+      "candidate_sha256": "ad52cd32af20e4ab28c73bc92c9c0e86fbb8c459363f820dd5caacf3caa28815"
+    },
+    {
+      "file": "full-game-core/rules/replay-policy.ts",
+      "live_sha256": "87f19132b355bc97b54ee802f83a92976364d09716184a14d7717a5950841380",
+      "candidate_sha256": "87f19132b355bc97b54ee802f83a92976364d09716184a14d7717a5950841380"
+    },
+    {
+      "file": "full-game-core/rules/room-interaction-safety.ts",
+      "live_sha256": "b6183d05fb00fdd2cfd473f50afb92ed58a0f98d2f2f21c7611f5fb72264b06c",
+      "candidate_sha256": "b6183d05fb00fdd2cfd473f50afb92ed58a0f98d2f2f21c7611f5fb72264b06c"
+    },
+    {
+      "file": "full-game-core/rules/room-membership-generation.ts",
+      "live_sha256": "97f10bf14a8dff24547a372e7bd26f423b17660eb524f7e3bf75965478fbc10b",
+      "candidate_sha256": "97f10bf14a8dff24547a372e7bd26f423b17660eb524f7e3bf75965478fbc10b"
+    },
+    {
+      "file": "full-game-core/rules/room-projection.ts",
+      "live_sha256": "25deefaf9d81e292b8de2e1c89dbe15b09425d337f265ef9c9a51b183fb324d4",
+      "candidate_sha256": "58912c75cad09b6580d1b5724ba9a2133497529a7d800f7196fa393008f74770"
+    },
+    {
+      "file": "full-game-core/rules/room-result-policy.ts",
+      "live_sha256": "8c463ab18d99dacecedaad0492dc58455162fdfe4ab6058c7eb762ae8c2c6a68",
+      "candidate_sha256": "0ac6c88f26cf8b45dd5dcc8cef5ae5069c53bc99487c267a0c853c37fffa2d78"
+    },
+    {
+      "file": "full-game-core/rules/round-action-access.ts",
+      "live_sha256": "8175ec5ddf9bb115549b36c81b6e6c2b345cc703aae6df95df9957b46d8e5dda",
+      "candidate_sha256": "8175ec5ddf9bb115549b36c81b6e6c2b345cc703aae6df95df9957b46d8e5dda"
+    },
+    {
+      "file": "full-game-core/rules/start-word-pool-policy.ts",
+      "live_sha256": "b4f7df0d7eb40050a65413d6c33db3c5f81965ccf0e64584b24f60160c97b01b",
+      "candidate_sha256": "b4f7df0d7eb40050a65413d6c33db3c5f81965ccf0e64584b24f60160c97b01b"
+    },
+    {
+      "file": "full-game-core/rules/terminal-finalization-scope.ts",
+      "live_sha256": "ecddb8175e7bb0d2d09019a4074aa59e5ae2ed3fc2873c0b4791459a3370dc12",
+      "candidate_sha256": "ecddb8175e7bb0d2d09019a4074aa59e5ae2ed3fc2873c0b4791459a3370dc12"
+    },
+    {
+      "file": "full-game-core/rules/terminal-outbox-commit.ts",
+      "live_sha256": "6b87e575425faee886dff8e93534f68ac821a59760d7c30da829efcdc84bba1e",
+      "candidate_sha256": "6b87e575425faee886dff8e93534f68ac821a59760d7c30da829efcdc84bba1e"
+    },
+    {
+      "file": "full-game-core/service.ts",
+      "live_sha256": "1abf1e406cf9b92a748433df8cc6be42abece69d7236b0f9f7ce13c8632c046e",
+      "candidate_sha256": "78069f09043e2c1747909e720f3451c24f0f562e342f71f28ab554571f4b5578"
+    },
+    {
+      "file": "full-game-core/word-pack-content-safety.ts",
+      "live_sha256": "ffb2554d847ef452d50750c7a0e57951826bbfe40a1dd11a22e88be058319937",
+      "candidate_sha256": "ffb2554d847ef452d50750c7a0e57951826bbfe40a1dd11a22e88be058319937"
+    }
+  ],
+  "deployed": false,
+  "candidate_manifest_sha256": "4df372776633d5dcfffc162f4601901f34d28ac8a407985ad59fb998b97917cd",
+  "prepared_from_live_utc": "2026-11-11",
+  "schema_check": "full_game_private.rooms.state is jsonb; no migration needed",
+  "candidate_tests": {
+    "passed": 38,
+    "failed": 0,
+    "typecheck": "passed"
+  }
+}
