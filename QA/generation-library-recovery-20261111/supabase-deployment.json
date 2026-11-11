@@ -1,0 +1,24 @@
+{
+  "receipt": {
+    "id": "a271cf0c-f0c7-4589-8448-406e286082fa",
+    "slug": "app-services",
+    "name": "app-services",
+    "status": "ACTIVE",
+    "version": 22,
+    "created_at": 1791849203589,
+    "updated_at": 1794430799788,
+    "verify_jwt": true,
+    "import_map": true,
+    "entrypoint_path": "file:///tmp/user_fn_bbkfsgnordtdiblgdzkg_a271cf0c-f0c7-4589-8448-406e286082fa_22/source/app-services/index.ts",
+    "import_map_path": "file:///tmp/user_fn_bbkfsgnordtdiblgdzkg_a271cf0c-f0c7-4589-8448-406e286082fa_22/source/app-services/deno.json",
+    "ezbr_sha256": "a504ac40e6fd0065f2937e1a7282fcc7130a3484988495b571c3c2f3eb9cfeb5"
+  },
+  "verification": {
+    "version": 22,
+    "status": "ACTIVE",
+    "sha256": "a504ac40e6fd0065f2937e1a7282fcc7130a3484988495b571c3c2f3eb9cfeb5",
+    "verify_jwt": true,
+    "file_count": 74,
+    "differences": []
+  }
+}

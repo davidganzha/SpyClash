@@ -1,6 +1,6 @@
 # Generation library recovery — build 231
 
-Status: verified locally and prepared for review. **No production deployment, configuration change, paid live generation, or TestFlight upload was performed.**
+Status: **both server fixes were published on 11 November 2026 after explicit confirmation in this chat.** Supabase `app-services` is ACTIVE at version 22, and Base44 `generateWordPack` matches the approved candidate. No configuration change, paid live generation, or TestFlight upload was performed.
 
 ## Incident and cause
 
@@ -31,17 +31,24 @@ All providers and generation responses used by the tests are fixtures. Database 
 
 **88 tests passed.** The library suite's first invocation omitted local read permission; it was rerun with `--allow-read` and all 39 passed. The final Simulator result is `/tmp/spy-generation231-client-final-tests.xcresult`. No real-device or production-generation acceptance is claimed.
 
-## Prepared deployment
+## Verified production deployment
 
 `candidate-manifest.json` records the reviewed live baseline and file hashes. Local candidate and rollback packages are under `.local/generation-library-recovery/` in this worktree. Exactly two runtime files differ:
 
 1. Base44 app `69a0e57fa939f578082f8091`, function `generateWordPack`: `shared-word-pack-rest.ts`.
 2. Supabase project `spyclash-game-core` (`bbkfsgnordtdiblgdzkg`), function `app-services`: `legacy.ts`, over the fetched live version 21 with JWT verification preserved.
 
-All other live runtime files are preserved. No migration, secret change, quota/ad flag change, or native relay publication is needed. Re-fetch the live baselines and compare before publishing; obtain fresh explicit approval in the current chat for these exact two operations.
+Fresh preflight reads matched the reviewed baseline for both functions. All other live runtime files were preserved. No migration, secret change, quota/ad flag change, or native relay publication was performed.
+
+- Supabase publication returned ACTIVE version **22**, with JWT verification enabled. All **74** downloaded runtime/configuration files match the approved deployment payload.
+- Base44 publication reported **1 deployed**. All **18** downloaded runtime files match the approved candidate.
+- Both unauthenticated generation-route probes returned **401** before generation work.
+- Receipts and comparisons are recorded in `supabase-deployment.json`, `base44-deployment.json`, and `unauthenticated-postdeploy-check.json`. Source snapshots remain under `.local/generation-library-recovery/preflight/` and `postflight/`.
+
+This verifies publication, exact source contents, and authentication rejection. The affected device's real generation has not been replayed by the agent; it remains the final user acceptance check.
 
 The server changes support the existing build 230's retry behavior. The separate iOS journal-hardening change requires a future application build and is not part of server publication.
 
 ## Existing saved request
 
-After the server fix, the affected device must retry the original theme and 40-word count to settle its saved request. Changing to 12 while that original intent remains unresolved still produces local 409. This patch does not silently discard a potentially charged result or add manual recovery controls. Automatic recovery across changed inputs would require durable delivery of the old result and is not implemented here. Do not delete the user's app data or server request history to bypass the journal.
+The affected device must now retry the original theme and 40-word count to settle its saved request. Changing to 12 while that original intent remains unresolved still produces local 409. This patch does not silently discard a potentially charged result or add manual recovery controls. Automatic recovery across changed inputs would require durable delivery of the old result and is not implemented here. Do not delete the user's app data or server request history to bypass the journal.
