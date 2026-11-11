@@ -1,0 +1,90 @@
+{
+  "devicesAndConfigurations": [
+    {
+      "device": {
+        "architecture": "arm64",
+        "deviceId": "68A18B86-12EB-4FCF-84C1-70E600BA24FD",
+        "deviceName": "SpyClash Membership Tests \u2014 iPhone 17",
+        "modelName": "iPhone 17",
+        "osBuildNumber": "23F77",
+        "osVersion": "26.5",
+        "platform": "iOS Simulator"
+      },
+      "expectedFailures": 0,
+      "failedTests": 5,
+      "passedTests": 0,
+      "skippedTests": 0,
+      "testPlanConfiguration": {
+        "configurationId": "1",
+        "configurationName": "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription": "SpyClash \u00b7 Built with macOS 26.5.2",
+  "expectedFailures": 0,
+  "failedTests": 5,
+  "finishTime": 1794422371.153,
+  "passedTests": 0,
+  "result": "Failed",
+  "skippedTests": 0,
+  "startTime": 1794422367.261,
+  "statistics": [],
+  "testFailures": [
+    {
+      "failureText": "failed: caught error: \"notEntitled\"",
+      "targetName": "SpyClashTests",
+      "testIdentifier": 1,
+      "testIdentifierString": "StoreKitSandboxIntegrationTests/testAccessUnverifiedStartsNoPaymentAndRetryCanCompleteRealPurchase()",
+      "testIdentifierURL": "test://com.apple.xcode/SpyClash/SpyClashTests/StoreKitSandboxIntegrationTests/testAccessUnverifiedStartsNoPaymentAndRetryCanCompleteRealPurchase",
+      "testName": "testAccessUnverifiedStartsNoPaymentAndRetryCanCompleteRealPurchase()"
+    },
+    {
+      "failureText": "failed: caught error: \"notEntitled\"",
+      "targetName": "SpyClashTests",
+      "testIdentifier": 2,
+      "testIdentifierString": "StoreKitSandboxIntegrationTests/testEmptyRestoreUsesRealAppStoreSyncAndDoesNotInventAccess()",
+      "testIdentifierURL": "test://com.apple.xcode/SpyClash/SpyClashTests/StoreKitSandboxIntegrationTests/testEmptyRestoreUsesRealAppStoreSyncAndDoesNotInventAccess",
+      "testName": "testEmptyRestoreUsesRealAppStoreSyncAndDoesNotInventAccess()"
+    },
+    {
+      "failureText": "failed: caught error: \"notEntitled\"",
+      "targetName": "SpyClashTests",
+      "testIdentifier": 3,
+      "testIdentifierString": "StoreKitSandboxIntegrationTests/testRealAskToBuyApprovalCompletesThroughTransactionUpdates()",
+      "testIdentifierURL": "test://com.apple.xcode/SpyClash/SpyClashTests/StoreKitSandboxIntegrationTests/testRealAskToBuyApprovalCompletesThroughTransactionUpdates",
+      "testName": "testRealAskToBuyApprovalCompletesThroughTransactionUpdates()"
+    },
+    {
+      "failureText": "failed: caught error: \"notEntitled\"",
+      "targetName": "SpyClashTests",
+      "testIdentifier": 4,
+      "testIdentifierString": "StoreKitSandboxIntegrationTests/testRealPurchaseDeliversFinishesAndRestoresOnFreshMembershipStore()",
+      "testIdentifierURL": "test://com.apple.xcode/SpyClash/SpyClashTests/StoreKitSandboxIntegrationTests/testRealPurchaseDeliversFinishesAndRestoresOnFreshMembershipStore",
+      "testName": "testRealPurchaseDeliversFinishesAndRestoresOnFreshMembershipStore()"
+    },
+    {
+      "failureText": "failed: caught error: \"notEntitled\"",
+      "targetName": "SpyClashTests",
+      "testIdentifier": 5,
+      "testIdentifierString": "StoreKitSandboxIntegrationTests/testRejectedDeliveryStaysUnfinishedAndExplicitRestoreRetriesIt()",
+      "testIdentifierURL": "test://com.apple.xcode/SpyClash/SpyClashTests/StoreKitSandboxIntegrationTests/testRejectedDeliveryStaysUnfinishedAndExplicitRestoreRetriesIt",
+      "testName": "testRejectedDeliveryStaysUnfinishedAndExplicitRestoreRetriesIt()"
+    }
+  ],
+  "title": "Test - SpyClash",
+  "topInsights": [
+    {
+      "category": "Common Failures",
+      "impact": "100% of failures",
+      "text": "5 runs of 5 tests failed with failed: caught error: \"notEntitled\""
+    }
+  ],
+  "totalTestCount": 5,
+  "qualification": "All five tests stopped at the local .xcode canary with notEntitled before application purchases. This is neither a successful purchase test nor evidence of a production IAP failure.",
+  "runtime_diagnosis": {
+    "xcode": "26.6 (17F113)",
+    "simulator": "iOS 26.5 (23F77)",
+    "apple_fix_reference": "https://developer.apple.com/documentation/ios-ipados-release-notes/ios-ipados-26_6-release-notes.md",
+    "supported_runtime_download": "iOS 26.6 arm64Only unavailable (xcodebuild exit 70)"
+  }
+}

@@ -77,7 +77,7 @@ import {
   type WordPackSelfAuditCandidate,
 } from "./word-pack-quality.ts";
 
-import { rewardedGenerationEnabled, availableRewardCredits, reserveGenerationReward, settleGenerationReward, type RewardRecord } from "./generation-rewards.ts";
+import { rewardedGenerationEnabled, rewardedGenerationEnabledForUser, availableRewardCredits, reserveGenerationReward, settleGenerationReward, type RewardRecord } from "./generation-rewards.ts";
 
 function errorMessage(error: unknown) {
   return error instanceof Error
@@ -410,8 +410,7 @@ Deno.serve(async (req) => {
     }
 
     const requestID = optionalRequestID(body?.request_id);
-    const rewardedEnabled = rewardedGenerationEnabled();
-    if (rewardedEnabled && !requestID) return Response.json({ error: "A stable generation request is required.", code: "invalid_request_id" }, { status: 400 });
+    const rewardedRolloutEnabled = rewardedGenerationEnabled();
     // Legacy clients do not send request_id. Keep their explicit Regenerate
     // behavior fresh instead of unexpectedly replaying a cached pack.
     const preferFresh = body?.prefer_fresh === true || requestID === null;
@@ -438,7 +437,7 @@ Deno.serve(async (req) => {
 
     let entitlements: EntitlementRecord[] = [];
     let entitlementReadError: unknown = null;
-    if (!CASADA_PROTOCOL_ENABLED || rewardedEnabled) {
+    if (!CASADA_PROTOCOL_ENABLED || rewardedRolloutEnabled) {
       try {
         entitlements = await base44.asServiceRole.entities.Entitlement.filter(
           { user_id: user.id },
@@ -457,7 +456,7 @@ Deno.serve(async (req) => {
 
     let adminGrants: AdminGrantRecord[] = [];
     let adminGrantReadError: unknown = null;
-    if (!CASADA_PROTOCOL_ENABLED || rewardedEnabled) {
+    if (!CASADA_PROTOCOL_ENABLED || rewardedRolloutEnabled) {
       try {
         adminGrants = await base44.asServiceRole.entities.MembershipGrant
           .filter(
@@ -475,30 +474,32 @@ Deno.serve(async (req) => {
       }
     }
 
-    const membership = applyCasadaGenerationAccess(
-      applyAdminGenerationGrant(
-        resolveGenerationMembership(entitlements),
-        adminGrants,
-      ),
-      CASADA_PROTOCOL_ENABLED && !rewardedEnabled,
-    );
-    if (rewardedEnabled && membership.tier === "free") membership.benefits = { ...membership.benefits, ai_generations_daily_limit: 3 };
-    if (!membership.active && (entitlementReadError || adminGrantReadError)) {
-      return Response.json({
-        error: "Membership could not be verified. Try again shortly.",
-        code: "membership_unavailable",
-        active: false,
-        tier: null,
-        status: "unknown",
-        benefits: null,
-        retryable: true,
-      }, { status: 503 });
-    }
     return await withGenerationWriterLease({
       lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
       userID: user.id,
       action: async (untrackedGuard) => {
         const guard = retryTracker.trackWrites(untrackedGuard);
+        const rewardedEnabled = await rewardedGenerationEnabledForUser(base44.asServiceRole.entities.GenerationRewardEnrollment, user.id);
+        if (rewardedEnabled && !requestID) return Response.json({ error: "A stable generation request is required.", code: "invalid_request_id" }, { status: 400 });
+        const membership = applyCasadaGenerationAccess(
+          applyAdminGenerationGrant(
+            resolveGenerationMembership(entitlements),
+            adminGrants,
+          ),
+          CASADA_PROTOCOL_ENABLED && !rewardedEnabled,
+        );
+        if (rewardedEnabled && membership.tier === "free") membership.benefits = { ...membership.benefits, ai_generations_daily_limit: 3 };
+        if (!membership.active && (entitlementReadError || adminGrantReadError)) {
+          return Response.json({
+            error: "Membership could not be verified. Try again shortly.",
+            code: "membership_unavailable",
+            active: false,
+            tier: null,
+            status: "unknown",
+            benefits: null,
+            retryable: true,
+          }, { status: 503 });
+        }
         const quotaStore = base44.asServiceRole.entities.AiGenerationUsage;
         const rewardStore = base44.asServiceRole.entities.GenerationReward;
         const settleReplayReward = async () => {

@@ -1710,6 +1710,9 @@ final class AppState: NSObject {
         self.radarNearby = radarNearby
         super.init()
 
+        membership.onAccessChanged = { [weak self] in
+            self?.membershipAccessDidChange()
+        }
         storeKit.onEntitlementChanged = { [weak self] in
             guard let self, await self.membership.refresh(force: true) else { return nil }
             return self.membership.snapshot

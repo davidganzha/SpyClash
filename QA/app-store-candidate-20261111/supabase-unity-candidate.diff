@@ -1,0 +1,569 @@
+--- live/app-services/app-services/generation-reward-deletion.ts
++++ candidate/app-services/app-services/generation-reward-deletion.ts
+@@ -0,0 +1,14 @@
++/** Run within the account deletion transaction, after the profile tombstone.
++ * Optional-table checks preserve deletion before the advertising migrations.
++ * The account gate prevents enrollment/credit writers from reopening access. */
++export async function eraseGenerationRewardAccountData(tx: any, userID: string) {
++  const [schema] = await tx`select
++    to_regclass('game_center_private.generation_reward_attempts') is not null as attempts,
++    to_regclass('game_center_private.generation_reward_enrollments') is not null as enrollments`;
++  if (schema.attempts) {
++    await tx`delete from game_center_private.generation_reward_attempts where user_id=${userID}`;
++  }
++  if (schema.enrollments) {
++    await tx`delete from game_center_private.generation_reward_enrollments where user_id=${userID}`;
++  }
++}
+--- live/app-services/app-services/generation-reward-ledger.ts
++++ candidate/app-services/app-services/generation-reward-ledger.ts
+@@ -1,14 +1,36 @@
+ import {AppServiceError} from './contracts.ts';
++import {unityRewardUnit} from './unity-ssv.ts';
+ import {nativeGameCenterHasMembership} from './native-game-center.ts';
+ 
+ export type RewardConfig=Record<string,string|undefined>;
+ export const REWARDED_AI_DAILY_LIMIT=3;
+ export const rewardedGenerationEnabled=(config:RewardConfig)=>config.SPYCLASH_REWARDED_GENERATION_ENABLED==='true';
++/** Pass only the authenticated, server-owned account ID. This test capability
++ * never enables the generation quota or changes membership benefits. */
++export function isGenerationRewardTester(config:RewardConfig,userID:string):boolean {
++  return Boolean(userID)&&Boolean(config.SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS?.split(',').some(id=>id.trim()===userID));
++}
+ export function rewardedAdUnit(config:RewardConfig):string|null {
++  const provider=config.SPYCLASH_REWARDED_AD_PROVIDER||'admob';
++  if(provider==='unity')return unityRewardUnit(config);
++  if(provider!=='admob')return null;
+   const unit=config.ADMOB_REWARDED_AD_UNIT_ID?.trim()||'';
+   // Google's demo units cannot deliver SSV to our own backend. Never pretend
+   // their local SDK callback has earned a server credit.
+   return /^ca-app-pub-\d{16}\/\d{10}$/.test(unit)&&!unit.startsWith('ca-app-pub-3940256099942544/')?unit:null;
++}
++/** This persisted account decision is consulted for every generation, including
++ * requests from downgraded clients. Caller holds the account/quota lock. */
++export async function rewardedGenerationEnabledForUser(tx:any,userID:string,config:RewardConfig):Promise<boolean>{
++  if(!rewardedGenerationEnabled(config))return false;
++  const [row]=await tx`select user_id from game_center_private.generation_reward_enrollments where user_id=${userID}`;
++  return Boolean(row);
++}
++export async function enrollRewardGeneration(tx:any,userID:string,body:Record<string,any>,config:RewardConfig){
++  if(!rewardedGenerationEnabled(config)||body.supported_reward_provider!=='unity'||!Number.isSafeInteger(body.client_build)
++    ||body.client_build<228||body.client_build>2147483647||!rewardedAdUnit(config)?.startsWith('unity:'))return;
++  await tx`insert into game_center_private.generation_reward_enrollments(user_id,provider,client_build)
++    values(${userID},'unity',${body.client_build}) on conflict(user_id) do nothing`;
+ }
+ export async function lockGenerationQuota(tx:any,userID:string){
+   await tx`select pg_advisory_xact_lock(hashtextextended(${userID+':native-ai-quota'},0))`;
+@@ -17,8 +39,14 @@
+   const unlimited=await nativeGameCenterHasMembership(tx,userID);
+   const [{today,resets_at}]=await tx`select (clock_timestamp() at time zone 'UTC')::date::text as today,
+     (((clock_timestamp() at time zone 'UTC')::date+1)::timestamp at time zone 'UTC') as resets_at`;
+-  const enabled=rewardedGenerationEnabled(config);
+-  if(!enabled)return {enabled:false,unlimited,daily_limit:REWARDED_AI_DAILY_LIMIT,free_remaining:null,bonus_credits:0,resets_at:new Date(resets_at).toISOString(),ad_available:false};
++  const enabled=await rewardedGenerationEnabledForUser(tx,userID,config);
++  if(!enabled){
++    const tester=isGenerationRewardTester(config,userID);
++    const [{credits}]=tester?await tx`select count(*)::int as credits from game_center_private.generation_reward_attempts
++      where user_id=${userID} and state='earned' and consumed_request_id is null`:[{credits:0}];
++    return {enabled:false,unlimited,daily_limit:REWARDED_AI_DAILY_LIMIT,free_remaining:null,bonus_credits:credits,
++      resets_at:new Date(resets_at).toISOString(),ad_available:false,...(tester?{test_ad_available:Boolean(rewardedAdUnit(config))}:{})};
++  }
+   const [{used}]=await tx`select count(*)::int as used from game_center_private.generation_requests
+     where user_id=${userID} and usage_date=${today} and charged and charge_source in ('legacy','free')`;
+   const [{credits}]=await tx`select count(*)::int as credits from game_center_private.generation_reward_attempts
+@@ -53,4 +81,3 @@
+     ai_free_remaining:status.free_remaining,ai_bonus_credits:status.bonus_credits,ai_resets_at:status.resets_at,ai_unlimited:status.unlimited,
+     ai_generations_today:status.unlimited?null:status.daily_limit-(status.free_remaining||0)};
+ }
+-
+--- live/app-services/app-services/generation-rewards.ts
++++ candidate/app-services/app-services/generation-rewards.ts
+@@ -2,8 +2,9 @@
+ import {accountGate} from './account-gate.ts';
+ import {nativeGameCenterAccount,resolveNativeGameCenterAccount} from './native-game-center.ts';
+ import {verifyLegacyCredential,boundedLegacyJSON} from './legacy-provider.ts';
+-import {lockGenerationQuota,nativeRewardStatus,rewardedAdUnit,rewardedGenerationEnabled,type RewardConfig} from './generation-reward-ledger.ts';
++import {lockGenerationQuota,nativeRewardStatus,rewardedAdUnit,enrollRewardGeneration,type RewardConfig} from './generation-reward-ledger.ts';
+ import {verifyAdMobCallback,AdMobVerificationError} from './admob-ssv.ts';
++import {isUnityCallback,unityAttemptFields,verifyUnityCallback,UnityVerificationError} from './unity-ssv.ts';
+ const evidenceSet=new WeakSet<object>();
+ const actions=new Set(['status','prepare','claim_status']);
+ const randomToken=()=>Array.from(crypto.getRandomValues(new Uint8Array(32)),v=>v.toString(16).padStart(2,'0')).join('');
+@@ -27,7 +28,8 @@
+       throw new AppServiceError('legacy_link_required','Verify this account before continuing.',409);
+   });
+   const body={action:input.body.action,...(input.body.action==='prepare'?{request_id:input.body.request_id}:{}),
+-    ...(input.body.action==='claim_status'?{attempt_id:input.body.attempt_id}:{})};
++    ...(input.body.action==='claim_status'?{attempt_id:input.body.attempt_id}:{}),
++    ...(input.body.action==='status'?{supported_reward_provider:input.body.supported_reward_provider,client_build:input.body.client_build}:{})};
+   const response=await (deps.fetch||fetch)(destination.origin+'/api/apps/'+destination.appID+'/functions/generationRewardAction',{
+     method:'POST',headers:{Authorization:'Bearer '+credential,'X-App-Id':destination.appID,Origin:destination.origin,'Content-Type':'application/json'},
+     redirect:'error',body:JSON.stringify(body),signal:AbortSignal.timeout(20_000)});
+@@ -52,6 +54,7 @@
+   }
+   if(native.state!=='ready')throw new AppServiceError('account_unavailable','This account is unavailable.',403);
+   await lockGenerationQuota(ctx.tx,ctx.actor.id);
++  if(body.action==='status')await enrollRewardGeneration(ctx.tx,ctx.actor.id,body,ctx.config);
+   const status=await nativeRewardStatus(ctx.tx,ctx.actor.id,ctx.config);
+   if(body.action==='status')return status;
+   if(body.action==='claim_status'){
+@@ -63,33 +66,43 @@
+   }
+   const requestID=requireUUID(body.request_id,'request_id');
+   const [existing]=await ctx.tx`select * from game_center_private.generation_reward_attempts where user_id=${ctx.actor.id} and attempt_id=${requestID}`;
+-  if(!existing&&(status.unlimited||(status.free_remaining||0)>0||status.bonus_credits>0))
++  const testOffer=!status.enabled&&'test_ad_available' in status&&status.test_ad_available===true;
++  if(!existing&&!testOffer&&(status.unlimited||(status.free_remaining||0)>0||status.bonus_credits>0))
+     throw new AppServiceError('reward_not_needed','A generation is already available. Refresh your allowance to continue.',409);
+-  if(!rewardedGenerationEnabled(ctx.config)||!status.ad_available)throw new AppServiceError('reward_unavailable','A rewarded ad is not available right now.',409);
++  if(!status.ad_available&&!testOffer)throw new AppServiceError('reward_unavailable','A rewarded ad is not available right now.',409);
+   const attempt=existing||{attempt_id:requestID,custom_data:requestID+'.native.'+randomToken(),ad_unit_id:rewardedAdUnit(ctx.config)!};
+   if(!existing)await ctx.tx`insert into game_center_private.generation_reward_attempts(user_id,attempt_id,custom_data,ad_unit_id)
+     values(${ctx.actor.id},${attempt.attempt_id},${attempt.custom_data},${attempt.ad_unit_id})`;
+-  return {...status,attempt_id:attempt.attempt_id,custom_data:attempt.custom_data,ad_unit_id:attempt.ad_unit_id,user_id:ctx.actor.id,ssv_user_id:ctx.actor.id};
++  return {...status,attempt_id:attempt.attempt_id,custom_data:attempt.custom_data,user_id:ctx.actor.id,ssv_user_id:ctx.actor.id,...unityAttemptFields(attempt.ad_unit_id,attempt.custom_data)};
+ }
+-/** No user SDK callback reaches this credit path. The signed Google event and
++/** No user SDK callback reaches this credit path. The signed provider event and
+  * issued user/token/unit/reward must all match in one locked transaction. */
+-export function createGenerationRewardSSVHandler(db:any,fetcher:typeof fetch=fetch){
++export function createGenerationRewardSSVHandler(db:any,fetcher:typeof fetch=fetch,config:RewardConfig={}){
+   return async(request:Request)=>{
+     try{
+       if(request.method!=='GET')return Response.json({code:'method_not_allowed'},{status:405});
+-      const event=await verifyAdMobCallback(request.url,fetcher);
+-      const userID=requireUUID(event.userID,'user_id');
++      const unity=isUnityCallback(request.url);
++      const event=unity?{...verifyUnityCallback(request.url,config),userID:'',timestamp:Date.now()}:await verifyAdMobCallback(request.url,fetcher);
+       const attemptID=requireUUID(event.customData.split('.')[0],'attempt_id');
++      if(unity&&event.customData.split('.')[1]!=='native')throw new AppServiceError('invalid_reward_claim','Invalid reward destination.',400);
+       await db.begin(async(tx:any)=>{
++        const [owner]=unity?await tx`select user_id from game_center_private.generation_reward_attempts where custom_data=${event.customData}`:[{user_id:event.userID}];
++        if(!owner)throw new AppServiceError('invalid_reward_claim','Unknown reward attempt.',400);
++        const userID=requireUUID(owner.user_id,'user_id');
+         await accountGate(tx,userID);
+         if((await nativeGameCenterAccount(tx,userID))?.state!=='ready')throw new AppServiceError('account_unavailable','This account is unavailable.',403);
+         await lockGenerationQuota(tx,userID);
+         const [attempt]=await tx`select * from game_center_private.generation_reward_attempts where user_id=${userID} and attempt_id=${attemptID} for update`;
+         const unit=attempt?.ad_unit_id;
+         const timestamp=event.timestamp;
+-        if(!attempt||attempt.custom_data!==event.customData||!(event.adUnit===unit||event.adUnit===unit?.split('/')[1])||event.rewardAmount!==1||event.rewardItem!=='generation'
+-          ||timestamp<new Date(attempt.created_at).getTime()-60_000||timestamp>new Date(attempt.expires_at).getTime()||timestamp>Date.now()+60_000)
++        if(!attempt||attempt.custom_data!==event.customData||!(event.adUnit===unit||(!unity&&unit?.startsWith('ca-app-pub-')&&event.adUnit===unit?.split('/')[1]))||event.rewardAmount!==1||event.rewardItem!=='generation')
+           throw new AppServiceError('invalid_reward_claim','The reward claim did not match its issued attempt.',400);
++        if(unity&&attempt.state==='earned'){
++          if(attempt.transaction_id!==event.transactionID)throw new AppServiceError('reward_already_earned','This attempt already earned its reward.',409);
++          return;
++        }
++        if(timestamp<new Date(attempt.created_at).getTime()-60_000||timestamp>new Date(attempt.expires_at).getTime()||timestamp>Date.now()+60_000)
++          throw new AppServiceError('invalid_reward_claim','The reward claim expired.',400);
+         if(attempt.state==='earned'){
+           if(attempt.transaction_id!==event.transactionID)throw new AppServiceError('reward_already_earned','This attempt already earned its reward.',409);
+           return;
+@@ -99,11 +112,10 @@
+         await tx`update game_center_private.generation_reward_attempts set state='earned',transaction_id=${event.transactionID},reward_at=${new Date(timestamp)}
+           where user_id=${userID} and attempt_id=${attemptID} and state='pending'`;
+       });
+-      return Response.json({received:true});
++      return unity?new Response('1',{headers:{'Content-Type':'text/plain','Cache-Control':'no-store'}}):Response.json({received:true});
+     }catch(error){
+-      const expected=error instanceof AppServiceError||error instanceof AdMobVerificationError;
++      const expected=error instanceof AppServiceError||error instanceof AdMobVerificationError||error instanceof UnityVerificationError;
+       return Response.json({code:expected?error.code:'reward_callback_unavailable'},{status:expected?error.status:503});
+     }
+   };
+ }
+-
+--- live/app-services/app-services/lifecycle.ts
++++ candidate/app-services/app-services/lifecycle.ts
+@@ -3,6 +3,7 @@
+ import { cleanupBillingPush } from './membership.ts';
+ import { assertMainDeletionEvidence } from './main-account-deletion.ts';
+ import { eraseAccountArchives } from './deletion-archive.ts';
++import { eraseGenerationRewardAccountData } from './generation-reward-deletion.ts';
+ 
+ /** Called only while holding the actor's exclusive account gate. */
+ export async function deleteAccount(ctx: AppContext, body: any) {
+@@ -51,8 +52,7 @@
+   // supported admin API, retried durably if its network response is lost.
+   await tx`insert into app_private.lifecycle_jobs(user_id) values(${actor.id}) on conflict(user_id) do nothing`;
+   if (mainDeletion?.native_account) {
+-    const [rewardSchema]=await tx`select to_regclass('game_center_private.generation_reward_attempts') is not null as present`;
+-    if(rewardSchema.present)await tx`delete from game_center_private.generation_reward_attempts where user_id=${actor.id}`;
++    await eraseGenerationRewardAccountData(tx, actor.id);
+     await tx`delete from game_center_private.generation_requests where user_id=${actor.id}`;
+     await tx`update game_center_private.accounts set state='deleted',lease_id=null,lease_until=null,updated_at=${now}
+       where user_id=${actor.id} and identity_key=${mainDeletion.identity_key}`;
+@@ -90,5 +90,3 @@
+   }
+   return { attempted:jobs.length,completed };
+ }
+-
+-
+--- live/app-services/app-services/native-generation.ts
++++ candidate/app-services/app-services/native-generation.ts
+@@ -6,7 +6,7 @@
+ import {filterSafeCommunityStrings,requireSafeCommunityText} from './word-generation/content-safety.ts';
+ import {normalizeGeneratedWordPack,wordPackComparisonKey} from './word-generation/generation-cache.ts';
+ import {nativeRelayConfigured,createNativeAIRelayProvider,nativeRelayHasUnknownOutcome,settleNativeRelayFailure,terminalNativeAIOutcome,failedNativeAIOutcome} from './native-ai-relay.ts';
+-import {generationRewardMetadata,lockGenerationQuota,nativeRewardStatus,reserveRewardGeneration,rewardedGenerationEnabled} from './generation-reward-ledger.ts';
++import {generationRewardMetadata,lockGenerationQuota,nativeRewardStatus,reserveRewardGeneration,rewardedGenerationEnabledForUser} from './generation-reward-ledger.ts';
+ import {createDurableNativeDirectProvider} from './native-direct-generation.ts';
+ 
+ type Config=Record<string,string|undefined>;
+@@ -37,13 +37,14 @@
+  * owns one quota charge and one durable result, including after a lost ACK.
+  * Relay claims survive an expired worker lease: paid work is never repeated. */
+ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,fetch?:typeof fetch}) {
+-  const rewardsEnabled=rewardedGenerationEnabled(input.config);
++  let rewardsEnabled=false;
+   if(!nativeGenerationCapabilities(input.config).configured)throw new AppServiceError('native_generation_unconfigured','Word generation is not available yet. Try again later.',503,true);
+   const request=command(input.body),hash=await requestHash(input.body),db=dependencies.db,leaseID=crypto.randomUUID();
+   const evidenceFor=(result:any)=>{const evidence={actor:input.actor.id,requestID:request.request_id,hash,result};evidenceSet.add(evidence);return evidence;};
+   const reservation=await db.begin(async(tx:any)=>{
+     await requireNative(tx,input.actor.id);
+     await lockGenerationQuota(tx,input.actor.id);
++    rewardsEnabled=await rewardedGenerationEnabledForUser(tx,input.actor.id,input.config);
+     const [prior]=await tx`select *,lease_until>clock_timestamp() as leased from game_center_private.generation_requests
+       where user_id=${input.actor.id} and request_id=${request.request_id} for update`;
+     if(prior&&prior.request_hash!==hash)throw new AppServiceError('request_id_reused','This request belongs to another word pack.',409);
+@@ -146,5 +147,3 @@
+   if(!row)throw busy();
+   return row.result;
+ }
+-
+-
+--- live/app-services/app-services/unity-ssv.ts
++++ candidate/app-services/app-services/unity-ssv.ts
+@@ -0,0 +1,54 @@
++import { createHmac, timingSafeEqual } from "node:crypto";
++
++/** Unity's provider protocol uses HMAC-MD5 (not a client assertion).
++ * https://docs.unity.com/en-us/grow/ads/mediation/s2s-redeem-callbacks
++ * The support-issued secret exists only on the server. */
++export type UnityRewardConfig = Record<string, string | undefined>;
++export class UnityVerificationError extends Error {
++  constructor(readonly code: string, readonly status = 400) { super(code); }
++}
++export function unityRewardUnit(config: UnityRewardConfig): string | null {
++  const game = config.UNITY_ADS_GAME_ID?.trim() || "";
++  const placement = config.UNITY_ADS_REWARDED_PLACEMENT_ID?.trim() || "";
++  const secret = config.UNITY_ADS_S2S_SECRET || "";
++  return /^[1-9][0-9]{0,15}$/.test(game) && game !== "14850" &&
++      /^[A-Za-z0-9_-]{1,80}$/.test(placement) && secret.length >= 16
++    ? `unity:${game}:${placement}` : null;
++}
++export function unityAttemptFields(unit: string, token: string) {
++  const match = /^unity:([1-9][0-9]{0,15}):([A-Za-z0-9_-]{1,80})$/.exec(unit);
++  return match ? { provider: "unity", unity_game_id: match[1], ad_unit_id: match[2], server_id: token }
++    : { provider: "admob", ad_unit_id: unit };
++}
++export function isUnityCallback(url: string): boolean {
++  const params = new URL(url).searchParams;
++  return params.get("provider") === "unity" || params.has("hmac") || params.has("sid");
++}
++export function verifyUnityCallback(url: string, config: UnityRewardConfig) {
++  const configured = unityRewardUnit(config);
++  if (!configured) throw new UnityVerificationError("unity_reward_unconfigured", 503);
++  const fail = (): never => { throw new UnityVerificationError("invalid_reward_signature"); };
++  const query = new URL(url).search;
++  if (!query || query.length > 4096) return fail();
++  const params = new URLSearchParams(query);
++  const values = new Map<string, string>();
++  for (const [name, value] of params) {
++    // Closed contract prevents ambiguous comma/equal concatenation and duplicate keys.
++    if (!/^[a-z_]+$/.test(name) || values.has(name) || /[,=\u0000-\u0020]/.test(value)) return fail();
++    values.set(name, value);
++  }
++  const allowed = ["provider", "game_id", "placement_id", "sid", "oid", "hmac"];
++  if (values.size !== allowed.length || allowed.some(key => !values.get(key))) return fail();
++  if (values.get("provider") !== "unity" ||
++      `unity:${values.get("game_id")}:${values.get("placement_id")}` !== configured) return fail();
++  const sid = values.get("sid")!, oid = values.get("oid")!, signature = values.get("hmac")!;
++  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(legacy|native)\.[0-9a-f]{64}$/.test(sid) ||
++      !/^[A-Za-z0-9_-]{1,180}$/.test(oid) || !/^[0-9a-fA-F]{32}$/.test(signature)) return fail();
++  const canonical = [...values.keys()].filter(key => key !== "hmac").sort()
++    .map(key => `${key}=${values.get(key)}`).join(",");
++  const expected = createHmac("md5", config.UNITY_ADS_S2S_SECRET!).update(canonical).digest();
++  const supplied = Uint8Array.from(signature.match(/../g)!, pair => Number.parseInt(pair, 16));
++  if (!timingSafeEqual(expected, supplied)) return fail();
++  return { transactionID: `unity:${values.get("game_id")}:${oid}`, customData: sid,
++    adUnit: configured, rewardAmount: 1, rewardItem: "generation" };
++}
+--- live/rewarded-generation-ssv/app-services/generation-reward-ledger.ts
++++ candidate/rewarded-generation-ssv/app-services/generation-reward-ledger.ts
+@@ -1,14 +1,36 @@
+ import {AppServiceError} from './contracts.ts';
++import {unityRewardUnit} from './unity-ssv.ts';
+ import {nativeGameCenterHasMembership} from './native-game-center.ts';
+ 
+ export type RewardConfig=Record<string,string|undefined>;
+ export const REWARDED_AI_DAILY_LIMIT=3;
+ export const rewardedGenerationEnabled=(config:RewardConfig)=>config.SPYCLASH_REWARDED_GENERATION_ENABLED==='true';
++/** Pass only the authenticated, server-owned account ID. This test capability
++ * never enables the generation quota or changes membership benefits. */
++export function isGenerationRewardTester(config:RewardConfig,userID:string):boolean {
++  return Boolean(userID)&&Boolean(config.SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS?.split(',').some(id=>id.trim()===userID));
++}
+ export function rewardedAdUnit(config:RewardConfig):string|null {
++  const provider=config.SPYCLASH_REWARDED_AD_PROVIDER||'admob';
++  if(provider==='unity')return unityRewardUnit(config);
++  if(provider!=='admob')return null;
+   const unit=config.ADMOB_REWARDED_AD_UNIT_ID?.trim()||'';
+   // Google's demo units cannot deliver SSV to our own backend. Never pretend
+   // their local SDK callback has earned a server credit.
+   return /^ca-app-pub-\d{16}\/\d{10}$/.test(unit)&&!unit.startsWith('ca-app-pub-3940256099942544/')?unit:null;
++}
++/** This persisted account decision is consulted for every generation, including
++ * requests from downgraded clients. Caller holds the account/quota lock. */
++export async function rewardedGenerationEnabledForUser(tx:any,userID:string,config:RewardConfig):Promise<boolean>{
++  if(!rewardedGenerationEnabled(config))return false;
++  const [row]=await tx`select user_id from game_center_private.generation_reward_enrollments where user_id=${userID}`;
++  return Boolean(row);
++}
++export async function enrollRewardGeneration(tx:any,userID:string,body:Record<string,any>,config:RewardConfig){
++  if(!rewardedGenerationEnabled(config)||body.supported_reward_provider!=='unity'||!Number.isSafeInteger(body.client_build)
++    ||body.client_build<228||body.client_build>2147483647||!rewardedAdUnit(config)?.startsWith('unity:'))return;
++  await tx`insert into game_center_private.generation_reward_enrollments(user_id,provider,client_build)
++    values(${userID},'unity',${body.client_build}) on conflict(user_id) do nothing`;
+ }
+ export async function lockGenerationQuota(tx:any,userID:string){
+   await tx`select pg_advisory_xact_lock(hashtextextended(${userID+':native-ai-quota'},0))`;
+@@ -17,8 +39,14 @@
+   const unlimited=await nativeGameCenterHasMembership(tx,userID);
+   const [{today,resets_at}]=await tx`select (clock_timestamp() at time zone 'UTC')::date::text as today,
+     (((clock_timestamp() at time zone 'UTC')::date+1)::timestamp at time zone 'UTC') as resets_at`;
+-  const enabled=rewardedGenerationEnabled(config);
+-  if(!enabled)return {enabled:false,unlimited,daily_limit:REWARDED_AI_DAILY_LIMIT,free_remaining:null,bonus_credits:0,resets_at:new Date(resets_at).toISOString(),ad_available:false};
++  const enabled=await rewardedGenerationEnabledForUser(tx,userID,config);
++  if(!enabled){
++    const tester=isGenerationRewardTester(config,userID);
++    const [{credits}]=tester?await tx`select count(*)::int as credits from game_center_private.generation_reward_attempts
++      where user_id=${userID} and state='earned' and consumed_request_id is null`:[{credits:0}];
++    return {enabled:false,unlimited,daily_limit:REWARDED_AI_DAILY_LIMIT,free_remaining:null,bonus_credits:credits,
++      resets_at:new Date(resets_at).toISOString(),ad_available:false,...(tester?{test_ad_available:Boolean(rewardedAdUnit(config))}:{})};
++  }
+   const [{used}]=await tx`select count(*)::int as used from game_center_private.generation_requests
+     where user_id=${userID} and usage_date=${today} and charged and charge_source in ('legacy','free')`;
+   const [{credits}]=await tx`select count(*)::int as credits from game_center_private.generation_reward_attempts
+@@ -53,4 +81,3 @@
+     ai_free_remaining:status.free_remaining,ai_bonus_credits:status.bonus_credits,ai_resets_at:status.resets_at,ai_unlimited:status.unlimited,
+     ai_generations_today:status.unlimited?null:status.daily_limit-(status.free_remaining||0)};
+ }
+-
+--- live/rewarded-generation-ssv/app-services/generation-rewards.ts
++++ candidate/rewarded-generation-ssv/app-services/generation-rewards.ts
+@@ -2,8 +2,9 @@
+ import {accountGate} from './account-gate.ts';
+ import {nativeGameCenterAccount,resolveNativeGameCenterAccount} from './native-game-center.ts';
+ import {verifyLegacyCredential,boundedLegacyJSON} from './legacy-provider.ts';
+-import {lockGenerationQuota,nativeRewardStatus,rewardedAdUnit,rewardedGenerationEnabled,type RewardConfig} from './generation-reward-ledger.ts';
++import {lockGenerationQuota,nativeRewardStatus,rewardedAdUnit,enrollRewardGeneration,type RewardConfig} from './generation-reward-ledger.ts';
+ import {verifyAdMobCallback,AdMobVerificationError} from './admob-ssv.ts';
++import {isUnityCallback,unityAttemptFields,verifyUnityCallback,UnityVerificationError} from './unity-ssv.ts';
+ const evidenceSet=new WeakSet<object>();
+ const actions=new Set(['status','prepare','claim_status']);
+ const randomToken=()=>Array.from(crypto.getRandomValues(new Uint8Array(32)),v=>v.toString(16).padStart(2,'0')).join('');
+@@ -27,7 +28,8 @@
+       throw new AppServiceError('legacy_link_required','Verify this account before continuing.',409);
+   });
+   const body={action:input.body.action,...(input.body.action==='prepare'?{request_id:input.body.request_id}:{}),
+-    ...(input.body.action==='claim_status'?{attempt_id:input.body.attempt_id}:{})};
++    ...(input.body.action==='claim_status'?{attempt_id:input.body.attempt_id}:{}),
++    ...(input.body.action==='status'?{supported_reward_provider:input.body.supported_reward_provider,client_build:input.body.client_build}:{})};
+   const response=await (deps.fetch||fetch)(destination.origin+'/api/apps/'+destination.appID+'/functions/generationRewardAction',{
+     method:'POST',headers:{Authorization:'Bearer '+credential,'X-App-Id':destination.appID,Origin:destination.origin,'Content-Type':'application/json'},
+     redirect:'error',body:JSON.stringify(body),signal:AbortSignal.timeout(20_000)});
+@@ -52,6 +54,7 @@
+   }
+   if(native.state!=='ready')throw new AppServiceError('account_unavailable','This account is unavailable.',403);
+   await lockGenerationQuota(ctx.tx,ctx.actor.id);
++  if(body.action==='status')await enrollRewardGeneration(ctx.tx,ctx.actor.id,body,ctx.config);
+   const status=await nativeRewardStatus(ctx.tx,ctx.actor.id,ctx.config);
+   if(body.action==='status')return status;
+   if(body.action==='claim_status'){
+@@ -63,33 +66,43 @@
+   }
+   const requestID=requireUUID(body.request_id,'request_id');
+   const [existing]=await ctx.tx`select * from game_center_private.generation_reward_attempts where user_id=${ctx.actor.id} and attempt_id=${requestID}`;
+-  if(!existing&&(status.unlimited||(status.free_remaining||0)>0||status.bonus_credits>0))
++  const testOffer=!status.enabled&&'test_ad_available' in status&&status.test_ad_available===true;
++  if(!existing&&!testOffer&&(status.unlimited||(status.free_remaining||0)>0||status.bonus_credits>0))
+     throw new AppServiceError('reward_not_needed','A generation is already available. Refresh your allowance to continue.',409);
+-  if(!rewardedGenerationEnabled(ctx.config)||!status.ad_available)throw new AppServiceError('reward_unavailable','A rewarded ad is not available right now.',409);
++  if(!status.ad_available&&!testOffer)throw new AppServiceError('reward_unavailable','A rewarded ad is not available right now.',409);
+   const attempt=existing||{attempt_id:requestID,custom_data:requestID+'.native.'+randomToken(),ad_unit_id:rewardedAdUnit(ctx.config)!};
+   if(!existing)await ctx.tx`insert into game_center_private.generation_reward_attempts(user_id,attempt_id,custom_data,ad_unit_id)
+     values(${ctx.actor.id},${attempt.attempt_id},${attempt.custom_data},${attempt.ad_unit_id})`;
+-  return {...status,attempt_id:attempt.attempt_id,custom_data:attempt.custom_data,ad_unit_id:attempt.ad_unit_id,user_id:ctx.actor.id,ssv_user_id:ctx.actor.id};
++  return {...status,attempt_id:attempt.attempt_id,custom_data:attempt.custom_data,user_id:ctx.actor.id,ssv_user_id:ctx.actor.id,...unityAttemptFields(attempt.ad_unit_id,attempt.custom_data)};
+ }
+-/** No user SDK callback reaches this credit path. The signed Google event and
++/** No user SDK callback reaches this credit path. The signed provider event and
+  * issued user/token/unit/reward must all match in one locked transaction. */
+-export function createGenerationRewardSSVHandler(db:any,fetcher:typeof fetch=fetch){
++export function createGenerationRewardSSVHandler(db:any,fetcher:typeof fetch=fetch,config:RewardConfig={}){
+   return async(request:Request)=>{
+     try{
+       if(request.method!=='GET')return Response.json({code:'method_not_allowed'},{status:405});
+-      const event=await verifyAdMobCallback(request.url,fetcher);
+-      const userID=requireUUID(event.userID,'user_id');
++      const unity=isUnityCallback(request.url);
++      const event=unity?{...verifyUnityCallback(request.url,config),userID:'',timestamp:Date.now()}:await verifyAdMobCallback(request.url,fetcher);
+       const attemptID=requireUUID(event.customData.split('.')[0],'attempt_id');
++      if(unity&&event.customData.split('.')[1]!=='native')throw new AppServiceError('invalid_reward_claim','Invalid reward destination.',400);
+       await db.begin(async(tx:any)=>{
++        const [owner]=unity?await tx`select user_id from game_center_private.generation_reward_attempts where custom_data=${event.customData}`:[{user_id:event.userID}];
++        if(!owner)throw new AppServiceError('invalid_reward_claim','Unknown reward attempt.',400);
++        const userID=requireUUID(owner.user_id,'user_id');
+         await accountGate(tx,userID);
+         if((await nativeGameCenterAccount(tx,userID))?.state!=='ready')throw new AppServiceError('account_unavailable','This account is unavailable.',403);
+         await lockGenerationQuota(tx,userID);
+         const [attempt]=await tx`select * from game_center_private.generation_reward_attempts where user_id=${userID} and attempt_id=${attemptID} for update`;
+         const unit=attempt?.ad_unit_id;
+         const timestamp=event.timestamp;
+-        if(!attempt||attempt.custom_data!==event.customData||!(event.adUnit===unit||event.adUnit===unit?.split('/')[1])||event.rewardAmount!==1||event.rewardItem!=='generation'
+-          ||timestamp<new Date(attempt.created_at).getTime()-60_000||timestamp>new Date(attempt.expires_at).getTime()||timestamp>Date.now()+60_000)
++        if(!attempt||attempt.custom_data!==event.customData||!(event.adUnit===unit||(!unity&&unit?.startsWith('ca-app-pub-')&&event.adUnit===unit?.split('/')[1]))||event.rewardAmount!==1||event.rewardItem!=='generation')
+           throw new AppServiceError('invalid_reward_claim','The reward claim did not match its issued attempt.',400);
++        if(unity&&attempt.state==='earned'){
++          if(attempt.transaction_id!==event.transactionID)throw new AppServiceError('reward_already_earned','This attempt already earned its reward.',409);
++          return;
++        }
++        if(timestamp<new Date(attempt.created_at).getTime()-60_000||timestamp>new Date(attempt.expires_at).getTime()||timestamp>Date.now()+60_000)
++          throw new AppServiceError('invalid_reward_claim','The reward claim expired.',400);
+         if(attempt.state==='earned'){
+           if(attempt.transaction_id!==event.transactionID)throw new AppServiceError('reward_already_earned','This attempt already earned its reward.',409);
+           return;
+@@ -99,11 +112,10 @@
+         await tx`update game_center_private.generation_reward_attempts set state='earned',transaction_id=${event.transactionID},reward_at=${new Date(timestamp)}
+           where user_id=${userID} and attempt_id=${attemptID} and state='pending'`;
+       });
+-      return Response.json({received:true});
++      return unity?new Response('1',{headers:{'Content-Type':'text/plain','Cache-Control':'no-store'}}):Response.json({received:true});
+     }catch(error){
+-      const expected=error instanceof AppServiceError||error instanceof AdMobVerificationError;
++      const expected=error instanceof AppServiceError||error instanceof AdMobVerificationError||error instanceof UnityVerificationError;
+       return Response.json({code:expected?error.code:'reward_callback_unavailable'},{status:expected?error.status:503});
+     }
+   };
+ }
+-
+--- live/rewarded-generation-ssv/app-services/unity-ssv.ts
++++ candidate/rewarded-generation-ssv/app-services/unity-ssv.ts
+@@ -0,0 +1,54 @@
++import { createHmac, timingSafeEqual } from "node:crypto";
++
++/** Unity's provider protocol uses HMAC-MD5 (not a client assertion).
++ * https://docs.unity.com/en-us/grow/ads/mediation/s2s-redeem-callbacks
++ * The support-issued secret exists only on the server. */
++export type UnityRewardConfig = Record<string, string | undefined>;
++export class UnityVerificationError extends Error {
++  constructor(readonly code: string, readonly status = 400) { super(code); }
++}
++export function unityRewardUnit(config: UnityRewardConfig): string | null {
++  const game = config.UNITY_ADS_GAME_ID?.trim() || "";
++  const placement = config.UNITY_ADS_REWARDED_PLACEMENT_ID?.trim() || "";
++  const secret = config.UNITY_ADS_S2S_SECRET || "";
++  return /^[1-9][0-9]{0,15}$/.test(game) && game !== "14850" &&
++      /^[A-Za-z0-9_-]{1,80}$/.test(placement) && secret.length >= 16
++    ? `unity:${game}:${placement}` : null;
++}
++export function unityAttemptFields(unit: string, token: string) {
++  const match = /^unity:([1-9][0-9]{0,15}):([A-Za-z0-9_-]{1,80})$/.exec(unit);
++  return match ? { provider: "unity", unity_game_id: match[1], ad_unit_id: match[2], server_id: token }
++    : { provider: "admob", ad_unit_id: unit };
++}
++export function isUnityCallback(url: string): boolean {
++  const params = new URL(url).searchParams;
++  return params.get("provider") === "unity" || params.has("hmac") || params.has("sid");
++}
++export function verifyUnityCallback(url: string, config: UnityRewardConfig) {
++  const configured = unityRewardUnit(config);
++  if (!configured) throw new UnityVerificationError("unity_reward_unconfigured", 503);
++  const fail = (): never => { throw new UnityVerificationError("invalid_reward_signature"); };
++  const query = new URL(url).search;
++  if (!query || query.length > 4096) return fail();
++  const params = new URLSearchParams(query);
++  const values = new Map<string, string>();
++  for (const [name, value] of params) {
++    // Closed contract prevents ambiguous comma/equal concatenation and duplicate keys.
++    if (!/^[a-z_]+$/.test(name) || values.has(name) || /[,=\u0000-\u0020]/.test(value)) return fail();
++    values.set(name, value);
++  }
++  const allowed = ["provider", "game_id", "placement_id", "sid", "oid", "hmac"];
++  if (values.size !== allowed.length || allowed.some(key => !values.get(key))) return fail();
++  if (values.get("provider") !== "unity" ||
++      `unity:${values.get("game_id")}:${values.get("placement_id")}` !== configured) return fail();
++  const sid = values.get("sid")!, oid = values.get("oid")!, signature = values.get("hmac")!;
++  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(legacy|native)\.[0-9a-f]{64}$/.test(sid) ||
++      !/^[A-Za-z0-9_-]{1,180}$/.test(oid) || !/^[0-9a-fA-F]{32}$/.test(signature)) return fail();
++  const canonical = [...values.keys()].filter(key => key !== "hmac").sort()
++    .map(key => `${key}=${values.get(key)}`).join(",");
++  const expected = createHmac("md5", config.UNITY_ADS_S2S_SECRET!).update(canonical).digest();
++  const supplied = Uint8Array.from(signature.match(/../g)!, pair => Number.parseInt(pair, 16));
++  if (!timingSafeEqual(expected, supplied)) return fail();
++  return { transactionID: `unity:${values.get("game_id")}:${oid}`, customData: sid,
++    adUnit: configured, rewardAmount: 1, rewardItem: "generation" };
++}
+--- live/rewarded-generation-ssv/rewarded-generation-ssv/handler.ts
++++ candidate/rewarded-generation-ssv/rewarded-generation-ssv/handler.ts
+@@ -1,4 +1,5 @@
+ import { verifyAdMobCallback, AdMobVerificationError } from '../app-services/admob-ssv.ts';
++import { isUnityCallback, verifyUnityCallback, UnityVerificationError } from '../app-services/unity-ssv.ts';
+ import { AppServiceError } from '../app-services/contracts.ts';
+ import { rewardedAdUnit } from '../app-services/generation-reward-ledger.ts';
+ import { canonicalBase44Configuration, CANONICAL_BASE44_APP_ID, CANONICAL_BASE44_ORIGIN } from '../app-services/legacy-provider.ts';
+@@ -12,7 +13,7 @@
+ const setupProbeUnit = '1234567890';
+ const reply = (body: unknown, status = 200) => Response.json(body, {status, headers: {'Cache-Control': 'no-store'}});
+ 
+-/** The only public entry point for Google's signed callback. It owns no credit
++/** The public entry point for provider-signed callbacks. It owns no credit
+  * ledger: each backend still verifies the signature and its exact issued token.
+  * Namespace is signed, server-issued data, never inferred from a user ID. */
+ export function createRewardedGenerationSSVGateway(dependencies: {
+@@ -22,7 +23,8 @@
+   return async request => {
+     if (request.method !== 'GET') return reply({code: 'method_not_allowed'}, 405);
+     try {
+-      const event = await verifyAdMobCallback(request.url, fetcher);
++      const unity = isUnityCallback(request.url);
++      const event = unity ? {...verifyUnityCallback(request.url, dependencies.config), userID: ''} : await verifyAdMobCallback(request.url, fetcher);
+       // AdMob's dashboard tests delivery with a synthetic, signed event. These
+       // reserved values identify no player and can never enter either ledger.
+       if (event.userID === setupProbeUser || event.customData === setupProbeData) {
+@@ -75,14 +77,18 @@
+       const bytes = new Uint8Array(size);
+       let offset = 0;
+       for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+-      const result = JSON.parse(new TextDecoder().decode(bytes));
++      const text = new TextDecoder().decode(bytes);
++      if (unity) {
++        if (text !== '1') return reply({code: 'reward_forward_unavailable'}, 503);
++        return new Response('1', {headers: {'Content-Type': 'text/plain', 'Cache-Control': 'no-store'}});
++      }
++      const result = JSON.parse(text);
+       if (result?.success !== true) return reply({code: 'reward_forward_unavailable'}, 503);
+       return reply({received: true});
+     } catch (error) {
+-      if (error instanceof AdMobVerificationError) return reply({code: error.code}, error.status);
++      if (error instanceof AdMobVerificationError || error instanceof UnityVerificationError) return reply({code: error.code}, error.status);
+       if (error instanceof AppServiceError) return reply({code: 'reward_destination_unavailable'}, 503);
+       return reply({code: 'reward_callback_unavailable'}, 503);
+     }
+   };
+ }
+-
+--- live/rewarded-generation-ssv/rewarded-generation-ssv/index.ts
++++ candidate/rewarded-generation-ssv/rewarded-generation-ssv/index.ts
+@@ -17,7 +17,6 @@
+   connection.username = 'postgres.bbkfsgnordtdiblgdzkg';
+ }
+ const db = postgres(connection.href, {prepare: false, max: 3, idle_timeout: 15, connect_timeout: 8, ...(local ? {} : {ssl: 'require'})});
+-// The native handler rechecks Google's signature before its locked transaction.
++// The native handler rechecks the provider signature before its locked transaction.
+ // Keeping that contract also protects its existing authenticated route.
+-Deno.serve(createRewardedGenerationSSVGateway({config, native: createGenerationRewardSSVHandler(db)}));
+-
++Deno.serve(createRewardedGenerationSSVGateway({config, native: createGenerationRewardSSVHandler(db,fetch,config)}));

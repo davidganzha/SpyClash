@@ -14,12 +14,17 @@ extension Base44Client: GenerationRewardsClientProtocol {}
 protocol GenerationRewardAdPresenting: AnyObject {
     var canOfferAds: Bool { get }
     var isOwnedSimulatorTestConfiguration: Bool { get }
+    func present(attempt: GenerationRewardAttempt, onEarned: @escaping @MainActor () -> Void) async throws -> Bool
     func present(adUnitID: String, userID: String, customData: String, onEarned: @escaping @MainActor () -> Void) async throws -> Bool
     func cancelPendingPresentation()
 }
 
 extension GenerationRewardAdPresenting {
     var isOwnedSimulatorTestConfiguration: Bool { false }
+    func present(attempt: GenerationRewardAttempt, onEarned: @escaping @MainActor () -> Void) async throws -> Bool {
+        guard attempt.provider == .admob else { throw RewardedGenerationAdError.unavailable }
+        return try await present(adUnitID: attempt.adUnitID, userID: attempt.userID, customData: attempt.customData, onEarned: onEarned)
+    }
 }
 
 extension RewardedGenerationAdPresenter: GenerationRewardAdPresenting {}
@@ -41,6 +46,7 @@ final class GenerationRewardStore {
     @ObservationIgnored private var refreshID = UUID()
     @ObservationIgnored private var watchID: UUID?
     @ObservationIgnored private var recoveryID: UUID?
+    @ObservationIgnored private var membershipEpoch = UUID()
 
     init(client: any GenerationRewardsClientProtocol, ads: any GenerationRewardAdPresenting = RewardedGenerationAdPresenter.shared, defaults: UserDefaults = .standard, sleep: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
         self.client = client; self.ads = ads; self.defaults = defaults; self.sleep = sleep
@@ -64,7 +70,7 @@ final class GenerationRewardStore {
     func bind(_ scope: MembershipScope, preview: GenerationRewardStatus? = nil) {
         guard self.scope != scope || isPreview != (preview != nil) else { return }
         ads.cancelPendingPresentation()
-        refreshID = UUID(); watchID = nil; recoveryID = nil
+        refreshID = UUID(); watchID = nil; recoveryID = nil; membershipEpoch = UUID()
         self.scope = scope; snapshot = preview; isPreview = preview != nil
         notice = nil; isLoading = false; isWatching = false
         pendingAttemptID = preview == nil ? pendingKey.flatMap { defaults.string(forKey: $0) }.flatMap(UUID.init(uuidString:)) : nil
@@ -95,9 +101,20 @@ final class GenerationRewardStore {
     func reportLimitReached() { notice = .limitReached }
     func generationDidComplete() { notice = nil }
 
+    /// A verified membership change invalidates stale ad/allowance UI at once.
+    /// Access is populated by the next server response, never invented locally.
+    /// Keep any completed viewing durable while its callback is still pending.
+    func invalidateMembershipAccess() {
+        guard !isPreview else { return }
+        membershipEpoch = UUID(); refreshID = UUID(); recoveryID = nil
+        snapshot = nil; isLoading = false
+        notice = isAwaitingReward ? .confirming : nil
+        ads.cancelPendingPresentation()
+    }
+
     func watch(testAd: Bool = false) async {
         guard (testAd ? canWatchTestAd : canWatch), let accountID = scope.userID else { return }
-        let account = scope, id = UUID()
+        let account = scope, id = UUID(), epoch = membershipEpoch
         watchID = id; isWatching = true; notice = nil
         defer { if watchID == id { isWatching = false; watchID = nil } }
         do {
@@ -112,11 +129,11 @@ final class GenerationRewardStore {
             attempt = try await client.prepareGenerationReward(requestID: id)
 #endif
             try Task.checkCancellation()
-            guard scope == account, watchID == id else { return }
+            guard scope == account, watchID == id, membershipEpoch == epoch else { return }
             // Persist before presentation: an app interruption must not lose a
             // completed ad whose server callback arrives after the next launch.
             setPending(attempt.attemptID)
-            let earned = try await ads.present(adUnitID: attempt.adUnitID, userID: attempt.userID, customData: attempt.customData) { [weak self] in
+            let earned = try await ads.present(attempt: attempt) { [weak self] in
                 guard let self, self.scope == account, self.watchID == id, self.pendingAttemptID == attempt.attemptID else { return }
                 self.markAwaitingReward()
             }
@@ -160,12 +177,13 @@ final class GenerationRewardStore {
 
     func recoverPending() async {
         guard !isPreview, recoveryID == nil, let attempt = pendingAttemptID else { return }
-        let account = scope, id = UUID()
+        let account = scope, id = UUID(), epoch = membershipEpoch
         recoveryID = id
         defer { if recoveryID == id { recoveryID = nil } }
         do {
             let result = try await client.generationRewardClaim(attemptID: attempt)
-            guard !Task.isCancelled, account == scope, pendingAttemptID == attempt else { return }
+            guard !Task.isCancelled, account == scope, pendingAttemptID == attempt,
+                  membershipEpoch == epoch, recoveryID == id else { return }
             snapshot = result.status
             if result.state == "earned" {
                 setPending(nil); notice = .earned

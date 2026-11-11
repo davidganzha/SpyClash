@@ -184,3 +184,41 @@ Deno.test('dashboard probe rejects non-GET requests and key outages without rout
   assert((await f.handler(probeConfig)(new Request(f.url))).status === 503);
   assert(f.calls.length === 0 && f.nativeCalls.length === 0);
 });
+
+// Unity uses a distinct signed protocol but the same server-owned namespaces.
+import { createHmac } from 'node:crypto';
+const unityConfig = {SUPABASE_URL:'https://bbkfsgnordtdiblgdzkg.supabase.co', UNITY_ADS_GAME_ID:'800429660', UNITY_ADS_REWARDED_PLACEMENT_ID:'BP_Rewarded_iOS', UNITY_ADS_S2S_SECRET:'fixture-secret-only-not-live'};
+function unityURL(namespace='legacy') {
+  const values = {provider:'unity', game_id:'800429660', placement_id:'BP_Rewarded_iOS', sid:token(namespace), oid:'offer_123'};
+  const canonical = Object.keys(values).sort().map(key=>`${key}=${values[key as keyof typeof values]}`).join(',');
+  const params = new URLSearchParams(values);
+  params.set('hmac',createHmac('md5',unityConfig.UNITY_ADS_S2S_SECRET).update(canonical).digest('hex'));
+  return 'https://example.test/functions/v1/rewarded-generation-ssv?'+params;
+}
+Deno.test('Unity gateway verifies complete signed context before exact legacy forwarding and acknowledges 1', async()=>{
+  const calls:string[]=[];
+  const url=unityURL();
+  const handler=createRewardedGenerationSSVGateway({config:unityConfig,native:async()=>{throw Error('wrong ledger');},fetch:async(input)=>{calls.push(String(input));return new Response('1');}});
+  const response=await handler(new Request(url));
+  assert(response.status===200&&await response.text()==='1');
+  assert(calls.length===1&&calls[0]===destination+new URL(url).search);
+  const bad=await handler(new Request(url.replace('offer_123','offer_124')));
+  assert(bad.status===400&&calls.length===1);
+});
+Deno.test('Unity native gateway keeps the exact request and never forwards to Base44',async()=>{
+  const request=new Request(unityURL('native'));let count=0;
+  const handler=createRewardedGenerationSSVGateway({config:unityConfig,native:async(value)=>{assert(value===request);count++;return new Response('1');},fetch:async()=>{throw Error('wrong ledger');}});
+  const response=await handler(request);assert(response.status===200&&await response.text()==='1'&&count===1);
+});
+Deno.test('Unity callback cannot acknowledge malformed upstream success, missing secret or unknown namespace',async()=>{
+  for(const body of ['', '<html>ok</html>', '{"success":true}', ' 1', '1'.repeat(4097)]) {
+    const handler=createRewardedGenerationSSVGateway({config:unityConfig,native:async()=>{throw Error('wrong ledger');},fetch:async()=>new Response(body)});
+    assert((await handler(new Request(unityURL()))).status===503);
+  }
+  for(const config of [{...unityConfig,UNITY_ADS_S2S_SECRET:''},{...unityConfig,UNITY_ADS_GAME_ID:'14850'}]) {
+    const handler=createRewardedGenerationSSVGateway({config,native:async()=>{throw Error('no route');},fetch:async()=>{throw Error('no route');}});
+    assert((await handler(new Request(unityURL()))).status===503);
+  }
+  const handler=createRewardedGenerationSSVGateway({config:unityConfig,native:async()=>{throw Error('no route');},fetch:async()=>{throw Error('no route');}});
+  assert((await handler(new Request(unityURL('unknown')))).status===400);
+});

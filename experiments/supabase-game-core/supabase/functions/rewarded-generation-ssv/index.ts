@@ -17,6 +17,6 @@ if (!local) {
   connection.username = 'postgres.bbkfsgnordtdiblgdzkg';
 }
 const db = postgres(connection.href, {prepare: false, max: 3, idle_timeout: 15, connect_timeout: 8, ...(local ? {} : {ssl: 'require'})});
-// The native handler rechecks Google's signature before its locked transaction.
+// The native handler rechecks the provider signature before its locked transaction.
 // Keeping that contract also protects its existing authenticated route.
-Deno.serve(createRewardedGenerationSSVGateway({config, native: createGenerationRewardSSVHandler(db)}));
+Deno.serve(createRewardedGenerationSSVGateway({config, native: createGenerationRewardSSVHandler(db,fetch,config)}));

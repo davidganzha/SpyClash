@@ -1,0 +1,41 @@
+{
+  "date": "2026-11-11",
+  "production_changed": false,
+  "total_unique_checks": 95,
+  "checks": [
+    {
+      "name": "Provider verifiers and Base44 ledger",
+      "passed": 19,
+      "failed": 0,
+      "log": "reward-verifier-ledger-tests.log"
+    },
+    {
+      "name": "Base44 real-handler fixture integration",
+      "passed": 27,
+      "failed": 0,
+      "log": "base44-reward-integration.log"
+    },
+    {
+      "name": "Public callback gateway",
+      "passed": 16,
+      "failed": 0,
+      "log": "reward-gateway-tests.log"
+    },
+    {
+      "name": "Native integration against exact live-source candidate using isolated local PostgreSQL",
+      "passed": 33,
+      "failed": 0,
+      "log": "native-live-candidate-integration.log"
+    }
+  ],
+  "typechecks": [
+    "Base44 generateWordPack and generationRewardAction",
+    "Current Supabase app-services and public gateway entrypoints",
+    "Prepared live-source app-services and public gateway entrypoints"
+  ],
+  "external_blockers": [
+    "Unity Support activation and secret not obtained or verified",
+    "Real Apple purchase and real provider callback delivery require acceptance separately"
+  ],
+  "local_database": "New loopback PostgreSQL instance on port55439; random test databases created and dropped by suite; no cloud database access"
+}

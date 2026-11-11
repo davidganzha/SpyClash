@@ -1,0 +1,113 @@
+{
+  "checked_at": "2026-11-11T18:28:17.054Z",
+  "app_id": "6793534085",
+  "read_only": true,
+  "versions": [
+    {
+      "id": "6c6d03d7-8b84-4ed1-b315-7cf6acb9c5b2",
+      "version": "1.0.3",
+      "state": "READY_FOR_SALE",
+      "build_id": "049e9931-16d7-4203-a65f-aa9d2972830e"
+    },
+    {
+      "id": "a89dbd39-bcd3-4242-8b6c-529ef2034e1a",
+      "version": "1.0.2",
+      "state": "READY_FOR_SALE",
+      "build_id": "c6b930ba-da00-43b3-98c6-5229a442823d"
+    },
+    {
+      "id": "ecff6046-bfaf-4efb-8b4b-743b7e0d30c1",
+      "version": "1.0.1",
+      "state": "READY_FOR_SALE",
+      "build_id": "a1687f2e-9973-4aac-bb04-87a39786ae3e"
+    },
+    {
+      "id": "c45f6c18-2b18-40d2-9eb0-3447b1d56b60",
+      "version": "1.0",
+      "state": "READY_FOR_SALE",
+      "build_id": "9deba5f7-828f-4c4e-bc9d-0350cfd5bc55"
+    }
+  ],
+  "public_builds": [
+    {
+      "id": "049e9931-16d7-4203-a65f-aa9d2972830e",
+      "build": "200"
+    },
+    {
+      "id": "c6b930ba-da00-43b3-98c6-5229a442823d",
+      "build": "161"
+    },
+    {
+      "id": "a1687f2e-9973-4aac-bb04-87a39786ae3e",
+      "build": "132"
+    },
+    {
+      "id": "9deba5f7-828f-4c4e-bc9d-0350cfd5bc55",
+      "build": "89"
+    }
+  ],
+  "latest_uploaded_builds": [
+    {
+      "id": "c37da263-56f5-4a7e-a597-beaed4f520ff",
+      "build": "218",
+      "processing_state": "VALID",
+      "uploaded_date": "2026-11-07T09:59:25-08:00"
+    },
+    {
+      "id": "d50dfbe6-12ad-4fb9-9839-b68370a043e4",
+      "build": "217",
+      "processing_state": "VALID",
+      "uploaded_date": "2026-11-07T09:34:29-08:00"
+    },
+    {
+      "id": "049e9931-16d7-4203-a65f-aa9d2972830e",
+      "build": "200",
+      "processing_state": "VALID",
+      "uploaded_date": "2026-10-26T16:43:56-07:00"
+    },
+    {
+      "id": "9b9443cb-6e19-49e2-9d6e-787c771e5121",
+      "build": "197",
+      "processing_state": "VALID",
+      "uploaded_date": "2026-10-22T15:07:35-07:00"
+    },
+    {
+      "id": "87358a43-c43c-4fc8-a8af-c88f3aa6334b",
+      "build": "187",
+      "processing_state": "VALID",
+      "uploaded_date": "2026-10-19T02:32:42-07:00"
+    },
+    {
+      "id": "76084d26-e12c-432e-a47b-3a2e9c225833",
+      "build": "186",
+      "processing_state": "VALID",
+      "uploaded_date": "2026-10-18T15:21:39-07:00"
+    },
+    {
+      "id": "832e1ec2-b920-4b8a-81f6-4a79f30d70a9",
+      "build": "185",
+      "processing_state": "VALID",
+      "uploaded_date": "2026-10-17T17:29:56-07:00"
+    },
+    {
+      "id": "15e97a22-58e7-4e85-953a-c8c520d5b37d",
+      "build": "184",
+      "processing_state": "VALID",
+      "uploaded_date": "2026-10-17T15:09:47-07:00"
+    }
+  ],
+  "subscriptions": [
+    {
+      "id": "6825982027",
+      "product_id": "com.spyclash.ios.limitless.monthly",
+      "state": "MISSING_METADATA",
+      "period": "ONE_MONTH"
+    },
+    {
+      "id": "6793548263",
+      "product_id": "com.spyclash.ios.limitless.weekly",
+      "state": "APPROVED",
+      "period": "ONE_WEEK"
+    }
+  ]
+}

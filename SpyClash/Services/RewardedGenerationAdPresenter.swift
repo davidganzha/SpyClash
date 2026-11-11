@@ -31,23 +31,26 @@ enum RewardedGenerationAdError: LocalizedError {
 final class RewardedGenerationAdPresenter: NSObject {
     static let shared = RewardedGenerationAdPresenter()
 
-    private(set) var isBusy = false
+    private var isGoogleBusy = false
+    var isBusy: Bool { isGoogleBusy || unity.isBusy }
     private(set) var privacyOptionsRequired = false
-    var isConfigured: Bool { configuration.isConfigured }
+    var isConfigured: Bool { configuration.isConfigured || unity.isConfigured }
     var canOfferAds: Bool { isConfigured && !isBusy }
     var isTestConfiguration: Bool { configuration.isTestConfiguration }
     var isOwnedSimulatorTestConfiguration: Bool { configuration.isOwnedSimulatorTestConfiguration }
     var configuredAdUnitID: String { configuration.adUnitID }
 
     @ObservationIgnored private let configuration: RewardedGenerationAdConfiguration
+    private let unity: UnityRewardedGenerationAdPresenter
     @ObservationIgnored private var initialized = false
     @ObservationIgnored private var operationID: UUID?
     @ObservationIgnored private var presentation: RewardedGenerationAdAttempt?
     @ObservationIgnored private var contentTransition: RewardedGenerationAdTransition?
     @ObservationIgnored private var backgroundObserver: (any NSObjectProtocol)?
 
-    init(configuration: RewardedGenerationAdConfiguration = .current) {
+    init(configuration: RewardedGenerationAdConfiguration = .current, unityConfiguration: UnityRewardedGenerationAdConfiguration = .current) {
         self.configuration = configuration
+        self.unity = UnityRewardedGenerationAdPresenter(configuration: unityConfiguration)
         super.init()
         // Merely constructing this object does not touch either SDK.
     }
@@ -68,6 +71,19 @@ final class RewardedGenerationAdPresenter: NSObject {
         )
     }
 #endif
+
+    func present(attempt: GenerationRewardAttempt, onEarned: @escaping @MainActor () -> Void) async throws -> Bool {
+        guard !isBusy else { throw RewardedGenerationAdError.alreadyPresenting }
+#if DEBUG
+        guard !UnityAdsTestPresenter.shared.isBusy else { throw RewardedGenerationAdError.alreadyPresenting }
+#endif
+        switch attempt.provider {
+        case .admob:
+            return try await present(adUnitID: attempt.adUnitID, userID: attempt.userID, customData: attempt.customData, onEarned: onEarned)
+        case .unity:
+            return try await unity.present(attempt: attempt, onEarned: onEarned)
+        }
+    }
 
     func present(
         adUnitID: String,
@@ -91,7 +107,7 @@ final class RewardedGenerationAdPresenter: NSObject {
 
         let id = UUID()
         operationID = id
-        isBusy = true
+        isGoogleBusy = true
         observeBackgrounding()
         defer { endOperation(id) }
 
@@ -161,19 +177,20 @@ final class RewardedGenerationAdPresenter: NSObject {
     /// Call together with task cancellation when the generation sheet disappears.
     /// Does not forcibly close a video the user has already chosen to watch.
     func cancelPendingPresentation() {
+        unity.cancelPendingPresentation()
         guard presentation == nil else { return }
         operationID = nil
         contentTransition?.remove()
     }
 
     func presentPrivacyOptions() async throws {
-        guard isConfigured else { throw RewardedGenerationAdError.unavailable }
+        guard configuration.isConfigured else { throw RewardedGenerationAdError.unavailable }
         guard !isBusy else { throw RewardedGenerationAdError.alreadyPresenting }
         guard let presenter = Self.visiblePresenter() else { throw RewardedGenerationAdError.presentationUnavailable }
         try Task.checkCancellation()
         let id = UUID()
         operationID = id
-        isBusy = true
+        isGoogleBusy = true
         observeBackgrounding()
         defer { endOperation(id) }
         try await withTaskCancellationHandler {
@@ -272,7 +289,7 @@ final class RewardedGenerationAdPresenter: NSObject {
         contentTransition = nil
         presentation = nil
         if operationID == id { operationID = nil }
-        isBusy = false
+        isGoogleBusy = false
     }
 
     private static var reduceMotion: Bool {

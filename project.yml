@@ -11,22 +11,32 @@ configs:
   SupabasePublicRelease: release
 settings:
   base:
-    CURRENT_PROJECT_VERSION: 227
+    CURRENT_PROJECT_VERSION: 228
     MARKETING_VERSION: 1.0.4
     SWIFT_VERSION: 6.0
     SPYCLASH_ADS_ENABLED: "NO"
+    SPYCLASH_REWARDED_AD_PROVIDER: "admob"
+    SPYCLASH_UNITY_GAME_ID: "800429660"
+    SPYCLASH_UNITY_REWARDED_AD_UNIT_ID: "BP_Rewarded_iOS"
+    SPYCLASH_UNITY_TEST_MODE: "NO"
     SPYCLASH_INTEGRATED_TEST_ADS_ENABLED: "NO"
     SPYCLASH_OWNED_ADMOB_SIMULATOR_TEST_ENABLED: "NO"
     # The linked SDK validates its app ID at launch even with ads disabled.
-    # Keep a valid Google sample bootstrap ID until owned release IDs are configured.
-    # Ads stay disabled and Release rejects all Google sample advertising IDs.
-    SPYCLASH_ADMOB_APP_ID: "ca-app-pub-3940256099942544~1458002511"
+    # Owned bootstrap ID is required even when Unity is the selected provider.
+    # Server activation still gates actual generation rewards and quotas.
+    SPYCLASH_ADMOB_APP_ID: "ca-app-pub-5081830513960558~9442838104"
     SPYCLASH_REWARDED_AD_UNIT_ID: ""
     SPYCLASH_UNITY_TEST_ADS_ENABLED: "NO"
     # Owned Unity project; only initialized by an explicit Debug preview.
     SPYCLASH_UNITY_TEST_GAME_ID: "800429660"
     SPYCLASH_UNITY_TEST_AD_UNIT_ID: "BP_Rewarded_iOS"
   configs:
+    Release:
+      SPYCLASH_ADS_ENABLED: "YES"
+      SPYCLASH_REWARDED_AD_PROVIDER: "unity"
+    SupabasePublicRelease:
+      SPYCLASH_ADS_ENABLED: "YES"
+      SPYCLASH_REWARDED_AD_PROVIDER: "unity"
     Debug:
       SPYCLASH_ADS_ENABLED: "YES"
       SPYCLASH_ADMOB_APP_ID: "ca-app-pub-3940256099942544~1458002511"
@@ -89,6 +99,10 @@ targets:
         GADApplicationIdentifier: "$(SPYCLASH_ADMOB_APP_ID)"
         GADDelayAppMeasurementInit: true
         SpyClashAdsEnabled: "$(SPYCLASH_ADS_ENABLED)"
+        SpyClashRewardedAdProvider: "$(SPYCLASH_REWARDED_AD_PROVIDER)"
+        SpyClashUnityGameID: "$(SPYCLASH_UNITY_GAME_ID)"
+        SpyClashUnityRewardedAdUnitID: "$(SPYCLASH_UNITY_REWARDED_AD_UNIT_ID)"
+        SpyClashUnityTestMode: "$(SPYCLASH_UNITY_TEST_MODE)"
         SpyClashIntegratedTestAdsEnabled: "$(SPYCLASH_INTEGRATED_TEST_ADS_ENABLED)"
         SpyClashOwnedAdMobSimulatorTestEnabled: "$(SPYCLASH_OWNED_ADMOB_SIMULATOR_TEST_ENABLED)"
         SpyClashRewardedAdUnitID: "$(SPYCLASH_REWARDED_AD_UNIT_ID)"
@@ -96,7 +110,82 @@ targets:
         SpyClashUnityTestGameID: "$(SPYCLASH_UNITY_TEST_GAME_ID)"
         SpyClashUnityTestAdUnitID: "$(SPYCLASH_UNITY_TEST_AD_UNIT_ID)"
         SKAdNetworkItems:
+          - SKAdNetworkIdentifier: 22mmun2rn5.skadnetwork
+          - SKAdNetworkIdentifier: 238da6jt44.skadnetwork
+          - SKAdNetworkIdentifier: 294l99pt4k.skadnetwork
+          - SKAdNetworkIdentifier: 2fnua5tdw4.skadnetwork
+          - SKAdNetworkIdentifier: 2u9pt9hc89.skadnetwork
+          - SKAdNetworkIdentifier: 32z4fx6l9h.skadnetwork
+          - SKAdNetworkIdentifier: 3qy4746246.skadnetwork
+          - SKAdNetworkIdentifier: 3rd42ekr43.skadnetwork
+          - SKAdNetworkIdentifier: 3sh42y64q3.skadnetwork
+          - SKAdNetworkIdentifier: 424m5254lk.skadnetwork
+          - SKAdNetworkIdentifier: 4468km3ulz.skadnetwork
+          - SKAdNetworkIdentifier: 44jx6755aq.skadnetwork
+          - SKAdNetworkIdentifier: 488r3q3dtq.skadnetwork
+          - SKAdNetworkIdentifier: 4dzt52r2t5.skadnetwork
+          - SKAdNetworkIdentifier: 4fzdc2evr5.skadnetwork
+          - SKAdNetworkIdentifier: 4pfyvq9l8r.skadnetwork
+          - SKAdNetworkIdentifier: 4w7y6s5ca2.skadnetwork
+          - SKAdNetworkIdentifier: 578prtvx9j.skadnetwork
+          - SKAdNetworkIdentifier: 5a6flpkh64.skadnetwork
+          - SKAdNetworkIdentifier: 5f5u5tfb26.skadnetwork
+          - SKAdNetworkIdentifier: 5l3tpt7t6e.skadnetwork
+          - SKAdNetworkIdentifier: 5lm9lj6jb7.skadnetwork
+          - SKAdNetworkIdentifier: 5tjdwbrq8w.skadnetwork
+          - SKAdNetworkIdentifier: 6yxyv74ff7.skadnetwork
+          - SKAdNetworkIdentifier: 77y3x8wds4.skadnetwork
+          - SKAdNetworkIdentifier: 7ug5zh24hu.skadnetwork
+          - SKAdNetworkIdentifier: 8s468mfl3y.skadnetwork
+          - SKAdNetworkIdentifier: 97r2b46745.skadnetwork
+          - SKAdNetworkIdentifier: 9nlqeag3gk.skadnetwork
+          - SKAdNetworkIdentifier: 9rd848q2bz.skadnetwork
+          - SKAdNetworkIdentifier: 9t245vhmpl.skadnetwork
+          - SKAdNetworkIdentifier: a2p9lx4jpn.skadnetwork
+          - SKAdNetworkIdentifier: a8cz6cu7e5.skadnetwork
+          - SKAdNetworkIdentifier: av6w8kgt66.skadnetwork
+          - SKAdNetworkIdentifier: c6k4g5qg8m.skadnetwork
           - SKAdNetworkIdentifier: cstr6suwn9.skadnetwork
+          - SKAdNetworkIdentifier: e5fvkxwrpn.skadnetwork
+          - SKAdNetworkIdentifier: f38h382jlk.skadnetwork
+          - SKAdNetworkIdentifier: f73kdq92p3.skadnetwork
+          - SKAdNetworkIdentifier: f7s53z58qe.skadnetwork
+          - SKAdNetworkIdentifier: feyaarzu9v.skadnetwork
+          - SKAdNetworkIdentifier: g6gcrrvk4p.skadnetwork
+          - SKAdNetworkIdentifier: glqzh8vgby.skadnetwork
+          - SKAdNetworkIdentifier: hs6bdukanm.skadnetwork
+          - SKAdNetworkIdentifier: k674qkevps.skadnetwork
+          - SKAdNetworkIdentifier: k6y4y55b64.skadnetwork
+          - SKAdNetworkIdentifier: kbd757ywx3.skadnetwork
+          - SKAdNetworkIdentifier: klf5c3l5u5.skadnetwork
+          - SKAdNetworkIdentifier: lr83yxwka7.skadnetwork
+          - SKAdNetworkIdentifier: m8dbw4sv7c.skadnetwork
+          - SKAdNetworkIdentifier: mj797d8u6f.skadnetwork
+          - SKAdNetworkIdentifier: mlmmfzh3r3.skadnetwork
+          - SKAdNetworkIdentifier: mp6xlyr22a.skadnetwork
+          - SKAdNetworkIdentifier: mqn7fxpca7.skadnetwork
+          - SKAdNetworkIdentifier: n9x2a789qt.skadnetwork
+          - SKAdNetworkIdentifier: p78axxw29g.skadnetwork
+          - SKAdNetworkIdentifier: ppxm28t8ap.skadnetwork
+          - SKAdNetworkIdentifier: prcb7njmu6.skadnetwork
+          - SKAdNetworkIdentifier: pwa73g5rt2.skadnetwork
+          - SKAdNetworkIdentifier: s39g8k73mm.skadnetwork
+          - SKAdNetworkIdentifier: t38b2kh725.skadnetwork
+          - SKAdNetworkIdentifier: tl55sbb4fm.skadnetwork
+          - SKAdNetworkIdentifier: uw77j35x4d.skadnetwork
+          - SKAdNetworkIdentifier: v72qych5uu.skadnetwork
+          - SKAdNetworkIdentifier: v79kvwwj4g.skadnetwork
+          - SKAdNetworkIdentifier: v9wttpbfk9.skadnetwork
+          - SKAdNetworkIdentifier: vhf287vqwu.skadnetwork
+          - SKAdNetworkIdentifier: w9q455wk68.skadnetwork
+          - SKAdNetworkIdentifier: wg4vff78zm.skadnetwork
+          - SKAdNetworkIdentifier: wzmmz9fp6w.skadnetwork
+          - SKAdNetworkIdentifier: x44k69ngh6.skadnetwork
+          - SKAdNetworkIdentifier: xga6mpmplv.skadnetwork
+          - SKAdNetworkIdentifier: yclnxrl5pm.skadnetwork
+          - SKAdNetworkIdentifier: ydx93a7ass.skadnetwork
+          - SKAdNetworkIdentifier: zmvfpc5aq8.skadnetwork
+          - SKAdNetworkIdentifier: zq492l623r.skadnetwork
         CFBundleLocalizations:
           - en
           - es
@@ -196,6 +285,10 @@ targets:
         GADApplicationIdentifier: "$(SPYCLASH_ADMOB_APP_ID)"
         GADDelayAppMeasurementInit: true
         SpyClashAdsEnabled: "$(SPYCLASH_ADS_ENABLED)"
+        SpyClashRewardedAdProvider: "$(SPYCLASH_REWARDED_AD_PROVIDER)"
+        SpyClashUnityGameID: "$(SPYCLASH_UNITY_GAME_ID)"
+        SpyClashUnityRewardedAdUnitID: "$(SPYCLASH_UNITY_REWARDED_AD_UNIT_ID)"
+        SpyClashUnityTestMode: "$(SPYCLASH_UNITY_TEST_MODE)"
         SpyClashOwnedAdMobSimulatorTestEnabled: "$(SPYCLASH_OWNED_ADMOB_SIMULATOR_TEST_ENABLED)"
         SpyClashRewardedAdUnitID: "$(SPYCLASH_REWARDED_AD_UNIT_ID)"
         SpyClashUnityTestAdsEnabled: "$(SPYCLASH_UNITY_TEST_ADS_ENABLED)"
@@ -266,6 +359,10 @@ targets:
         GADApplicationIdentifier: "$(SPYCLASH_ADMOB_APP_ID)"
         GADDelayAppMeasurementInit: true
         SpyClashAdsEnabled: "$(SPYCLASH_ADS_ENABLED)"
+        SpyClashRewardedAdProvider: "$(SPYCLASH_REWARDED_AD_PROVIDER)"
+        SpyClashUnityGameID: "$(SPYCLASH_UNITY_GAME_ID)"
+        SpyClashUnityRewardedAdUnitID: "$(SPYCLASH_UNITY_REWARDED_AD_UNIT_ID)"
+        SpyClashUnityTestMode: "$(SPYCLASH_UNITY_TEST_MODE)"
         SpyClashOwnedAdMobSimulatorTestEnabled: "$(SPYCLASH_OWNED_ADMOB_SIMULATOR_TEST_ENABLED)"
         SpyClashRewardedAdUnitID: "$(SPYCLASH_REWARDED_AD_UNIT_ID)"
         SpyClashUnityTestAdsEnabled: "$(SPYCLASH_UNITY_TEST_ADS_ENABLED)"

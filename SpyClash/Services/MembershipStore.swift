@@ -28,6 +28,13 @@ final class MembershipStore {
     @ObservationIgnored private var expiryTask: Task<Void, Never>?
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let sleep: (Duration) async throws -> Void
+    @ObservationIgnored var onAccessChanged: (() -> Void)?
+    @ObservationIgnored private var lastReportedAccess: AccessState?
+
+    private struct AccessState: Equatable {
+        let granted: Bool
+        let universal: Bool
+    }
 
     init(
         client: any MembershipClientProtocol,
@@ -75,6 +82,7 @@ final class MembershipStore {
         refreshFailure = nil
         revision &+= 1
         evaluationDate = now()
+        lastReportedAccess = currentAccessState
         scheduleExpiry()
     }
 
@@ -117,6 +125,7 @@ final class MembershipStore {
             refreshTask = nil
             revision &+= 1
             scheduleExpiry()
+            reportAccessChange()
             return true
         } catch {
             guard generation == expected else { return false }
@@ -134,6 +143,9 @@ final class MembershipStore {
                 refreshFailure = nil
             }
             revision &+= 1
+            // A failed read cannot extend the last verified expiry. Clear any
+            // dependent unlimited/ad state even if the expiry task has not run.
+            reportAccessChange()
             return false
         }
     }
@@ -169,7 +181,25 @@ final class MembershipStore {
             self.unlockPresentationID = nil
             self.revision &+= 1
             self.expiryTask = nil
+            self.reportAccessChange()
         }
+    }
+
+    private var currentAccessState: AccessState? {
+        snapshot.map {
+            AccessState(granted: $0.grantsAccess(at: max(evaluationDate, now())),
+                        universal: $0.isUniversal)
+        }
+    }
+
+    private func reportAccessChange() {
+        let next = currentAccessState
+        guard next != lastReportedAccess else { return }
+        lastReportedAccess = next
+        // Synchronous invalidation lets dependents hide an obsolete ad offer
+        // before a purchase/restore reports success. They fetch their own
+        // server-owned allowance; this notification grants no credits/access.
+        onAccessChanged?()
     }
 
     func updateAIUsage(used: Int?, remaining: Int?) {

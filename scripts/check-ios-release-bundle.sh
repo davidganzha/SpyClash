@@ -245,6 +245,7 @@ esac
 
 # The embedded SDK validates its application ID during normal app startup,
 # before our advertising feature switch can prevent an explicit SDK start.
+python3 "$root/scripts/check-release-advertising.py" "$app/Info.plist"
 if [ -d "$app/Frameworks/GoogleMobileAds.framework" ]; then
   python3 - "$app/Info.plist" <<'PY'
 import plistlib

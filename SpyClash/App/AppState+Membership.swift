@@ -6,6 +6,19 @@ extension AppState {
                         sessionGeneration: client.membershipSessionGeneration)
     }
 
+    func membershipAccessDidChange() {
+        let expectedScope = membershipScope
+        guard expectedScope.isAuthenticated, membership.scope == expectedScope,
+              generationRewards.scope == expectedScope, !membership.isPreview else { return }
+        generationRewards.invalidateMembershipAccess()
+        Task { [weak self] in
+            guard let self, self.membershipScope == expectedScope,
+                  self.membership.scope == expectedScope,
+                  self.generationRewards.scope == expectedScope else { return }
+            _ = await self.generationRewards.refresh()
+        }
+    }
+
     func bindMembershipAccount() {
         if SupabaseTestEnvironment.isEnabled {
             membershipRealtime.stop()

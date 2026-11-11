@@ -1,4 +1,5 @@
 import { verifyAdMobCallback, AdMobVerificationError } from '../app-services/admob-ssv.ts';
+import { isUnityCallback, verifyUnityCallback, UnityVerificationError } from '../app-services/unity-ssv.ts';
 import { AppServiceError } from '../app-services/contracts.ts';
 import { rewardedAdUnit } from '../app-services/generation-reward-ledger.ts';
 import { canonicalBase44Configuration, CANONICAL_BASE44_APP_ID, CANONICAL_BASE44_ORIGIN } from '../app-services/legacy-provider.ts';
@@ -12,7 +13,7 @@ const setupProbeData = 'spyclash_setup_probe_v1';
 const setupProbeUnit = '1234567890';
 const reply = (body: unknown, status = 200) => Response.json(body, {status, headers: {'Cache-Control': 'no-store'}});
 
-/** The only public entry point for Google's signed callback. It owns no credit
+/** The public entry point for provider-signed callbacks. It owns no credit
  * ledger: each backend still verifies the signature and its exact issued token.
  * Namespace is signed, server-issued data, never inferred from a user ID. */
 export function createRewardedGenerationSSVGateway(dependencies: {
@@ -22,7 +23,8 @@ export function createRewardedGenerationSSVGateway(dependencies: {
   return async request => {
     if (request.method !== 'GET') return reply({code: 'method_not_allowed'}, 405);
     try {
-      const event = await verifyAdMobCallback(request.url, fetcher);
+      const unity = isUnityCallback(request.url);
+      const event = unity ? {...verifyUnityCallback(request.url, dependencies.config), userID: ''} : await verifyAdMobCallback(request.url, fetcher);
       // AdMob's dashboard tests delivery with a synthetic, signed event. These
       // reserved values identify no player and can never enter either ledger.
       if (event.userID === setupProbeUser || event.customData === setupProbeData) {
@@ -75,11 +77,16 @@ export function createRewardedGenerationSSVGateway(dependencies: {
       const bytes = new Uint8Array(size);
       let offset = 0;
       for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-      const result = JSON.parse(new TextDecoder().decode(bytes));
+      const text = new TextDecoder().decode(bytes);
+      if (unity) {
+        if (text !== '1') return reply({code: 'reward_forward_unavailable'}, 503);
+        return new Response('1', {headers: {'Content-Type': 'text/plain', 'Cache-Control': 'no-store'}});
+      }
+      const result = JSON.parse(text);
       if (result?.success !== true) return reply({code: 'reward_forward_unavailable'}, 503);
       return reply({received: true});
     } catch (error) {
-      if (error instanceof AdMobVerificationError) return reply({code: error.code}, error.status);
+      if (error instanceof AdMobVerificationError || error instanceof UnityVerificationError) return reply({code: error.code}, error.status);
       if (error instanceof AppServiceError) return reply({code: 'reward_destination_unavailable'}, 503);
       return reply({code: 'reward_callback_unavailable'}, 503);
     }

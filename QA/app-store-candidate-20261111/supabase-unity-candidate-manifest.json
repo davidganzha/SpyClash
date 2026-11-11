@@ -1,0 +1,89 @@
+{
+  "prepared_only": true,
+  "production_changed": false,
+  "source": "live app-services v19 and rewarded-generation-ssv v2 downloaded 2026-11-11",
+  "targets": [
+    {
+      "function": "app-services",
+      "entrypoint": "/Users/davidganzha/.codex/worktrees/rewarded-generation-214/SpyClash/output/app-store-candidate-228/prepared-supabase/app-services/app-services/index.ts",
+      "changed_files": [
+        {
+          "path": "app-services/generation-reward-deletion.ts",
+          "before_sha256": null,
+          "after_sha256": "2db5bbf65872b717480555a6daa526875d66596ec31019098f416dd1ba714cbf"
+        },
+        {
+          "path": "app-services/generation-reward-ledger.ts",
+          "before_sha256": "98a934535cf0c8e6d5a2d340e6081763ebd8472fd839756aaa3cf8e96dd76f14",
+          "after_sha256": "6e9992aecbfec67500ed5bc5b8046703ce3e4890e595dcbf969630230d64b023"
+        },
+        {
+          "path": "app-services/generation-rewards.ts",
+          "before_sha256": "d7c51106779d5fcb1c41329d87b5b150e9fb4f5640b9dd371f9913a9f9bdd03e",
+          "after_sha256": "3109decc8e88033a36ebe99b3704ce09123c8dfed9320d48f6e2be7862611a1c"
+        },
+        {
+          "path": "app-services/lifecycle.ts",
+          "before_sha256": "959b5789abbc4c5a72ac7cbe212e73154866ff1597e7a868d2740caae937e189",
+          "after_sha256": "f323a65346a875f43356c2b820aee4d09c71d4509197859bb9ef576c893b0364"
+        },
+        {
+          "path": "app-services/native-generation.ts",
+          "before_sha256": "7a928e50d60c64c9df2a993aff0f9e64de1bb28924616bdf4814a712323dca86",
+          "after_sha256": "995129efb50742c88137d5629b2af2a05916005777ead9e25be32b9da88ad88b"
+        },
+        {
+          "path": "app-services/unity-ssv.ts",
+          "before_sha256": null,
+          "after_sha256": "76447820be5805604e232be2a5cdac3ef83b8b327990562eea862ad52dab5c3a"
+        }
+      ],
+      "preserved_files": 68,
+      "all_unrelated_files_byte_identical": true
+    },
+    {
+      "function": "rewarded-generation-ssv",
+      "entrypoint": "/Users/davidganzha/.codex/worktrees/rewarded-generation-214/SpyClash/output/app-store-candidate-228/prepared-supabase/rewarded-generation-ssv/rewarded-generation-ssv/index.ts",
+      "changed_files": [
+        {
+          "path": "app-services/generation-reward-ledger.ts",
+          "before_sha256": "98a934535cf0c8e6d5a2d340e6081763ebd8472fd839756aaa3cf8e96dd76f14",
+          "after_sha256": "6e9992aecbfec67500ed5bc5b8046703ce3e4890e595dcbf969630230d64b023"
+        },
+        {
+          "path": "app-services/generation-rewards.ts",
+          "before_sha256": "d7c51106779d5fcb1c41329d87b5b150e9fb4f5640b9dd371f9913a9f9bdd03e",
+          "after_sha256": "3109decc8e88033a36ebe99b3704ce09123c8dfed9320d48f6e2be7862611a1c"
+        },
+        {
+          "path": "app-services/unity-ssv.ts",
+          "before_sha256": null,
+          "after_sha256": "76447820be5805604e232be2a5cdac3ef83b8b327990562eea862ad52dab5c3a"
+        },
+        {
+          "path": "rewarded-generation-ssv/handler.ts",
+          "before_sha256": "341dddbd04fc691dd797e5135877b57c008fbe1e6a9c28bc3fb51978540c10f0",
+          "after_sha256": "b95e49eaf7a17f43b547c413dc4fe5b0c9b6338d18682a4bf7423319cfeb40ea"
+        },
+        {
+          "path": "rewarded-generation-ssv/index.ts",
+          "before_sha256": "53c43ca9d1835b9f43ebba55d6c75794fccbad7803e3e5e6389c8e471b77dfb4",
+          "after_sha256": "06a6188e7c4fc374c634f078ff87af2ab8a410568750383aa8db40209640b94c"
+        }
+      ],
+      "preserved_files": 6,
+      "all_unrelated_files_byte_identical": true
+    }
+  ],
+  "required_migration": {
+    "path": "experiments/supabase-game-core/supabase/migrations/20261111184822_rewarded_generation_enrollment.sql",
+    "sha256": "4e83b4bb81db338d5331b7134f8a2964110c51afbff5476b4d048a847b2c3536"
+  },
+  "activation_prerequisites": [
+    "Install GenerationRewardEnrollment Base44 entity before deletion/generation handlers",
+    "Apply private native enrollment migration before enabling rollout",
+    "Configure Unity S2S only after Support issues secret and confirms callback activation",
+    "Keep global quota flag off until separately approved",
+    "Verify real callback and rewarded generation on native and legacy accounts before release"
+  ]
+}

@@ -23,6 +23,16 @@ export function isGenerationRewardTester(userID: string): boolean {
 export function configuredRewardAdUnit(): string | null {
   let value = "";
   try {
+    const provider = Deno.env.get("SPYCLASH_REWARDED_AD_PROVIDER") || "admob";
+    if (provider === "unity") {
+      const game = Deno.env.get("UNITY_ADS_GAME_ID")?.trim() || "";
+      const placement = Deno.env.get("UNITY_ADS_REWARDED_PLACEMENT_ID")?.trim() || "";
+      const secret = Deno.env.get("UNITY_ADS_S2S_SECRET") || "";
+      return /^[1-9][0-9]{0,15}$/.test(game) && game !== "14850" &&
+          /^[A-Za-z0-9_-]{1,80}$/.test(placement) && secret.length >= 16
+        ? `unity:${game}:${placement}` : null;
+    }
+    if (provider !== "admob") return null;
     value = Deno.env.get("ADMOB_REWARDED_AD_UNIT_ID")?.trim() || "";
   } catch { /* disabled */ }
   // Google's public demo unit must never mint real server credits.
@@ -30,6 +40,29 @@ export function configuredRewardAdUnit(): string | null {
       !value.startsWith("ca-app-pub-3940256099942544/")
     ? value
     : null;
+}
+/** Enrollment is server-persisted and never inferred from a generation request.
+ * Supported clients may opt into the restrictive new policy, but omitting their
+ * capability later cannot restore legacy access. Caller holds the user lease. */
+export async function rewardedGenerationEnabledForUser(store: any, userID: string): Promise<boolean> {
+  if (!rewardedGenerationEnabled()) return false;
+  const rows = await store.filter({ user_id: userID }, "created_date", 2, 0);
+  if (rows.length > 1) throw new GenerationRewardError("reward_enrollment_unavailable", "Generation access could not be verified.", 503);
+  return rows.length === 1;
+}
+export async function enrollRewardGeneration(input: {
+  store: any; guard: RewardWriteGuard; userID: string; supportedProvider: unknown; clientBuild: unknown;
+}): Promise<void> {
+  if (!rewardedGenerationEnabled() || input.supportedProvider !== "unity" ||
+      !Number.isSafeInteger(input.clientBuild) || Number(input.clientBuild) < 228 || Number(input.clientBuild) > 2147483647 ||
+      !configuredRewardAdUnit()?.startsWith("unity:")) return;
+  if (await rewardedGenerationEnabledForUser(input.store, input.userID)) return;
+  try {
+    await input.guard.boundary(() => input.store.create({user_id: input.userID, provider: "unity", client_build: input.clientBuild, enrolled_at: new Date().toISOString()}));
+  } catch { /* Reconcile lost acknowledgement, never silently grant legacy access. */ }
+  if (!await rewardedGenerationEnabledForUser(input.store, input.userID)) {
+    throw new GenerationRewardError("reward_enrollment_unavailable", "Generation access could not be confirmed.", 503);
+  }
 }
 export class GenerationRewardError extends Error {
   constructor(readonly code: string, message: string, readonly status = 409) {
@@ -220,7 +253,7 @@ export type RewardCallback = {
   rewardItem: string;
   timestamp: number;
 };
-/** The callback must already have passed Google's signature verifier. */
+/** The callback must already have passed its provider signature verifier. */
 export async function grantVerifiedGenerationReward(
   input: {
     store: RewardStore;
@@ -242,9 +275,13 @@ export async function grantVerifiedGenerationReward(
   if (
     !row || row.custom_data !== c.customData ||
     (c.adUnit !== row.ad_unit_id &&
-      c.adUnit !== row.ad_unit_id.split("/").at(-1)) ||
+      (!row.ad_unit_id.startsWith("ca-app-pub-") || c.adUnit !== row.ad_unit_id.split("/").at(-1))) ||
     c.rewardAmount !== 1 || c.rewardItem !== "generation"
   ) throw invalid();
+  if (row.ad_unit_id.startsWith("unity:") && row.transaction_id) {
+    if (row.transaction_id !== c.transactionID) throw invalid();
+    return { success: true, duplicate: true };
+  }
   const issued = Date.parse(row.issued_at);
   if (
     !Number.isFinite(issued) || c.timestamp < issued - 60_000 ||

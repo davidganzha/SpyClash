@@ -1,0 +1,200 @@
+{
+  "prepared_only": true,
+  "app_id": "69a0e57fa939f578082f8091",
+  "functions": [
+    "generateWordPack",
+    "generationRewardAction",
+    "deleteAccount"
+  ],
+  "files": [
+    {
+      "path": "base44/functions/generateWordPack/ai-provider-resilience.ts",
+      "sha256": "98a314fafb31d5790b7c37730323ec93b80803be1c87be181a69d87bc868db45"
+    },
+    {
+      "path": "base44/functions/generateWordPack/base44-context.ts",
+      "sha256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de"
+    },
+    {
+      "path": "base44/functions/generateWordPack/billing-identity-lifecycle.ts",
+      "sha256": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25"
+    },
+    {
+      "path": "base44/functions/generateWordPack/content-safety.ts",
+      "sha256": "817ba01e58d5eb8036a59148a20cc3e6a9b30df0ee33f254bf84e56e98629042"
+    },
+    {
+      "path": "base44/functions/generateWordPack/function.jsonc",
+      "sha256": "6cb95e898355a6cfb5efe40d16ce8ba6355100fe366b8f668411d5ad80b53682"
+    },
+    {
+      "path": "base44/functions/generateWordPack/generation-cache.ts",
+      "sha256": "39365535caef5535036fb986c0746df4429a1e5cb9c20bb2df22810d5389e278"
+    },
+    {
+      "path": "base44/functions/generateWordPack/generation-idempotency.ts",
+      "sha256": "a077ce2573fd90b41de9e2cac1f8257e8272dbb18924f81d70ff27ccdd7dcb4d"
+    },
+    {
+      "path": "base44/functions/generateWordPack/generation-operation.ts",
+      "sha256": "7d2fa55d518f716ce9be9152f61be5b8afd146845ca7102459546a7eeacb7eef"
+    },
+    {
+      "path": "base44/functions/generateWordPack/generation-retry-contract.ts",
+      "sha256": "4f598d2801f0931334f0cb57e4a3e4a4c4e7ff5c066b8cd3108d5ac53977f2e3"
+    },
+    {
+      "path": "base44/functions/generateWordPack/generation-rewards.ts",
+      "sha256": "ccf451fbd45071a27fd6d46f8df05d7c38eee7c9eff8a67a215ba322c13ac686"
+    },
+    {
+      "path": "base44/functions/generateWordPack/generation-write-lifecycle.ts",
+      "sha256": "0b50f5159baf5271e085ca8363d030be840039e3a1b1ba236ad9f4d4e4e6179f"
+    },
+    {
+      "path": "base44/functions/generateWordPack/limitless-rollout.ts",
+      "sha256": "ae92e2b0e33b4ac064465b889fb1d0732f4e70c60ad5f6430ee3c9e5cc288b8d"
+    },
+    {
+      "path": "base44/functions/generateWordPack/main.ts",
+      "sha256": "8f6d97da0521c43f7ec9e668ca5f01b23dedd99270bddd5c9b884d658c855e34"
+    },
+    {
+      "path": "base44/functions/generateWordPack/membership.ts",
+      "sha256": "c0ca269c61ef4df2a65646c4d8c0b033a06e218d6f44d6b3c2dc98ccd6090df4"
+    },
+    {
+      "path": "base44/functions/generateWordPack/openai-word-pack-provider.ts",
+      "sha256": "a18de5916448dcc3dd8216c14b5fd1e659281cfb56f3e5888c8a487472e028bb"
+    },
+    {
+      "path": "base44/functions/generateWordPack/quota.ts",
+      "sha256": "4b77aeff53148483316fd5d443b2bbc03b6ff2fcf13b19acc90609f42c2c36be"
+    },
+    {
+      "path": "base44/functions/generateWordPack/word-normalization.ts",
+      "sha256": "fa65bd50a34f22c7e7f6b680407cf5dc8db0308e03b05a57d1667715df594111"
+    },
+    {
+      "path": "base44/functions/generateWordPack/word-pack-quality.ts",
+      "sha256": "c0aa06a9708d6b3a08930f0d9df35d848652e36fd8a71f0a7e72c0f870e2b5e6"
+    },
+    {
+      "path": "base44/functions/generationRewardAction/admob-ssv.ts",
+      "sha256": "3363c7a2428ef786fff41f45ab4bbdb23be72623f75be9799182cc291b45e315"
+    },
+    {
+      "path": "base44/functions/generationRewardAction/base44-context.ts",
+      "sha256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de"
+    },
+    {
+      "path": "base44/functions/generationRewardAction/billing-identity-lifecycle.ts",
+      "sha256": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25"
+    },
+    {
+      "path": "base44/functions/generationRewardAction/function.jsonc",
+      "sha256": "5d4189c6743e1e3e37b4d4b35b5525ffc73da8ea634f0a195c2bdb3e881aff4e"
+    },
+    {
+      "path": "base44/functions/generationRewardAction/generation-rewards.ts",
+      "sha256": "ccf451fbd45071a27fd6d46f8df05d7c38eee7c9eff8a67a215ba322c13ac686"
+    },
+    {
+      "path": "base44/functions/generationRewardAction/generation-write-lifecycle.ts",
+      "sha256": "0b50f5159baf5271e085ca8363d030be840039e3a1b1ba236ad9f4d4e4e6179f"
+    },
+    {
+      "path": "base44/functions/generationRewardAction/limitless-rollout.ts",
+      "sha256": "ae92e2b0e33b4ac064465b889fb1d0732f4e70c60ad5f6430ee3c9e5cc288b8d"
+    },
+    {
+      "path": "base44/functions/generationRewardAction/main.ts",
+      "sha256": "9d35827610dc6314a8ef4130eeb1ff7f0a653c03cb0e3cee08eca235b5860e54"
+    },
+    {
+      "path": "base44/functions/generationRewardAction/membership.ts",
+      "sha256": "c0ca269c61ef4df2a65646c4d8c0b033a06e218d6f44d6b3c2dc98ccd6090df4"
+    },
+    {
+      "path": "base44/functions/generationRewardAction/quota.ts",
+      "sha256": "4b77aeff53148483316fd5d443b2bbc03b6ff2fcf13b19acc90609f42c2c36be"
+    },
+    {
+      "path": "base44/functions/generationRewardAction/unity-ssv.ts",
+      "sha256": "76447820be5805604e232be2a5cdac3ef83b8b327990562eea862ad52dab5c3a"
+    },
+    {
+      "path": "base44/functions/deleteAccount/account-deletion-protection.ts",
+      "sha256": "421da9f49b914e5cb4450a6aa28d841055c2398f1da7e0c0014537780a85b074"
+    },
+    {
+      "path": "base44/functions/deleteAccount/account-deletion-response.ts",
+      "sha256": "3682b98ee8d6542408ea2f865aa2c4d4cac40b8b9cd55786e98ed44c3dd4d82f"
+    },
+    {
+      "path": "base44/functions/deleteAccount/account-deletion.ts",
+      "sha256": "a24f3ee05a8177732d697475f9c71b60a20287b2b22ce210446e54fd967b30f9"
+    },
+    {
+      "path": "base44/functions/deleteAccount/apple-account-binding.ts",
+      "sha256": "537e390b2f887a2d170234df9c8eb0bad1ea9788b6186a7d0d171d74af4f27fa"
+    },
+    {
+      "path": "base44/functions/deleteAccount/apple-account-deletion-lease.ts",
+      "sha256": "5a00df78d5ba83084cba92f1b4407a2978b6220ca11acb1471d8b5ee934246e9"
+    },
+    {
+      "path": "base44/functions/deleteAccount/apple-sign-in-credential.ts",
+      "sha256": "47878797b24e4294acb503f80b2cd4a4a7b4ecf9da94fadfde89ca5f829194c7"
+    },
+    {
+      "path": "base44/functions/deleteAccount/base44-context.ts",
+      "sha256": "16dfd39666facf2415fe509783fe820128b5ac101bfdb0b8a5a25f4c2bed814f"
+    },
+    {
+      "path": "base44/functions/deleteAccount/billing-identity-lifecycle.ts",
+      "sha256": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25"
+    },
+    {
+      "path": "base44/functions/deleteAccount/deletion-archive-proof.ts",
+      "sha256": "8f7fa342f9bc1c25d4fa07ff1598a5b0536aa3ad290bbb16fedbbc6bf3d43d79"
+    },
+    {
+      "path": "base44/functions/deleteAccount/deletion-receipt.ts",
+      "sha256": "b2db99bfdfddb250a8a35073d3b6f64ca6b7fc41745208f91f203055703c304b"
+    },
+    {
+      "path": "base44/functions/deleteAccount/deletion-state-machine.ts",
+      "sha256": "c1a389a62ef9aec1184b7d5e6ae980257d33870ccd918fc26217b9a1ccb4b446"
+    },
+    {
+      "path": "base44/functions/deleteAccount/function.jsonc",
+      "sha256": "b29ab9b7d592eeb9bb707437024bfa0c08335d333bb47379b0a6df528911646a"
+    },
+    {
+      "path": "base44/functions/deleteAccount/historical-content-cleanup.ts",
+      "sha256": "fe5485f0a99b632849fb47a986b0e5f065594fa9004d461f6b5432b28560d788"
+    },
+    {
+      "path": "base44/functions/deleteAccount/main.ts",
+      "sha256": "cbe083f4e6220dc868d480b8651fc86db1d102809ecb3b901412cfc3455386ce"
+    },
+    {
+      "path": "base44/functions/deleteAccount/relationship-cleanup.ts",
+      "sha256": "13fa2fcbea347d9d9153300ebd6d930c94809f4c6bc8987d81c78056669b7749"
+    },
+    {
+      "path": "base44/functions/deleteAccount/user-deletion.ts",
+      "sha256": "0e481b3bf20b93cb8e3b8fc301f6e309b7e8a27def7bdfe3599ccf9c37c3716e"
+    },
+    {
+      "path": "base44/entities/generation-reward.jsonc",
+      "sha256": "627799a584568d82ff29b52056c8ddd62cfc30b258be61de2f674c8a64132baf"
+    },
+    {
+      "path": "base44/entities/generation-reward-enrollment.jsonc",
+      "sha256": "587f19da6c935d65818c0119112de0bd028cbd8cbc19cfcba6357e3bb764c8c2"
+    }
+  ],
+  "preflight_required": "Fresh production source comparison before deployment; preserve all unrelated live files and additive schema fields. Create GenerationRewardEnrollment before deploying deleteAccount. No deployment or feature activation performed."
+}

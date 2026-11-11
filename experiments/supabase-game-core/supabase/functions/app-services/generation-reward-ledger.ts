@@ -1,4 +1,5 @@
 import {AppServiceError} from './contracts.ts';
+import {unityRewardUnit} from './unity-ssv.ts';
 import {nativeGameCenterHasMembership} from './native-game-center.ts';
 
 export type RewardConfig=Record<string,string|undefined>;
@@ -10,10 +11,26 @@ export function isGenerationRewardTester(config:RewardConfig,userID:string):bool
   return Boolean(userID)&&Boolean(config.SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS?.split(',').some(id=>id.trim()===userID));
 }
 export function rewardedAdUnit(config:RewardConfig):string|null {
+  const provider=config.SPYCLASH_REWARDED_AD_PROVIDER||'admob';
+  if(provider==='unity')return unityRewardUnit(config);
+  if(provider!=='admob')return null;
   const unit=config.ADMOB_REWARDED_AD_UNIT_ID?.trim()||'';
   // Google's demo units cannot deliver SSV to our own backend. Never pretend
   // their local SDK callback has earned a server credit.
   return /^ca-app-pub-\d{16}\/\d{10}$/.test(unit)&&!unit.startsWith('ca-app-pub-3940256099942544/')?unit:null;
+}
+/** This persisted account decision is consulted for every generation, including
+ * requests from downgraded clients. Caller holds the account/quota lock. */
+export async function rewardedGenerationEnabledForUser(tx:any,userID:string,config:RewardConfig):Promise<boolean>{
+  if(!rewardedGenerationEnabled(config))return false;
+  const [row]=await tx`select user_id from game_center_private.generation_reward_enrollments where user_id=${userID}`;
+  return Boolean(row);
+}
+export async function enrollRewardGeneration(tx:any,userID:string,body:Record<string,any>,config:RewardConfig){
+  if(!rewardedGenerationEnabled(config)||body.supported_reward_provider!=='unity'||!Number.isSafeInteger(body.client_build)
+    ||body.client_build<228||body.client_build>2147483647||!rewardedAdUnit(config)?.startsWith('unity:'))return;
+  await tx`insert into game_center_private.generation_reward_enrollments(user_id,provider,client_build)
+    values(${userID},'unity',${body.client_build}) on conflict(user_id) do nothing`;
 }
 export async function lockGenerationQuota(tx:any,userID:string){
   await tx`select pg_advisory_xact_lock(hashtextextended(${userID+':native-ai-quota'},0))`;
@@ -22,7 +39,7 @@ export async function nativeRewardStatus(tx:any,userID:string,config:RewardConfi
   const unlimited=await nativeGameCenterHasMembership(tx,userID);
   const [{today,resets_at}]=await tx`select (clock_timestamp() at time zone 'UTC')::date::text as today,
     (((clock_timestamp() at time zone 'UTC')::date+1)::timestamp at time zone 'UTC') as resets_at`;
-  const enabled=rewardedGenerationEnabled(config);
+  const enabled=await rewardedGenerationEnabledForUser(tx,userID,config);
   if(!enabled){
     const tester=isGenerationRewardTester(config,userID);
     const [{credits}]=tester?await tx`select count(*)::int as credits from game_center_private.generation_reward_attempts

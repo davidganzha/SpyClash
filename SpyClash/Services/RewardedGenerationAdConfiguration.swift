@@ -21,7 +21,8 @@ struct RewardedGenerationAdConfiguration {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         adUnitID = (infoDictionary["SpyClashRewardedAdUnitID"] as? String ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let enabled = Self.isEnabled(infoDictionary["SpyClashAdsEnabled"])
+        let provider = infoDictionary["SpyClashRewardedAdProvider"] as? String ?? "admob"
+        let enabled = Self.isEnabled(infoDictionary["SpyClashAdsEnabled"]) && provider == "admob"
         let isTest = appID == Self.testAppID && adUnitID == Self.testAdUnitID
         isTestConfiguration = isDebugBuild && enabled && isTest
         permitsSampleSimulatorTesting = isDebugBuild && isSimulator && enabled && isTest

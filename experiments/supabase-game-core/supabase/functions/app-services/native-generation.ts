@@ -6,7 +6,7 @@ import {createOpenAIWordPackProvider,assertNoKnownNamedThemeDrift,WORD_PACK_PROM
 import {filterSafeCommunityStrings,requireSafeCommunityText} from './word-generation/content-safety.ts';
 import {normalizeGeneratedWordPack,wordPackComparisonKey} from './word-generation/generation-cache.ts';
 import {nativeRelayConfigured,createNativeAIRelayProvider,nativeRelayHasUnknownOutcome,settleNativeRelayFailure,terminalNativeAIOutcome,failedNativeAIOutcome} from './native-ai-relay.ts';
-import {generationRewardMetadata,lockGenerationQuota,nativeRewardStatus,reserveRewardGeneration,rewardedGenerationEnabled} from './generation-reward-ledger.ts';
+import {generationRewardMetadata,lockGenerationQuota,nativeRewardStatus,reserveRewardGeneration,rewardedGenerationEnabledForUser} from './generation-reward-ledger.ts';
 import {createDurableNativeDirectProvider} from './native-direct-generation.ts';
 
 type Config=Record<string,string|undefined>;
@@ -37,13 +37,14 @@ async function requireNative(tx:any,userID:string) {
  * owns one quota charge and one durable result, including after a lost ACK.
  * Relay claims survive an expired worker lease: paid work is never repeated. */
 export async function prepareNativeGeneration(input:Input,dependencies:{db:any,fetch?:typeof fetch}) {
-  const rewardsEnabled=rewardedGenerationEnabled(input.config);
+  let rewardsEnabled=false;
   if(!nativeGenerationCapabilities(input.config).configured)throw new AppServiceError('native_generation_unconfigured','Word generation is not available yet. Try again later.',503,true);
   const request=command(input.body),hash=await requestHash(input.body),db=dependencies.db,leaseID=crypto.randomUUID();
   const evidenceFor=(result:any)=>{const evidence={actor:input.actor.id,requestID:request.request_id,hash,result};evidenceSet.add(evidence);return evidence;};
   const reservation=await db.begin(async(tx:any)=>{
     await requireNative(tx,input.actor.id);
     await lockGenerationQuota(tx,input.actor.id);
+    rewardsEnabled=await rewardedGenerationEnabledForUser(tx,input.actor.id,input.config);
     const [prior]=await tx`select *,lease_until>clock_timestamp() as leased from game_center_private.generation_requests
       where user_id=${input.actor.id} and request_id=${request.request_id} for update`;
     if(prior&&prior.request_hash!==hash)throw new AppServiceError('request_id_reused','This request belongs to another word pack.',409);

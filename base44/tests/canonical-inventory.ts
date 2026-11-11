@@ -18,6 +18,7 @@ export const canonicalEntityNames: readonly string[] = Object.freeze([
   "GameRoom",
   "GameRoomSignal",
   "GenerationReward",
+  "GenerationRewardEnrollment",
   "LiveActivityRegistration",
   "MembershipGrant",
   "MembershipSignal",

@@ -1,0 +1,77 @@
+{
+  "version": "1.0.4",
+  "build": "228",
+  "bundle_id": "com.spyclash.ios",
+  "scheme": "SpyClash-Supabase-Public",
+  "configuration": "SupabasePublicRelease",
+  "ipa_path": "/Users/davidganzha/Documents/SpyClash/output/AppStore-228-20261111/SpyClash-1.0.4-228.ipa",
+  "ipa_bytes": 18838468,
+  "ipa_sha256": "e06fb48b512cbf578138aa71f221436a39c1a1d09b89a1e5d38931a9235f5239",
+  "archive_path": "/tmp/SpyClash-AppStore-228-Final/SpyClash-1.0.4-228.xcarchive",
+  "advertising_provider": "unity",
+  "unity_game_id": "800429660",
+  "unity_placement": "BP_Rewarded_iOS",
+  "unity_test_mode": "NO",
+  "apple_archive_validation": "passed, no errors",
+  "signed_archive_and_exported_ipa_checks": "passed",
+  "uploaded": false,
+  "production_changed": false,
+  "changed_ios_source_sha256": [
+    {
+      "path": "SpyClash.xcodeproj/project.pbxproj",
+      "sha256": "49cac729f0fe546d4a476a6235b396ce34c0d191d1ef4199e70915352ff13d45"
+    },
+    {
+      "path": "SpyClash/App/AppState+Membership.swift",
+      "sha256": "d3a16473264460ac4b864fe9ee13f9ce83dc77a0ef182b1ec31da5c718dc0036"
+    },
+    {
+      "path": "SpyClash/App/AppState.swift",
+      "sha256": "211aec633a1b75bf8bc441a529c645ef82b7bbcfee575b2561b5175e8716a647"
+    },
+    {
+      "path": "SpyClash/Models/GenerationRewards.swift",
+      "sha256": "f376c95801c130ea721406447e0bf92fb205fefb6889bdb428786326acd71a5a"
+    },
+    {
+      "path": "SpyClash/Resources/Info.plist",
+      "sha256": "76ab74fb6d1a3b819c1fa7a1254d8e26594d8e9b77ca4049e2cacc09a2e09220"
+    },
+    {
+      "path": "SpyClash/Resources/PrivacyInfo.xcprivacy",
+      "sha256": "13307368197b74d73e195b57d5b4bb42fa49d7b11b30965ea854a0a9697204d4"
+    },
+    {
+      "path": "SpyClash/Services/Base44Client.swift",
+      "sha256": "16603a4e33d084738c5572107732aac4b20e742b21429ae71fb078db546624b8"
+    },
+    {
+      "path": "SpyClash/Services/GenerationRewardStore.swift",
+      "sha256": "86be91b7ad7ca946277c6bb1faada80ee7df4df30e8989c85bc671f86f0fd294"
+    },
+    {
+      "path": "SpyClash/Services/MembershipStore.swift",
+      "sha256": "eeb69f7dc7387a5af695e76c1788ac7c8df79ac8ea13c6a4182be03e905050a4"
+    },
+    {
+      "path": "SpyClash/Services/RewardedGenerationAdConfiguration.swift",
+      "sha256": "874a96dbdc740536c1dcd205b85c117e4766bd0b3060bb28f0d5bcd8462dac51"
+    },
+    {
+      "path": "SpyClash/Services/RewardedGenerationAdPresenter.swift",
+      "sha256": "954f663736ddf18e6bb4bc8a91d70a4c087ee938129050f3e9bdc44ea816d114"
+    },
+    {
+      "path": "SpyClash/Services/UnityRewardedGenerationAdConfiguration.swift",
+      "sha256": "19bb7a879074a5524068a606fa4c437b8e8d8594cfd1338fd31c1e41f0ce34b4"
+    },
+    {
+      "path": "SpyClash/Services/UnityRewardedGenerationAdPresenter.swift",
+      "sha256": "d5c95b9abe5255279bf84cc37a21fba30fbebf6a546a3cdd8b38adce8c066c4b"
+    },
+    {
+      "path": "project.yml",
+      "sha256": "0a0a410d279146a1e1e7932bd61fa2f3e350034940dae426f58a31014a7e1589"
+    }
+  ]
+}

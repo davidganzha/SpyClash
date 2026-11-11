@@ -32,4 +32,4 @@ const config = Deno.env.toObject();
 const app = createAppHandler({ db, authenticate, config });
 const maintenance = createMaintenanceHandler(db, config);
 const nativeAIRelay = createNativeAIRelayHandler(db, config);
-Deno.serve(createAppRouter({app, maintenance, nativeAIRelay,generationRewardSSV:createGenerationRewardSSVHandler(db)}));
+Deno.serve(createAppRouter({app, maintenance, nativeAIRelay,generationRewardSSV:createGenerationRewardSSVHandler(db,fetch,config)}));

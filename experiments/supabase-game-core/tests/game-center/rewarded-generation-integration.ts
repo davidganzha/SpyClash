@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {generateKeyPairSync,sign} from 'node:crypto';
+import {generateKeyPairSync,sign,createHmac} from 'node:crypto';
 import postgres from 'postgres';
 import {executeApp,validateCommand} from '../../supabase/functions/app-services/dispatcher.ts';
 import {prepareNativeGeneration} from '../../supabase/functions/app-services/native-generation.ts';
@@ -8,6 +8,8 @@ import {isGenerationRewardTester,nativeRewardStatus} from '../../supabase/functi
 import {createNativeAIRelayHandler} from '../../supabase/functions/app-services/native-ai-relay.ts';
 import {relayHeaders} from '../../supabase/functions/app-services/native-ai-relay-protocol.ts';
 import {AppServiceError} from '../../supabase/functions/app-services/contracts.ts';
+import {eraseGenerationRewardAccountData} from '../../supabase/functions/app-services/generation-reward-deletion.ts';
+import {accountGate} from '../../supabase/functions/app-services/account-gate.ts';
 import {createRewardedGenerationSSVGateway} from '../../supabase/functions/rewarded-generation-ssv/handler.ts';
 
 // Creates and destroys only its own isolated local database. No provider, Auth,
@@ -25,10 +27,11 @@ const config={SPYCLASH_REWARDED_GENERATION_ENABLED:'true',ADMOB_REWARDED_AD_UNIT
   APP_NATIVE_GAME_CENTER_AI_ENABLED:'true',APP_NATIVE_GAME_CENTER_AI_PROVIDER:'openai',OPENAI_API_KEY:'local-fixture-only'};
 let checks=0;
 const check=async(name:string,run:()=>Promise<void>)=>{await run();checks++;console.log('PASS '+name);};
-const actor=async()=>{
+const actor=async(enrolled=true)=>{
   const id=crypto.randomUUID();
   await db`insert into app_private.profiles(user_id,state,data,spy_id) values(${id},'active','{}',${id})`;
   await db`insert into game_center_private.accounts(identity_key,user_id,shadow_email,state) values(${id.replaceAll('-','').repeat(2)},${id},${id+'@example.test'},'ready')`;
+  if(enrolled)await db`insert into game_center_private.generation_reward_enrollments(user_id,provider,client_build) values(${id},'unity',228)`;
   return {id,email:id+'@example.test',contactEmail:'',full_name:'Test',metadata:{}};
 };
 const status=async(a:any,c=config)=>await db.begin(async(tx:any)=>await nativeRewardStatus(tx,a.id,c));
@@ -73,7 +76,7 @@ try{
     create table app_private.membership_grants(user_id uuid,active boolean,expires_at timestamptz);
     create table app_private.receipts(actor_id uuid,request_id uuid,request_hash text,status int,response jsonb,primary key(actor_id,request_id));`);
   const files=['../../supabase/functions/game-center-session/schema.sql','../../supabase/migrations/20261026234309_native_game_center_ai_relay.sql',
-    '../../supabase/migrations/20261101130901_native_generation_failure_recovery.sql','../../supabase/migrations/20261105224817_rewarded_generation_credits.sql'];
+    '../../supabase/migrations/20261101130901_native_generation_failure_recovery.sql','../../supabase/migrations/20261105224817_rewarded_generation_credits.sql','../../supabase/migrations/20261111184822_rewarded_generation_enrollment.sql'];
   for(const file of files)await db.unsafe(await Deno.readTextFile(new URL(file,import.meta.url)));
   await check('new tables are private with RLS and no client grants',async()=>{
     const [row]=await db`select relrowsecurity from pg_class where oid='game_center_private.generation_reward_attempts'::regclass`;assert.equal(row.relrowsecurity,true);
@@ -319,6 +322,113 @@ try{
     assert.equal((await prepare(a,attempt.attempt_id)).custom_data,attempt.custom_data);
     await db`update game_center_private.generation_requests set usage_date=usage_date-1 where user_id=${a.id}`;
     assert.equal((await app(a,body())).body.code,'reward_not_needed');
+  });
+  const unityConfig={...config,SPYCLASH_REWARDED_AD_PROVIDER:'unity',UNITY_ADS_GAME_ID:'800429660',UNITY_ADS_REWARDED_PLACEMENT_ID:'BP_Rewarded_iOS',UNITY_ADS_S2S_SECRET:'fixture-secret-only-not-live'};
+  const unitySSV=createGenerationRewardSSVHandler(db,googleKeys,unityConfig);
+  const unityGateway=createRewardedGenerationSSVGateway({config:unityConfig,native:unitySSV,fetch:async()=>{throw Error('Native Unity must not leave the local backend.');}});
+  const unityURL=(attempt:any,oid=crypto.randomUUID(),overrides:Record<string,string>={})=>{
+    const fields:Record<string,string>={provider:'unity',game_id:'800429660',placement_id:'BP_Rewarded_iOS',sid:attempt.server_id,oid,...overrides};
+    const query=new URLSearchParams(fields);
+    query.set('hmac',createHmac('md5',unityConfig.UNITY_ADS_S2S_SECRET).update(Object.keys(fields).sort().map(key=>`${key}=${fields[key]}`).join(',')).digest('hex'));
+    return 'http://127.0.0.1/functions/v1/rewarded-generation-ssv?'+query;
+  };
+  await check('Unity native public route grants exactly one credit and exactly one additional generation',async()=>{
+    const a=await actor();await exhaust(a);
+    const attempt=await prepare(a,crypto.randomUUID(),unityConfig);
+    assert.equal(attempt.provider,'unity');assert.equal(attempt.unity_game_id,'800429660');assert.equal(attempt.ad_unit_id,'BP_Rewarded_iOS');assert.equal(attempt.server_id,attempt.custom_data);
+    const url=unityURL(attempt);
+    const callbacks=await Promise.all([unityGateway(new Request(url)),unityGateway(new Request(url)),unityGateway(new Request(url))]);
+    for(const response of callbacks){assert.equal(response.status,200);assert.equal(await response.text(),'1');}
+    assert.equal((await status(a,unityConfig)).bonus_credits,1);
+    const id=crypto.randomUUID();assert.equal((await generate(a,id,provider,unityConfig)).status,200);
+    assert.equal((await generate(a,id,provider,unityConfig)).status,200);assert.equal((await status(a,unityConfig)).bonus_credits,0);
+    assert.equal((await generate(a,crypto.randomUUID(),provider,unityConfig)).status,429);
+  });
+  await check('Unity never grants from client assertions, tampered callbacks or another placement',async()=>{
+    const a=await actor();await exhaust(a);const attempt=await prepare(a,crypto.randomUUID(),unityConfig);
+    const bad=[unityURL(attempt).replace('hmac=','hmac=0'),unityURL(attempt,crypto.randomUUID(),{placement_id:'Other'}),unityURL(attempt,crypto.randomUUID(),{sid:attempt.server_id.replace('.native.','.legacy.')})];
+    for(const url of bad)assert.equal((await unitySSV(new Request(url))).status,400);
+    assert.equal((await app(a,{service:'generation_rewards',action:'earned',attempt_id:attempt.attempt_id,request_id:crypto.randomUUID()},unityConfig)).status,400);
+    assert.equal((await status(a,unityConfig)).bonus_credits,0);
+  });
+  await check('Unity missing secret closes offers; verified LIMITLESS never needs a rewarded ad',async()=>{
+    const a=await actor();await exhaust(a);
+    assert.equal((await status(a,{...unityConfig,UNITY_ADS_S2S_SECRET:''})).ad_available,false);
+    await db`insert into app_private.membership_grants values(${a.id},true,clock_timestamp()+interval '1 day')`;
+    assert.equal((await status(a,unityConfig)).unlimited,true);assert.equal((await status(a,unityConfig)).ad_available,false);
+    assert.equal((await generate(a,crypto.randomUUID(),provider,unityConfig)).status,200);
+    assert.equal((await app(a,{service:'generation_rewards',action:'prepare',request_id:crypto.randomUUID()},unityConfig)).body.code,'reward_not_needed');
+  });
+  await check('Unity disabled rollout still settles issued callbacks and expired duplicates remain idempotent',async()=>{
+    const a=await actor();await exhaust(a);const attempt=await prepare(a,crypto.randomUUID(),unityConfig),url=unityURL(attempt);
+    const off={...unityConfig,SPYCLASH_REWARDED_GENERATION_ENABLED:'false'};
+    const handler=createGenerationRewardSSVHandler(db,googleKeys,off);assert.equal((await handler(new Request(url))).status,200);
+    await db`update game_center_private.generation_reward_attempts set expires_at=clock_timestamp()-interval '1 day' where user_id=${a.id}`;
+    assert.equal((await handler(new Request(url))).status,200);assert.equal((await status(a,unityConfig)).bonus_credits,1);
+  });
+  await check('Unity expired pending attempt and account deletion never mint or recreate credits',async()=>{
+    const a=await actor();await exhaust(a);const attempt=await prepare(a,crypto.randomUUID(),unityConfig),url=unityURL(attempt);
+    await db`update game_center_private.generation_reward_attempts set expires_at=clock_timestamp()-interval '1 day' where user_id=${a.id}`;
+    assert.equal((await unitySSV(new Request(url))).status,400);
+    await db`delete from game_center_private.generation_reward_attempts where user_id=${a.id}`;
+    assert.equal((await unitySSV(new Request(url))).status,400);
+    assert.equal((await status(a,unityConfig)).bonus_credits,0);
+  });
+  await check('old unenrolled native accounts retain 10 daily generations and receive no ad offer',async()=>{
+    const a=await actor(false);
+    assert.equal((await status(a,unityConfig)).enabled,false);
+    for(let i=0;i<4;i++){const result=await generate(a,crypto.randomUUID(),provider,unityConfig);assert.equal(result.status,200);assert.equal(result.body.ai_limit,10);}
+    assert.equal((await status(a,unityConfig)).ad_available,false);
+    const old=await app(a,{service:'generation_rewards',action:'status',supported_reward_provider:'unity',client_build:227},unityConfig);
+    assert.equal(old.body.enabled,false);
+    const missing=await app(a,{service:'generation_rewards',action:'status'},unityConfig);assert.equal(missing.body.enabled,false);
+  });
+  await check('supported native status enrolls once and absent or downgraded capabilities never bypass quota',async()=>{
+    const a=await actor(false),other=await actor(false),body={service:'generation_rewards',action:'status',supported_reward_provider:'unity',client_build:228,user_id:other.id};
+    const snapshots=await Promise.all([app(a,body,unityConfig),app(a,body,unityConfig)]);
+    assert.ok(snapshots.every(result=>result.status===200&&result.body.enabled));
+    const [{count}]=await db`select count(*)::int as count from game_center_private.generation_reward_enrollments where user_id=${a.id}`;assert.equal(count,1);
+    const [otherEnrollment]=await db`select count(*)::int as count from game_center_private.generation_reward_enrollments where user_id=${other.id}`;assert.equal(otherEnrollment.count,0);
+    for(const fields of [{},{supported_reward_provider:'admob',client_build:200},{supported_reward_provider:'unity',client_build:1}]){
+      const result=await app(a,{service:'generation_rewards',action:'status',...fields},unityConfig);assert.equal(result.body.enabled,true);
+    }
+    for(let i=0;i<3;i++)assert.equal((await generate(a,crypto.randomUUID(),provider,unityConfig)).status,200);
+    assert.equal((await generate(a,crypto.randomUUID(),provider,unityConfig)).status,429);
+    await db`insert into app_private.membership_grants values(${a.id},true,clock_timestamp()+interval '1 day')`;
+    assert.equal((await generate(a,crypto.randomUUID(),provider,unityConfig)).status,200);assert.equal((await status(a,unityConfig)).unlimited,true);
+  });
+  await check('native rollout off, missing callback secret and malformed capability cannot enroll',async()=>{
+    for(const [fields,c] of [
+      [{supported_reward_provider:'unity',client_build:228},{...unityConfig,SPYCLASH_REWARDED_GENERATION_ENABLED:'false'}],
+      [{supported_reward_provider:'unity',client_build:228},{...unityConfig,UNITY_ADS_S2S_SECRET:''}],
+      [{supported_reward_provider:'unity',client_build:'228'},unityConfig],
+      [{supported_reward_provider:'admob',client_build:228},unityConfig],
+      [{supported_reward_provider:'unity',client_build:2147483648},unityConfig],
+    ] as const){
+      const a=await actor(false);const result=await app(a,{service:'generation_rewards',action:'status',...fields},c);
+      assert.equal(result.body.enabled,false);const [{count}]=await db`select count(*)::int as count from game_center_private.generation_reward_enrollments where user_id=${a.id}`;assert.equal(count,0);
+    }
+  });
+  await check('enrollment table has RLS and no client grants',async()=>{
+    const [row]=await db`select relrowsecurity from pg_class where oid='game_center_private.generation_reward_enrollments'::regclass`;assert.equal(row.relrowsecurity,true);
+    const [priv]=await db`select has_table_privilege('authenticated','game_center_private.generation_reward_enrollments','select,insert,update,delete') as allowed`;assert.equal(priv.allowed,false);
+  });
+  await check('account deletion clears reward and enrollment only for owner and tombstone prevents reenrollment',async()=>{
+    const a=await actor(),other=await actor();await exhaust(a);await exhaust(other);
+    const attempt=await prepare(a,crypto.randomUUID(),unityConfig);await prepare(other,crypto.randomUUID(),unityConfig);
+    await db.begin(async(tx:any)=>{
+      await accountGate(tx,a.id,true);
+      await tx`update app_private.profiles set state='deleted' where user_id=${a.id}`;
+      await eraseGenerationRewardAccountData(tx,a.id);
+      await tx`update game_center_private.accounts set state='deleted' where user_id=${a.id}`;
+    });
+    for(const table of ['generation_reward_attempts','generation_reward_enrollments']){
+      const [removed]=await db.unsafe(`select count(*)::int as count from game_center_private.${table} where user_id=$1`,[a.id]);assert.equal(removed.count,0);
+      const [retained]=await db.unsafe(`select count(*)::int as count from game_center_private.${table} where user_id=$1`,[other.id]);assert.equal(retained.count,1);
+    }
+    await assert.rejects(()=>app(a,{service:'generation_rewards',action:'status',supported_reward_provider:'unity',client_build:228},unityConfig),{code:'account_unavailable'});
+    assert.equal((await unitySSV(new Request(unityURL(attempt)))).status,400);
+    const [{count}]=await db`select count(*)::int as count from game_center_private.generation_reward_enrollments where user_id=${a.id}`;assert.equal(count,0);
   });
   console.log(`PASS ${checks} isolated rewarded-generation integration checks`);
 }finally{

@@ -1,0 +1,20 @@
+Check experiments/supabase-game-core/supabase/functions/rewarded-generation-ssv/handler_test.ts
+running 16 tests from ./experiments/supabase-game-core/supabase/functions/rewarded-generation-ssv/handler_test.ts
+legacy SSV verifies first and preserves the entire signed query byte for byte ... ok (38ms)
+native SSV reaches only the existing native ledger handler ... ok (1ms)
+signature tampering cannot route to either ledger ... ok (2ms)
+signed unsupported or old unnamespaced tokens cannot be guessed into a wallet ... ok (6ms)
+legacy destination overrides and wrong project fail closed without forwarding ... ok (2ms)
+disabled new offers do not discard an already issued signed callback ... ok (2ms)
+upstream errors, redirects, malformed success and oversized bodies never acknowledge a grant ... ok (7ms)
+failed key lookup and non-GET requests never touch a ledger ... ok (1ms)
+signed dashboard probe acknowledges only delivery with offers disabled and never routes a credit ... ok (4ms)
+dashboard probe cannot bypass the Google signature check ... ok (3ms)
+signed mismatched probe markers, unit and reward fail without routing ... ok (14ms)
+dashboard probe requires a configured owned ad unit ... ok (3ms)
+dashboard probe rejects non-GET requests and key outages without routing ... ok (1ms)
+Unity gateway verifies complete signed context before exact legacy forwarding and acknowledges 1 ... ok (1ms)
+Unity native gateway keeps the exact request and never forwards to Base44 ... ok (0ms)
+Unity callback cannot acknowledge malformed upstream success, missing secret or unknown namespace ... ok (1ms)
+
+ok | 16 passed | 0 failed (95ms)

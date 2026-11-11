@@ -1,0 +1,10 @@
+{
+  "prepared_only": true,
+  "website_repository": "/Users/davidganzha/Documents/SpyClash.worktrees/privacy-apple-iap",
+  "baseline_ref": "origin/davidganzha/appstore-web-current",
+  "baseline_commit": "b45cc3e6281401d3c120a68207dfb21c784e7ad3",
+  "source": "src/pages/PrivacyPolicy.jsx",
+  "source_sha256": "fea2a2506f714218b3cf8ba9ecc2cbb25c4576431296aa62f2e5f0ac75f1fed5",
+  "live_policy": "https://spyclash.com/PrivacyPolicy",
+  "warning": "Compare current owning source before applying; no website source or production changed."
+}

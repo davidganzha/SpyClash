@@ -100,6 +100,7 @@ async function earnBonus(options: { beforeDelivery?: () => void; repeat?: number
 }
 function enabled() {
   resetFixture();
+  entity("GenerationRewardEnrollment").rows.push({id: "enrollment-fixture", user_id: fixture.user.id, provider: "unity", client_build: 228, enrolled_at: new Date().toISOString()});
   Deno.env.set("SPYCLASH_REWARDED_GENERATION_ENABLED", "true");
   Deno.env.delete("SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS");
   Deno.env.set(

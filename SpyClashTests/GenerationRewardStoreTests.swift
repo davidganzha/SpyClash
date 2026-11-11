@@ -251,6 +251,96 @@ final class GenerationRewardStoreTests: XCTestCase {
         XCTAssertEqual(client.prepareCount, 1)
         XCTAssertEqual(ads.presentCount, 1)
     }
+
+    func testUnityAttemptReachesPresenterUnchangedAndSDKCannotMintCredit() async throws {
+        let client = RewardClientMock(status: empty), ads = RewardAdMock()
+        let serverAttempt = GenerationRewardAttempt(attemptID: UUID(), customData: "opaque-attempt.legacy.server-nonce", adUnitID: "BP_Rewarded_iOS", userID: "opaque-user", provider: .unity, unityGameID: "800429660", serverID: "opaque-attempt.legacy.server-nonce")
+        client.preparedAttempt = serverAttempt
+        let store = GenerationRewardStore(client: client, ads: ads, defaults: storage(), sleep: { _ in throw CancellationError() })
+        store.bind(owner)
+        _ = await store.refresh()
+        await store.watch()
+        XCTAssertEqual(ads.presentedAttempt?.provider, .unity)
+        XCTAssertEqual(ads.presentedAttempt?.serverID, serverAttempt.serverID)
+        XCTAssertEqual(ads.presentedAttempt?.unityGameID, "800429660")
+        XCTAssertEqual(store.pendingAttemptID, serverAttempt.attemptID)
+        XCTAssertEqual(store.snapshot?.bonusCredits, 0)
+        XCTAssertTrue(store.isAwaitingReward)
+        client.claimState = "earned"
+        client.status = .init(enabled: true, unlimited: false, freeRemaining: 0, bonusCredits: 1, adAvailable: true)
+        await store.recoverPending()
+        XCTAssertEqual(store.snapshot?.bonusCredits, 1)
+        XCTAssertNil(store.pendingAttemptID)
+        XCTAssertEqual(ads.presentCount, 1)
+    }
+
+    func testMembershipChangeImmediatelyHidesStaleAdAndUnlimitedState() async {
+        let client = RewardClientMock(status: empty), ads = RewardAdMock()
+        let store = GenerationRewardStore(client: client, ads: ads, defaults: storage())
+        store.bind(owner)
+        _ = await store.refresh()
+        XCTAssertTrue(store.canWatch)
+        store.invalidateMembershipAccess()
+        XCTAssertFalse(store.canWatch)
+        XCTAssertNil(store.snapshot)
+        client.status = .init(enabled: true, unlimited: true, freeRemaining: nil, adAvailable: false)
+        _ = await store.refresh()
+        XCTAssertTrue(store.snapshot?.unlimited == true)
+        store.invalidateMembershipAccess()
+        XCTAssertNil(store.snapshot, "Revoked access cannot keep advertising unlimited availability.")
+        XCTAssertFalse(store.canWatch)
+    }
+
+    func testMembershipChangeDuringPreparePreventsAdPresentation() async throws {
+        let client = RewardClientMock(status: empty), ads = RewardAdMock()
+        var prepared: CheckedContinuation<GenerationRewardAttempt, Error>?
+        client.prepareHandler = { try await withCheckedThrowingContinuation { prepared = $0 } }
+        let store = GenerationRewardStore(client: client, ads: ads, defaults: storage())
+        store.bind(owner)
+        _ = await store.refresh()
+        let watch = Task { await store.watch() }
+        for _ in 0..<100 where prepared == nil { await Task.yield() }
+        let response = try XCTUnwrap(prepared)
+        store.invalidateMembershipAccess()
+        response.resume(returning: .init(attemptID: UUID(), customData: "opaque-server-data", adUnitID: "test", userID: "owner"))
+        await watch.value
+        XCTAssertEqual(ads.presentCount, 0)
+        XCTAssertNil(store.pendingAttemptID)
+        XCTAssertFalse(store.isWatching)
+    }
+
+    func testMembershipChangePreservesCompletedViewingButRejectsStaleClaim() async throws {
+        let client = RewardClientMock(status: empty), ads = RewardAdMock(), saved = storage()
+        let store = GenerationRewardStore(client: client, ads: ads, defaults: saved, sleep: { _ in throw CancellationError() })
+        store.bind(owner)
+        _ = await store.refresh()
+        await store.watch()
+        let attempt = try XCTUnwrap(store.pendingAttemptID)
+        var delayed: CheckedContinuation<GenerationRewardClaim, Error>?
+        client.claimHandler = { try await withCheckedThrowingContinuation { delayed = $0 } }
+        let recovery = Task { await store.recoverPending() }
+        for _ in 0..<100 where delayed == nil { await Task.yield() }
+        let response = try XCTUnwrap(delayed)
+        store.invalidateMembershipAccess()
+        response.resume(returning: .init(state: "earned", status: .init(enabled: true, unlimited: false, freeRemaining: 0, bonusCredits: 1, adAvailable: true)))
+        await recovery.value
+        XCTAssertNil(store.snapshot, "A claim started before the membership change cannot restore stale allowance.")
+        XCTAssertEqual(store.pendingAttemptID, attempt)
+        XCTAssertTrue(store.isAwaitingReward)
+        let restored = GenerationRewardStore(client: client, ads: ads, defaults: saved)
+        restored.bind(owner)
+        XCTAssertEqual(restored.pendingAttemptID, attempt)
+        XCTAssertTrue(restored.isAwaitingReward)
+        client.claimHandler = nil
+        client.claimState = "earned"
+        client.status = .init(enabled: true, unlimited: true, freeRemaining: nil, bonusCredits: 1, adAvailable: false)
+        await restored.recoverPending()
+        XCTAssertTrue(restored.snapshot?.unlimited == true)
+        XCTAssertEqual(restored.snapshot?.bonusCredits, 1)
+        XCTAssertNil(restored.pendingAttemptID)
+        XCTAssertFalse(restored.canWatch)
+        XCTAssertEqual(ads.presentCount, 1)
+    }
 }
 
 @MainActor private final class RewardClientMock: GenerationRewardsClientProtocol {
@@ -259,6 +349,9 @@ final class GenerationRewardStoreTests: XCTestCase {
     var claimCount = 0
     var prepareCount = 0
     var statusHandler: (() async throws -> GenerationRewardStatus)?
+    var prepareHandler: (() async throws -> GenerationRewardAttempt)?
+    var claimHandler: (() async throws -> GenerationRewardClaim)?
+    var preparedAttempt: GenerationRewardAttempt?
     init(status: GenerationRewardStatus) { self.status = status }
     func generationRewardStatus() async throws -> GenerationRewardStatus {
         if let statusHandler { return try await statusHandler() }
@@ -266,10 +359,13 @@ final class GenerationRewardStoreTests: XCTestCase {
     }
     func prepareGenerationReward(requestID: UUID) async throws -> GenerationRewardAttempt {
         prepareCount += 1
+        if let prepareHandler { return try await prepareHandler() }
+        if let preparedAttempt { return preparedAttempt }
         return .init(attemptID: requestID, customData: "opaque-server-issued-data", adUnitID: "test", userID: "server-reward-owner")
     }
     func generationRewardClaim(attemptID: UUID) async throws -> GenerationRewardClaim {
         claimCount += 1
+        if let claimHandler { return try await claimHandler() }
         return .init(state: claimState, status: status)
     }
 }
@@ -283,7 +379,12 @@ final class GenerationRewardStoreTests: XCTestCase {
     var earlyEarned = false
     var presentedUserID: String?
     var presentedCustomData: String?
+    var presentedAttempt: GenerationRewardAttempt?
     var handler: (() async throws -> Bool)?
+    func present(attempt: GenerationRewardAttempt, onEarned: @escaping @MainActor () -> Void) async throws -> Bool {
+        presentedAttempt = attempt
+        return try await present(adUnitID: attempt.adUnitID, userID: attempt.userID, customData: attempt.customData, onEarned: onEarned)
+    }
     func present(adUnitID: String, userID: String, customData: String, onEarned: @escaping @MainActor () -> Void) async throws -> Bool {
         presentCount += 1
         presentedUserID = userID

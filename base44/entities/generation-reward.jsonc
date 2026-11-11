@@ -1,6 +1,6 @@
 {
   "name": "GenerationReward",
-  "description": "Server-only AdMob viewing attempts and non-expiring generation credits. Only verified Google SSV may change pending to earned. Exact-state reservations prevent double spending; deletion removes account records.",
+  "description": "Server-only viewing attempts and non-expiring generation credits. Only verified AdMob or Unity server callbacks may change pending to earned. Exact-state reservations prevent double spending; deletion removes account records.",
   "type": "object",
   "properties": {
     "user_id": { "type": "string", "maxLength": 256 },

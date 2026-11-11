@@ -78,6 +78,52 @@ final class MembershipTests: XCTestCase {
         XCTAssertFalse(store.isLoading)
     }
 
+    func testVerifiedPurchaseAndRevocationSynchronouslyNotifyDependentAllowance() async {
+        let client = MembershipTestClient()
+        let store = MembershipStore(client: client)
+        store.bind(MembershipScope(userID: "user", accessToken: "token"))
+        var accessChanges: [Bool] = []
+        store.onAccessChanged = { accessChanges.append(store.hasAccess) }
+
+        _ = await store.refresh()
+        XCTAssertEqual(accessChanges, [false])
+        client.result = .success(snapshot())
+        _ = await store.refresh(force: true)
+        XCTAssertEqual(accessChanges, [false, true],
+                       "The stale ad allowance must be invalidated before verified purchase refresh returns.")
+
+        _ = await store.refresh()
+        store.updateAIUsage(used: 4, remaining: nil)
+        XCTAssertEqual(accessChanges, [false, true], "Unchanged access and usage counters do not invalidate allowance.")
+
+        client.result = .failure(URLError(.notConnectedToInternet))
+        _ = await store.refresh()
+        XCTAssertEqual(accessChanges, [false, true], "An outage cannot revoke unexpired verified access.")
+
+        client.result = .success(.freePreview)
+        _ = await store.refresh(force: true)
+        XCTAssertEqual(accessChanges, [false, true, false],
+                       "Revocation must invalidate cached unlimited generation before refresh returns.")
+        store.onAccessChanged = nil
+    }
+
+    func testUniversalAccessChangingToPaidAccessNotifiesGenerationAllowance() async {
+        let client = MembershipTestClient()
+        client.result = .success(.universalPreview)
+        let store = MembershipStore(client: client)
+        store.bind(MembershipScope(userID: "user", accessToken: "token"))
+        _ = await store.refresh()
+        var changes = 0
+        store.onAccessChanged = { changes += 1 }
+
+        client.result = .success(snapshot())
+        _ = await store.refresh(force: true)
+
+        XCTAssertTrue(store.hasAccess)
+        XCTAssertEqual(changes, 1,
+                       "Universal CASADA access and verified paid LIMITLESS have different generation quota rules.")
+    }
+
     func testRevocationSignalSupersedesOlderActiveRead() async throws {
         let client = MembershipTestClient()
         var olderRead: CheckedContinuation<MembershipSnapshot, Error>?
@@ -136,6 +182,8 @@ final class MembershipTests: XCTestCase {
             try await withCheckedThrowingContinuation { expiryWait = $0 }
         })
         store.bind(MembershipScope(userID: "user", accessToken: "token"))
+        var accessChanges: [Bool] = []
+        store.onAccessChanged = { accessChanges.append(store.hasAccess) }
         _ = await store.refresh()
         for _ in 0..<100 where expiryWait == nil { await Task.yield() }
         let continuation = try XCTUnwrap(expiryWait)
@@ -149,6 +197,37 @@ final class MembershipTests: XCTestCase {
         XCTAssertFalse(store.hasAccess)
         XCTAssertEqual(store.benefits, .free)
         XCTAssertEqual(client.requestCount, 1)
+        XCTAssertEqual(accessChanges, [true, false], "Expiry must invalidate dependent unlimited/ad state without a server poll.")
+        store.onAccessChanged = nil
+    }
+
+    func testFailedRefreshAfterExpiryNotifiesBeforeDelayedExpiryTaskRuns() async throws {
+        var clock = now
+        let expires = now.addingTimeInterval(5)
+        var expiryWait: CheckedContinuation<Void, Error>?
+        let client = MembershipTestClient()
+        client.result = .success(snapshot(expiry: expires))
+        let store = MembershipStore(client: client, now: { clock }, sleep: { _ in
+            try await withCheckedThrowingContinuation { expiryWait = $0 }
+        })
+        store.bind(MembershipScope(userID: "user", accessToken: "token"))
+        var accessChanges: [Bool] = []
+        store.onAccessChanged = { accessChanges.append(store.hasAccess) }
+        _ = await store.refresh()
+        for _ in 0..<100 where expiryWait == nil { await Task.yield() }
+        let continuation = try XCTUnwrap(expiryWait)
+
+        clock = expires
+        client.result = .failure(URLError(.notConnectedToInternet))
+        let refreshed = await store.refresh(force: true)
+        XCTAssertFalse(refreshed)
+        XCTAssertFalse(store.hasAccess)
+        XCTAssertEqual(accessChanges, [true, false])
+
+        continuation.resume()
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertEqual(accessChanges, [true, false], "The delayed expiry task must not announce the same transition again.")
+        store.onAccessChanged = nil
     }
 
     func testOldAccountExpiryCannotInvalidateNewAccountState() async throws {
@@ -161,6 +240,8 @@ final class MembershipTests: XCTestCase {
         })
         store.bind(MembershipScope(userID: "first", accessToken: "one"))
         _ = await store.refresh()
+        var accessChanges = 0
+        store.onAccessChanged = { accessChanges += 1 }
         for _ in 0..<100 where expiryWait == nil { await Task.yield() }
         let continuation = try XCTUnwrap(expiryWait)
         store.bind(MembershipScope(userID: "second", accessToken: "two"), preview: .universalPreview)
@@ -170,6 +251,7 @@ final class MembershipTests: XCTestCase {
         XCTAssertTrue(store.hasAccess)
         XCTAssertEqual(store.revision, revision)
         XCTAssertEqual(store.evaluationDate, clock)
+        XCTAssertEqual(accessChanges, 0, "An old account's expiry must not invalidate the new account's allowance.")
     }
 
     func testDecodeCurrentContractIncludingExplicitApplePurchaseFlag() throws {

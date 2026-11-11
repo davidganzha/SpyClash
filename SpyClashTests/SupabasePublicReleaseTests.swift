@@ -4,6 +4,25 @@ import XCTest
 
 @MainActor
 final class SupabasePublicReleaseTests: XCTestCase {
+    func testPublicBundleUsesOwnedUnityRewardsWithoutPreviewOrGoogleFallback() {
+        let info = Bundle.main.infoDictionary ?? [:]
+        XCTAssertEqual(info["SpyClashRewardedAdProvider"] as? String, "unity")
+        let unity = UnityRewardedGenerationAdConfiguration(infoDictionary: info)
+        XCTAssertTrue(unity.isConfigured)
+        XCTAssertEqual(unity.gameID, "800429660")
+        XCTAssertEqual(unity.adUnitID, "BP_Rewarded_iOS")
+        XCTAssertEqual(GenerationRewardClientCapabilities.current["supported_reward_provider"], .string("unity"))
+        guard case .number(let build) = GenerationRewardClientCapabilities.current["client_build"] else {
+            return XCTFail("The release must send a numeric supported build for account enrollment")
+        }
+        XCTAssertGreaterThanOrEqual(build, 228)
+        XCTAssertFalse(RewardedGenerationAdConfiguration(infoDictionary: info, isDebugBuild: false).isConfigured)
+        XCTAssertFalse(UnityAdsTestConfiguration(infoDictionary: info,
+            arguments: ["--spyclash-unity-live-ad-preview"], isDebugBuild: false).isEnabled)
+        let networks = info["SKAdNetworkItems"] as? [[String: String]] ?? []
+        XCTAssertTrue(networks.contains { $0["SKAdNetworkIdentifier"] == "4dzt52r2t5.skadnetwork" })
+    }
+
     func testPublicBundleUsesMainIdentityAndOnlyPublicConfiguration() throws {
         XCTAssertEqual(Bundle.main.bundleIdentifier, "com.spyclash.ios")
         XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "SpyClashBackendMode") as? String, "supabase-public")

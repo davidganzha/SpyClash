@@ -64,7 +64,7 @@ strict live probe result before claiming URL verification;
 do not use a real issued reward attempt as the dashboard probe. A successful
 setup probe proves signed callback delivery, not a completed ad or reward credit.
 
-## Activation prerequisites
+## Historical AdMob activation prerequisites (7 November)
 
 - Supabase project `bbkfsgnordtdiblgdzkg`: additive migration
   `20261105224817_rewarded_generation_credits.sql`.
@@ -89,14 +89,12 @@ signed no-credit Google dashboard verification are recorded in
 `QA/admob-deployment-220/README.md` at the repository root. Ads and new quotas
 remain disabled; this is not a real-view reward test.
 
-The first proposed production step is additive publication with both feature
-flags absent/false. Turning the global flag on would also impose the new quota
-on already installed build 218, whose advertising UI is disabled. Do not enable
-that global flag merely to test SSV. A reviewed test-account allowlist or a fully
-separate test backend is still required for a real end-to-end experiment. This
-gateway's legacy branch is pinned to production Base44: a native-only isolated
-test does not establish readiness of the legacy route. No test allowlist or
-version-aware rollout is implemented by this change.
+That historical implementation could impose the new quota on build 218, whose
+advertising UI is disabled. Candidate 228 replaces this behavior with persistent
+account enrollment from supported clients, described below. The gateway's legacy
+branch is still pinned to production Base44: a native-only isolated test does not
+establish readiness of the legacy route. Activation and any real account test
+still require explicit approval.
 
 ## Offline checks
 
@@ -113,3 +111,29 @@ database, and drops it in cleanup. It verifies namespaced issuance and the publi
 gateway along with concurrent grants/spending, exact-once refunds, late callbacks,
 unknown provider outcomes, LIMITLESS, and deletion. The public gateway's duplicate
 acknowledgment relies on those authoritative ledger checks, not on local memory.
+
+## Unity candidate, 11 November 2026
+
+This gateway now accepts the provider-signed Unity callback in addition to AdMob.
+The configuration/activation contract, exact Support callback URL and known
+external blocker are documented in
+[`base44/functions/generationRewardAction/README.md`](../../../../../base44/functions/generationRewardAction/README.md#unity-release-candidate-prepared-11-november-2026).
+Unity SID is an unguessable issued attempt token with a server-owned native/legacy
+namespace. A client ad completion cannot grant a credit. Native delivery commits
+under the account/quota locks; legacy delivery requires the Base44 response body
+`1`. Missing secrets, signature mismatch or malformed upstream success never
+acknowledge a reward.
+
+Only this public gateway needs the provider callback URL. Preserve the live
+`app-services` entrypoint/router and unrelated deployed game/membership code when
+preparing deployment; do not publish the historical full checkout over the live
+source. The release preparation keeps an exact live-source-based candidate and
+manifest outside the active deployment path. Neither code preparation nor local
+fixture tests activate production or establish live Unity callback delivery.
+
+Candidate 228 also requires the `GenerationRewardEnrollment` Base44 schema and
+`20261111184822_rewarded_generation_enrollment.sql` private native migration.
+Create the Base44 schema before deploying deletion/generation handlers. Only an
+authenticated supported status request enrolls an account when Unity and the
+global rollout are configured. Old clients remain on their existing policy until
+enrollment; subsequent downgrade cannot undo an enrolled account's quota.

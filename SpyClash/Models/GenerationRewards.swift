@@ -46,13 +46,40 @@ struct GenerationRewardStatus: Decodable, Equatable {
     }
 }
 
+enum GenerationRewardProvider: String, Decodable {
+    case admob, unity
+}
+
 struct GenerationRewardAttempt: Decodable {
     let attemptID: UUID
     let customData: String
     let adUnitID: String
     let userID: String
+    let provider: GenerationRewardProvider
+    let unityGameID: String?
+    let serverID: String?
     enum CodingKeys: String, CodingKey {
         case attemptID = "attempt_id", customData = "custom_data", adUnitID = "ad_unit_id", userID = "user_id"
+        case provider, unityGameID = "unity_game_id", serverID = "server_id"
+    }
+
+    init(attemptID: UUID, customData: String, adUnitID: String, userID: String, provider: GenerationRewardProvider = .admob, unityGameID: String? = nil, serverID: String? = nil) {
+        self.attemptID = attemptID; self.customData = customData
+        self.adUnitID = adUnitID; self.userID = userID; self.provider = provider
+        self.unityGameID = unityGameID; self.serverID = serverID
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        attemptID = try values.decode(UUID.self, forKey: .attemptID)
+        customData = try values.decode(String.self, forKey: .customData)
+        adUnitID = try values.decode(String.self, forKey: .adUnitID)
+        userID = try values.decode(String.self, forKey: .userID)
+        // Existing AdMob servers predate the provider field. Unknown explicit
+        // providers fail decoding instead of silently routing an ad elsewhere.
+        provider = try values.decodeIfPresent(GenerationRewardProvider.self, forKey: .provider) ?? .admob
+        unityGameID = try values.decodeIfPresent(String.self, forKey: .unityGameID)
+        serverID = try values.decodeIfPresent(String.self, forKey: .serverID)
     }
 }
 
