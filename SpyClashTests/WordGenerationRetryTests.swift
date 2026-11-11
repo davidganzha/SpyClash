@@ -13,6 +13,7 @@ final class WordGenerationRetryTests: XCTestCase {
     }
 
     private static let safeConflict = #"{"error":"Busy","code":"active_lease","retryable":true,"retry_phase":"before_effects","effects_started":false}"#
+    private static let safeSharedLibrary = #"{"error":"Preparing topic","code":"shared_library_busy","retryable":true,"retry_phase":"before_effects","effects_started":false}"#
 
     func testOnlyCompletePreEffectContractCanRetryWithinBoundedBudget() {
         let safe = Base44Error(
@@ -79,6 +80,68 @@ final class WordGenerationRetryTests: XCTestCase {
         XCTAssertEqual(body["prefer_fresh"] as? Bool, true)
     }
 
+    func testSharedLibraryRetriesRequireProofAndUseALongerBoundedBudget() {
+        for code in ["shared_library_busy", "shared_library_unavailable"] {
+            let safe = Base44Error(
+                message: "Preparing topic", statusCode: 503, code: code, retryable: true,
+                retryPhase: "before_effects", effectsStarted: false
+            )
+            for (attempt, delay) in [500, 1_000, 2_000, 4_000, 8_000].enumerated() {
+                XCTAssertEqual(WordGenerationRetryPolicy.delayMilliseconds(for: safe, completedRetries: attempt), delay)
+            }
+            XCTAssertNil(WordGenerationRetryPolicy.delayMilliseconds(for: safe, completedRetries: 5))
+            XCTAssertNil(WordGenerationRetryPolicy.delayMilliseconds(for: safe, completedRetries: -1))
+            var changed = safe
+            changed.retryAfterSeconds = 120
+            XCTAssertEqual(WordGenerationRetryPolicy.delayMilliseconds(for: changed, completedRetries: 0), 8_000)
+            changed = safe; changed.retryAfterSeconds = -1
+            XCTAssertEqual(WordGenerationRetryPolicy.delayMilliseconds(for: changed, completedRetries: 0), 500)
+            changed = safe; changed.effectsStarted = nil
+            XCTAssertNil(WordGenerationRetryPolicy.delayMilliseconds(for: changed, completedRetries: 0))
+            changed = safe; changed.effectsStarted = true
+            XCTAssertNil(WordGenerationRetryPolicy.delayMilliseconds(for: changed, completedRetries: 0))
+            changed = safe; changed.retryPhase = nil
+            XCTAssertNil(WordGenerationRetryPolicy.delayMilliseconds(for: changed, completedRetries: 0))
+            changed = safe; changed.retryPhase = "effects_may_have_started"
+            XCTAssertNil(WordGenerationRetryPolicy.delayMilliseconds(for: changed, completedRetries: 0))
+            changed = safe; changed.retryable = false
+            XCTAssertNil(WordGenerationRetryPolicy.delayMilliseconds(for: changed, completedRetries: 0))
+            changed = safe; changed.statusCode = 409
+            XCTAssertNil(WordGenerationRetryPolicy.delayMilliseconds(for: changed, completedRetries: 0))
+            for rejectedCode in ["shared_library_unconfigured", "generation_outcome_unknown", "generation_in_progress", "SHARED_LIBRARY_BUSY"] {
+                changed = safe; changed.code = rejectedCode
+                XCTAssertNil(WordGenerationRetryPolicy.delayMilliseconds(for: changed, completedRetries: 0))
+            }
+        }
+    }
+
+    func testSharedLibraryWaitRetriesIdenticalRequestAndThenSucceeds() async throws {
+        let recorder = GenerationRequestRecorder()
+        let safeSharedLibrary = Self.safeSharedLibrary
+        GenerationURLProtocol.handler = { request in
+            let count = try recorder.append(request)
+            if count == 1 { return GenerationURLProtocol.response(request, status: 503, body: safeSharedLibrary) }
+            if count == 2 {
+                return GenerationURLProtocol.response(request, status: 503, body: safeSharedLibrary.replacingOccurrences(of: "shared_library_busy", with: "shared_library_unavailable"))
+            }
+            return GenerationURLProtocol.success(request)
+        }
+        defer { GenerationURLProtocol.handler = nil }
+        let requestID = UUID()
+        let result = try await makeClient().generateWordPack(
+            theme: "  Countries  ", count: 12, requestID: requestID,
+            excluding: ["France"], preferFresh: true
+        )
+        XCTAssertEqual(result.words, ["Canada", "Spain"])
+        let requests = recorder.requests
+        XCTAssertEqual(requests.count, 3)
+        let first = try XCTUnwrap(requests.first)
+        XCTAssertTrue(requests.allSatisfy { $0.body == first.body && $0.authorization == first.authorization })
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: first.body) as? [String: Any])
+        XCTAssertEqual((body["request_id"] as? String).flatMap(UUID.init(uuidString:)), requestID)
+        XCTAssertEqual(body["exclude_words"] as? [String], ["France"])
+    }
+
     func testPersistentExplicitPreEffectConflictStopsAtThreeRequests() async {
         let recorder = GenerationRequestRecorder()
         let safeConflict = Self.safeConflict
@@ -104,7 +167,12 @@ final class WordGenerationRetryTests: XCTestCase {
             (409, #"{"code":"active_lease","retryable":true,"effects_started":false}"#),
             (409, #"{"code":"active_lease","retryable":true,"retry_phase":"effects_may_have_started","effects_started":true}"#),
             (409, #"{"code":"active_lease","retryable":true,"retry_phase":"before_effects","effects_started":"false"}"#),
-            (503, Self.safeConflict)
+            (503, Self.safeConflict),
+            (503, #"{"code":"shared_library_busy","retryable":true}"#),
+            (503, #"{"code":"shared_library_busy","retryable":true,"retry_phase":"before_effects","effects_started":"false"}"#),
+            (503, #"{"code":"shared_library_unavailable","retryable":true,"retry_phase":"effects_may_have_started","effects_started":true}"#),
+            (503, Self.safeSharedLibrary.replacingOccurrences(of: "shared_library_busy", with: "shared_library_unconfigured")),
+            (503, Self.safeSharedLibrary.replacingOccurrences(of: "shared_library_busy", with: "generation_outcome_unknown"))
         ]
         for (status, body) in cases {
             let recorder = GenerationRequestRecorder()

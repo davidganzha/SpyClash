@@ -347,6 +347,7 @@
 		CDA15BB02FAE4BDB45F4F8F1 /* SupabaseAppSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2EBD2681F0E66455DFA96C2 /* SupabaseAppSession.swift */; };
 		CE4C883EBFBCB2661D9A6167 /* AppState+Membership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C35AB10E88428C6F3D53699 /* AppState+Membership.swift */; };
 		CE63963CB32A0F5BA8ABA5EC /* SupabaseAppStoreRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3AF0D5E1F1101B0893BC27F /* SupabaseAppStoreRetryTests.swift */; };
+		658DBB99D2724AC98867C162 /* SupabaseSharedGenerationRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C644AC279B3A4EF4B601381A /* SupabaseSharedGenerationRetryTests.swift */; };
 		CEB5D0CCBAB0AE0C37D8C2A2 /* InterfaceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97913D6348B4319F467C8E65 /* InterfaceSettingsView.swift */; };
 		D06A399059CDA7411774FB98 /* WordPackPersistenceIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B50EAE76ED873FFED393BDB8 /* WordPackPersistenceIntegrationTests.swift */; };
 		D149A139CEF873F928134053 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB5C3278E8027E74B4A7DB82 /* Assets.xcassets */; };
@@ -666,6 +667,7 @@
 		DF4FD9ADA1D27731462AEF4E /* StoreKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitManager.swift; sourceTree = "<group>"; };
 		E174D5AC38FFB4D09F35DE12 /* SpyAchievements.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyAchievements.swift; sourceTree = "<group>"; };
 		E3AF0D5E1F1101B0893BC27F /* SupabaseAppStoreRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseAppStoreRetryTests.swift; sourceTree = "<group>"; };
+		C644AC279B3A4EF4B601381A /* SupabaseSharedGenerationRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseSharedGenerationRetryTests.swift; sourceTree = "<group>"; };
 		E3EC24BA3BA2A7A16F039946 /* SpyTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyTheme.swift; sourceTree = "<group>"; };
 		E3F04D961B33C5465B9CC241 /* LobbyPlayerCardSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LobbyPlayerCardSelection.swift; sourceTree = "<group>"; };
 		E5931997BCC3E996880F08A6 /* GameCenterAuthentication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameCenterAuthentication.swift; sourceTree = "<group>"; };
@@ -982,6 +984,7 @@
 				C9A2DBB40FABD6C9062F4EEB /* LegacySessionUpgradeTests.swift */,
 				F022A44C1089317A995CA2D7 /* NativeGameCenterSessionTests.swift */,
 				E3AF0D5E1F1101B0893BC27F /* SupabaseAppStoreRetryTests.swift */,
+				C644AC279B3A4EF4B601381A /* SupabaseSharedGenerationRetryTests.swift */,
 				9AFFF43EECD45A2588F995CE /* SupabaseMutationJournalTests.swift */,
 				D30F9ACD6849CEF356F71814 /* SupabaseSessionTests.swift */,
 				523B3250485D6A8133C376BD /* SupabaseSocialRealtimeTests.swift */,
@@ -1531,6 +1534,7 @@
 				9493CF3845943B1F03EC50A3 /* LegacySessionUpgradeTests.swift in Sources */,
 				A4947CE82F2E6397E18EAACA /* NativeGameCenterSessionTests.swift in Sources */,
 				CE63963CB32A0F5BA8ABA5EC /* SupabaseAppStoreRetryTests.swift in Sources */,
+				658DBB99D2724AC98867C162 /* SupabaseSharedGenerationRetryTests.swift in Sources */,
 				8F5527BE8F4788FE7E8E06CF /* SupabaseMutationJournalTests.swift in Sources */,
 				F48E759F49C6CADA47DD79F0 /* SupabaseSessionTests.swift in Sources */,
 				C13E0EBECB6241A198663B29 /* SupabaseSocialRealtimeTests.swift in Sources */,
@@ -2415,7 +2419,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 227;
+				CURRENT_PROJECT_VERSION = 229;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -2670,7 +2674,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 227;
+				CURRENT_PROJECT_VERSION = 229;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -2773,7 +2777,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 227;
+				CURRENT_PROJECT_VERSION = 229;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -2922,7 +2926,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 227;
+				CURRENT_PROJECT_VERSION = 229;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -3054,7 +3058,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 227;
+				CURRENT_PROJECT_VERSION = 229;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

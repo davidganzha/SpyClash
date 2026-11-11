@@ -2,21 +2,27 @@ import {AppServiceError,requireUUID,type AppActor,type AppContext} from './contr
 import {accountGate} from './account-gate.ts';
 import {nativeGameCenterAccount,nativeGameCenterHasMembership} from './native-game-center.ts';
 import {canonical,digest} from './integration-crypto.ts';
-import {createOpenAIWordPackProvider,assertNoKnownNamedThemeDrift,WORD_PACK_PROMPT_VERSION} from './word-generation/openai-word-pack-provider.ts';
+import {createOpenAIWordPackProvider,assertNoKnownNamedThemeDrift,WORD_PACK_PROMPT_VERSION,WORD_PACK_CACHE_VERSION} from './word-generation/openai-word-pack-provider.ts';
 import {filterSafeCommunityStrings,requireSafeCommunityText} from './word-generation/content-safety.ts';
 import {normalizeGeneratedWordPack,wordPackComparisonKey} from './word-generation/generation-cache.ts';
 import {nativeRelayConfigured,createNativeAIRelayProvider,nativeRelayHasUnknownOutcome,settleNativeRelayFailure,terminalNativeAIOutcome,failedNativeAIOutcome} from './native-ai-relay.ts';
 import {generationRewardMetadata,lockGenerationQuota,nativeRewardStatus,reserveRewardGeneration,rewardedGenerationEnabled} from './generation-reward-ledger.ts';
 import {createDurableNativeDirectProvider} from './native-direct-generation.ts';
+import {createSharedWordPackSQLStore} from './shared-word-pack-store.ts';
+import {prepareSharedWordPackRequest,buildSharedWordPackVariant,sharedWordPackLibraryEnabled} from './word-generation/shared-word-pack-library.ts';
 
 type Config=Record<string,string|undefined>;
 type Input={actor:AppActor,body:Record<string,any>,config:Config};
 const evidenceSet=new WeakSet<object>();
 export const NATIVE_AI_DAILY_LIMIT=10;
 const busy=()=>new AppServiceError('generation_in_progress','This word pack is still being prepared. Retry the same request.',503,true);
+function nativeGenerationProviderConfigured(config:Config) {
+  const provider=config.APP_NATIVE_GAME_CENTER_AI_PROVIDER||'base44-managed';
+  return provider==='base44-managed'?nativeRelayConfigured(config):provider==='openai'&&config.APP_NATIVE_GAME_CENTER_AI_ENABLED==='true'&&Boolean(config.OPENAI_API_KEY?.trim());
+}
 export function nativeGenerationCapabilities(config:Config) {
   const provider=config.APP_NATIVE_GAME_CENTER_AI_PROVIDER||'base44-managed';
-  const configured=provider==='base44-managed'?nativeRelayConfigured(config):provider==='openai'&&config.APP_NATIVE_GAME_CENTER_AI_ENABLED==='true'&&Boolean(config.OPENAI_API_KEY?.trim());
+  const configured=nativeGenerationProviderConfigured(config)||sharedWordPackLibraryEnabled(config);
   return {generator_provider:provider,configured,requires_legacy_session:false,linked:false};
 }
 function command(body:Record<string,any>) {
@@ -38,8 +44,11 @@ async function requireNative(tx:any,userID:string) {
  * Relay claims survive an expired worker lease: paid work is never repeated. */
 export async function prepareNativeGeneration(input:Input,dependencies:{db:any,fetch?:typeof fetch}) {
   const rewardsEnabled=rewardedGenerationEnabled(input.config);
+  const sharedEnabled=sharedWordPackLibraryEnabled(input.config);
   if(!nativeGenerationCapabilities(input.config).configured)throw new AppServiceError('native_generation_unconfigured','Word generation is not available yet. Try again later.',503,true);
   const request=command(input.body),hash=await requestHash(input.body),db=dependencies.db,leaseID=crypto.randomUUID();
+  const sharedRequest=sharedEnabled?await prepareSharedWordPackRequest({theme:request.theme,language:'und',promptVersion:WORD_PACK_CACHE_VERSION,requestedCount:request.count,exclusions:request.exclude_words}):null;
+  const sharedStore=sharedRequest?createSharedWordPackSQLStore(db):null;
   const evidenceFor=(result:any)=>{const evidence={actor:input.actor.id,requestID:request.request_id,hash,result};evidenceSet.add(evidence);return evidence;};
   const reservation=await db.begin(async(tx:any)=>{
     await requireNative(tx,input.actor.id);
@@ -69,16 +78,30 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
         lease_id=excluded.lease_id,lease_until=excluded.lease_until,charge_source=excluded.charge_source,error_code=null,updated_at=clock_timestamp()`;
     return {unlimited,used:used+(keepsCharge?0:1),metered:rewardsEnabled||Boolean(prior?.charged&&prior?.charge_source&&prior.charge_source!=='legacy')};
   });
-  if(reservation.unknown)throw rewardsEnabled||reservation.metered?busy():terminalNativeAIOutcome();
+  if(reservation.unknown)throw rewardsEnabled||reservation.metered||sharedEnabled?busy():terminalNativeAIOutcome();
   if(reservation.result)return evidenceFor(reservation.result);
   let qualityRejected=false;
+  let sharedClaimed=false;
+  let retainSharedClaim=false;
   const validate=<T>(operation:()=>T):T=>{
     try{return operation();}catch(error){qualityRejected=true;throw error;}
   };
   try{
+    // A library result is a normal, charged generation. Even an explicit
+    // regeneration first tries unused words; request replay remains above the
+    // reservation and cannot spend another point.
+    let hit=sharedStore&&sharedRequest?await sharedStore.read(sharedRequest):null;
+    if(sharedStore&&sharedRequest&&!hit){
+      sharedClaimed=await sharedStore.claim(sharedRequest.cacheKey,leaseID);
+      hit=await sharedStore.read(sharedRequest);
+      if(!hit&&!sharedClaimed)throw new AppServiceError('shared_generation_in_progress','This topic is being prepared. Retry this request shortly.',503,true);
+    }
+    let words:string[]=hit?.words||[],exhausted=hit?.exhausted||false;
+    if(!hit){
+    if(!nativeGenerationProviderConfigured(input.config))throw new AppServiceError('native_generation_unconfigured','Word generation is not available yet. Try again later.',503,true);
     const provider=input.config.APP_NATIVE_GAME_CENTER_AI_PROVIDER==='base44-managed'
       ?createNativeAIRelayProvider({db,config:input.config,actorID:input.actor.id,requestID:request.request_id,requestHash:hash,leaseID,fetch:dependencies.fetch})
-      :reservation.metered?createDurableNativeDirectProvider({db,config:input.config,actorID:input.actor.id,requestID:request.request_id,leaseID,fetch:dependencies.fetch})
+      :reservation.metered||sharedEnabled?createDurableNativeDirectProvider({db,config:input.config,actorID:input.actor.id,requestID:request.request_id,leaseID,fetch:dependencies.fetch})
         :createOpenAIWordPackProvider({apiKey:input.config.OPENAI_API_KEY!,model:input.config.SPYCLASH_OPENAI_MODEL,timeoutMilliseconds:45_000,fetch:dependencies.fetch});
     const generate=async(count:number,excluded:string[])=>{
       // Recheck ownership before each external call; never continue provider
@@ -98,20 +121,25 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
       });
     };
     const first=await generate(request.count,request.exclude_words);
-    let words=first.words,exhausted=first.exhausted&&words.length<request.count;
+    words=first.words;exhausted=first.exhausted&&words.length<request.count;
     if(exhausted){
       const second=await generate(Math.max(2,request.count-words.length),[...request.exclude_words,...words]);
       words=[...words,...second.words];exhausted=second.exhausted&&words.length<request.count;
+    }
     }
     const normalized=validate(()=>{
       const pack=normalizeGeneratedWordPack({category:request.theme,words:words.slice(0,request.count),exhausted});
       if(pack.words.length<request.count&&!pack.exhausted)throw new Error('quality');
       return pack;
     });
-    let result:any={name:request.theme,...normalized,ai_limit:reservation.unlimited?null:NATIVE_AI_DAILY_LIMIT,
+    const sharedVariant=sharedRequest&&!hit?await buildSharedWordPackVariant({request:sharedRequest,result:normalized}):null;
+    let result:any={name:request.theme,...normalized,...(sharedEnabled?{cache_hit:Boolean(hit)}:{}),ai_limit:reservation.unlimited?null:NATIVE_AI_DAILY_LIMIT,
       ai_generations_today:reservation.used,ai_remaining:reservation.unlimited?null:Math.max(0,NATIVE_AI_DAILY_LIMIT-reservation.used)};
     await db.begin(async(tx:any)=>{
       await requireNative(tx,input.actor.id);
+      // Publishing and completing the charged request commit together. A lost
+      // acknowledgement is reconciled from the durable request/provider result.
+      if(sharedVariant&&!await createSharedWordPackSQLStore(tx).publish(sharedVariant,leaseID))throw busy();
       if(rewardsEnabled){
         await lockGenerationQuota(tx,input.actor.id);
         result={...result,...generationRewardMetadata(await nativeRewardStatus(tx,input.actor.id,input.config))};
@@ -122,9 +150,14 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
     });
     return evidenceFor(result);
   }catch(error){
-    if(input.config.APP_NATIVE_GAME_CENTER_AI_PROVIDER==='base44-managed'||reservation.metered){
-      const outcome=await settleNativeRelayFailure(db,input.actor.id,request.request_id,leaseID,qualityRejected).catch(()=> 'unknown');
-      if(outcome==='unknown')throw new AppServiceError('generation_in_progress','This attempt is awaiting confirmation. Retry the same request later.',503,true);
+    if(input.config.APP_NATIVE_GAME_CENTER_AI_PROVIDER==='base44-managed'||reservation.metered||sharedEnabled){
+      const outcome=await settleNativeRelayFailure(db,input.actor.id,request.request_id,leaseID,qualityRejected,sharedEnabled).catch(()=> 'unknown');
+      if(outcome==='unknown'){
+        // The external request may still be running. Retain the bounded topic
+        // lease so another account cannot immediately start the same paid work.
+        retainSharedClaim=true;
+        throw new AppServiceError('generation_in_progress','This attempt is awaiting confirmation. Retry the same request later.',503,true);
+      }
       if(outcome==='quality')throw failedNativeAIOutcome('quality_failed');
       if(outcome==='failed')throw failedNativeAIOutcome('provider_failed');
       if(outcome==='replayable')throw new AppServiceError('generation_persistence_retry','The generated words are saved. Retry this same request to recover them.',503,true);
@@ -137,6 +170,10 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
       where user_id=${input.actor.id} and request_id=${request.request_id} and lease_id=${leaseID} and state='pending'`.catch(()=>{});
     if(error instanceof AppServiceError)throw error;
     throw new AppServiceError('ai_provider_unavailable','Word generation could not be completed. Retry the same request.',503,true);
+  }finally{
+    // Token fencing prevents a stale worker from releasing a newer claim. A
+    // release outage is bounded by the lease and must not erase a valid result.
+    if(sharedClaimed&&!retainSharedClaim&&sharedStore&&sharedRequest)await sharedStore.release(sharedRequest.cacheKey,leaseID).catch(()=>{});
   }
 }
 export async function dispatchNativeGeneration(ctx:AppContext,body:Record<string,any>) {

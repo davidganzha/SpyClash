@@ -1,0 +1,69 @@
+{
+  "status": "prepared_not_deployed",
+  "base_commit": "4149a0442c0b863a3db1d088bf276d6f5d796fcb",
+  "build": 229,
+  "supabase": {
+    "project": "bbkfsgnordtdiblgdzkg",
+    "name": "spyclash-game-core",
+    "function": "app-services",
+    "live_version": 19,
+    "live_bundle_sha256": "bdaf41db1964bd3d0349ce5a12b499aa1af1c4f8db3355ac69be4266584baa7c",
+    "changes": [
+      {
+        "path": "app-services/native-generation.ts",
+        "live_sha256": "cbf18cc8645e89e88b612e0dd553388ba9e8c15c5d28666cf6cac1d4a9485465",
+        "candidate_sha256": "76c87f8bc81351665d12a54e3eb2b80fc25b2ecbbbf4fc540d51e87116333074"
+      },
+      {
+        "path": "app-services/native-ai-relay.ts",
+        "live_sha256": "16843694d05c3ca8e4a731a51535d07133c1018edef791ffe5bea8c933e77c6a",
+        "candidate_sha256": "e89dbd88843cca8e3d8b46894b392a5fd3c6fe8b9f444e4d8ff0162afad24039"
+      },
+      {
+        "path": "app-services/shared-word-pack-store.ts",
+        "live_sha256": null,
+        "candidate_sha256": "e749ef2d87a48fbbfd97ad8fcdfdc7b0a3ae9424a4af87896f1b2cc1ecfe62ce"
+      },
+      {
+        "path": "app-services/word-generation/shared-word-pack-library.ts",
+        "live_sha256": null,
+        "candidate_sha256": "03bbd3f83a20acbbe8db988ccac0dae2bc57e6f599d524d29a1146fc476fbd94"
+      }
+    ]
+  },
+  "base44": {
+    "app_id": "69a0e57fa939f578082f8091",
+    "function": "generateWordPack",
+    "changes": [
+      {
+        "path": "main.ts",
+        "live_sha256": "6dc615263a0ac1c4cff789772873fc8e3829fba8c6bd67ba150a1f784fb7e302",
+        "candidate_sha256": "9d838a44e16b65591f690602743636932fdbbb6f992f379ceeb087e796fbf2ec"
+      },
+      {
+        "path": "shared-word-pack-library.ts",
+        "live_sha256": null,
+        "candidate_sha256": "03bbd3f83a20acbbe8db988ccac0dae2bc57e6f599d524d29a1146fc476fbd94"
+      },
+      {
+        "path": "shared-word-pack-rest.ts",
+        "live_sha256": null,
+        "candidate_sha256": "6c0ae531f02f6cfac92ab1c7068fd7688410cfa5aa0c4cc6f60b5bc25c8096f6"
+      },
+      {
+        "path": "generation-retry-contract.ts",
+        "live_sha256": "4f598d2801f0931334f0cb57e4a3e4a4c4e7ff5c066b8cd3108d5ac53977f2e3",
+        "candidate_sha256": "8855e7cd8e69c1c3ba64aaed667f7d0e3a8eb9e5e62994efb96159cf02b8d6e8"
+      }
+    ]
+  },
+  "migration": {
+    "path": "experiments/supabase-game-core/supabase/migrations/20261111185732_shared_word_pack_library.sql",
+    "sha256": "a0b9d6b4b993275a1dc0dfd2c1730996164168c4e74259d59f4523769d9d6488"
+  },
+  "rollout_flag": "SPYCLASH_SHARED_WORD_PACKS_ENABLED",
+  "notes": [
+    "Candidates preserve unrelated deployed source, including existing ad routes and reward configuration.",
+    "No migration, function deployment, secret change, or rollout enablement has been performed."
+  ]
+}

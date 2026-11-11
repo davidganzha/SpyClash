@@ -15,6 +15,7 @@ import {
   WordPackIdempotencyUnavailableError,
 } from "./generation-idempotency.ts";
 import { createGenerationRetryTracker } from "./generation-retry-contract.ts";
+import { SharedWordPackLibraryError } from "./shared-word-pack-library.ts";
 import {
   type GenerationWriteGuard,
   withGenerationWriterLease,
@@ -91,6 +92,55 @@ for (const code of ["active_lease", "cas_contention"] as const) {
     });
   });
 }
+
+for (const code of ["shared_library_busy", "shared_library_unavailable"]) {
+  Deno.test(`only validated pre-effect typed ${code} gets a 503 retry proof`, async () => {
+    const subject = await tracker();
+    const error = new SharedWordPackLibraryError(code);
+    assertEquals(subject.errorMetadata(error, 503), SAFE);
+    assertEquals(subject.errorMetadata(error, 409), { retryable: false });
+    assertEquals(createGenerationRetryTracker().errorMetadata(error, 503), {
+      retryable: false,
+    });
+    assertEquals(subject.errorMetadata({ code, retryable: true }, 503), {
+      retryable: true,
+    });
+    subject.bindValidatedRequest(null);
+    assertEquals(subject.errorMetadata(error, 503), { retryable: false });
+    subject.bindValidatedRequest(await identity());
+    await subject.trackWrites(OPEN_GUARD).boundary(() => Promise.resolve());
+    assertEquals(subject.errorMetadata(error, 503), UNSAFE);
+  });
+}
+
+Deno.test("configuration and unknown library errors never receive an automatic retry proof", async () => {
+  const subject = await tracker();
+  for (
+    const code of [
+      "shared_library_unconfigured",
+      "generation_outcome_unknown",
+      "unknown_error",
+    ]
+  ) {
+    assertEquals(
+      subject.errorMetadata(new SharedWordPackLibraryError(code), 503),
+      { retryable: false },
+    );
+  }
+  await assertRejects(() =>
+    subject.runProvider(
+      OPEN_GUARD,
+      () => Promise.reject(new Error("lost reply")),
+    )
+  );
+  assertEquals(
+    subject.errorMetadata(
+      new SharedWordPackLibraryError("shared_library_busy"),
+      503,
+    ),
+    UNSAFE,
+  );
+});
 
 Deno.test("validated request identity cannot override an explicit unsafe lifecycle decision", async () => {
   const subject = await tracker();

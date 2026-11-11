@@ -8,6 +8,12 @@ import {
   billingIdentitySubjectKey,
   isBillingIdentityLeaseActive,
 } from "./billing-identity-lifecycle.ts";
+import {
+  buildSharedWordPackVariant,
+  prepareSharedWordPackRequest,
+} from "./shared-word-pack-library.ts";
+import { WORD_PACK_CACHE_VERSION } from "./openai-word-pack-provider.ts";
+import { quotaKey, utcUsageDate } from "./quota.ts";
 
 type Row = Record<string, any>;
 const APP_ID = "69a0e57fa939f578082f8091";
@@ -75,6 +81,7 @@ function matches(row: Row, query: Row): boolean {
 
 /** In-memory HTTP adapter; the real SDK still serializes and unwraps requests. */
 class GenerationHTTPStore {
+  userID = "journal-user";
   tables = new Map<string, Row[]>();
   providerCalls = 0;
   providerWords = WORDS;
@@ -129,7 +136,7 @@ class GenerationHTTPStore {
         "Bearer test-user-token",
       );
       return response({
-        id: "journal-user",
+        id: this.userID,
         email: "journal@example.test",
         ai_generations_today: 0,
       });
@@ -247,8 +254,10 @@ class GenerationHTTPStore {
         entity === "AiGenerationUsage" && body.data.$inc?.generations_used === 1
       ) {
         assertEquals(
-          this.rows("AiWordPackOperation")[0]?.state,
-          "running",
+          this.rows("AiWordPackOperation").some((row) =>
+            row.state === "running" && row.user_id === this.userID
+          ),
+          true,
           "durable admission must precede quota effects",
         );
         this.quotaReservations += 1;
@@ -294,6 +303,80 @@ class GenerationHTTPStore {
   };
 }
 
+/** The real REST adapter talks only to this in-memory Supabase RPC fixture. */
+class LibraryHTTPStore {
+  records: Row[] = [];
+  readCalls = 0;
+  publishCalls = 0;
+  releaseCalls = 0;
+  claimCalls = 0;
+  readUnavailable = false;
+  publicationUnavailable = false;
+  claimBusy = false;
+  token: string | null = null;
+  leaseCacheKey: string | null = null;
+  leaseUntil = 0;
+  handle = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const url = new URL(String(input));
+    assertEquals(url.origin, "https://library.example.test");
+    assertEquals(init?.method, "POST");
+    const headers = new Headers(init?.headers);
+    assertEquals(headers.get("apikey"), "sb_secret_local_library_fixture");
+    assertEquals(headers.get("authorization"), null);
+    const body = JSON.parse(String(init?.body));
+    switch (url.pathname) {
+      case "/rest/v1/rpc/word_pack_library_read":
+        this.readCalls++;
+        if (this.readUnavailable) return new Response(null, { status: 503 });
+        assertEquals(Object.keys(body), ["p_cache_key"]);
+        return Response.json(
+          this.records.filter((row) => row.cache_key === body.p_cache_key),
+        );
+      case "/rest/v1/rpc/word_pack_library_claim":
+        this.claimCalls++;
+        if (
+          this.claimBusy ||
+          (this.leaseCacheKey === body.p_cache_key &&
+            this.leaseUntil > Date.now() &&
+            this.token !== body.p_token)
+        ) return Response.json(false);
+        this.token = body.p_token;
+        this.leaseCacheKey = body.p_cache_key;
+        this.leaseUntil = Date.now() + 5 * 60_000;
+        return Response.json(true);
+      case "/rest/v1/rpc/word_pack_library_publish":
+        this.publishCalls++;
+        if (this.publicationUnavailable) {
+          return new Response(null, { status: 503 });
+        }
+        if (
+          body.p_token !== this.token ||
+          body.p_record.cache_key !== this.leaseCacheKey ||
+          this.leaseUntil <= Date.now()
+        ) return Response.json(false);
+        assert(!("user_id" in body.p_record));
+        assert(!("theme" in body.p_record));
+        this.records.push(structuredClone(body.p_record));
+        return Response.json(true);
+      case "/rest/v1/rpc/word_pack_library_release":
+        this.releaseCalls++;
+        if (
+          body.p_token === this.token && body.p_cache_key === this.leaseCacheKey
+        ) {
+          this.token = null;
+          this.leaseCacheKey = null;
+          this.leaseUntil = 0;
+        }
+        return new Response(null, { status: 204 });
+      default:
+        throw new Error("Unexpected library RPC");
+    }
+  };
+}
+
 Deno.test("actual generation handler preserves durable operation recovery across SDK HTTP boundaries", async (test) => {
   const originalServe = Deno.serve;
   const originalEnvGet = Deno.env.get;
@@ -307,7 +390,29 @@ Deno.test("actual generation handler preserves durable operation recovery across
   let handler: ((req: Request) => Promise<Response>) | undefined;
   let unexpectedNetworkCalls = 0;
   let db = new GenerationHTTPStore();
-  const invoke = async (requestID = "actual-handler-request", count = 12) => {
+  let library = new LibraryHTTPStore();
+  let sharedEnabled = false;
+  const metrics: Row[] = [];
+  const seedLibrary = async () => {
+    const request = await prepareSharedWordPackRequest({
+      theme: "Musical instruments",
+      language: "und",
+      promptVersion: WORD_PACK_CACHE_VERSION,
+      requestedCount: 12,
+      exclusions: [],
+    });
+    library.records.push(
+      await buildSharedWordPackVariant({
+        request,
+        result: { words: WORDS.slice(0, 12), exhausted: false },
+      }),
+    );
+  };
+  const invoke = async (
+    requestID = "actual-handler-request",
+    count = 12,
+    extra: Row = {},
+  ) => {
     assert(handler);
     return await handler(
       new Request("https://example.test/functions/generateWordPack", {
@@ -323,6 +428,7 @@ Deno.test("actual generation handler preserves durable operation recovery across
           theme: "Musical instruments",
           count,
           prefer_fresh: true,
+          ...extra,
         }),
       }),
     );
@@ -339,19 +445,37 @@ Deno.test("actual generation handler preserves durable operation recovery across
     }) as typeof Deno.serve;
     // Exercise real quota reservation while using only local fake credentials.
     // No real environment secret is read, and the direct provider is disabled.
-    Deno.env.get = (name) =>
-      name === "SPYCLASH_LIMITLESS_ENABLED" ||
-        name === "SPYCLASH_REWARDED_GENERATION_ENABLED"
+    Deno.env.get = (name) => {
+      if (name === "SPYCLASH_SHARED_WORD_PACKS_ENABLED") {
+        return sharedEnabled ? "true" : "false";
+      }
+      if (name === "SPYCLASH_WORD_LIBRARY_SUPABASE_URL") {
+        return "https://library.example.test";
+      }
+      if (name === "SPYCLASH_WORD_LIBRARY_SUPABASE_SECRET") {
+        return "sb_secret_local_library_fixture";
+      }
+      return name === "SPYCLASH_LIMITLESS_ENABLED" ||
+          name === "SPYCLASH_REWARDED_GENERATION_ENABLED"
         ? "true"
         : undefined;
+    };
     axios.defaults.adapter = (config) => db.handle(config);
-    globalThis.fetch = (() => {
+    globalThis.fetch = ((input, init) => {
+      if (
+        String(input).startsWith("https://library.example.test/rest/v1/rpc/")
+      ) return library.handle(input, init);
       unexpectedNetworkCalls += 1;
       return Promise.reject(
         new Error("External network is forbidden in this test"),
       );
     }) as typeof fetch;
-    console.error = console.warn = console.info = () => {};
+    console.error = console.warn = () => {};
+    console.info = (...args) => {
+      if (args[0] === "generateWordPack metrics:") {
+        metrics.push(JSON.parse(String(args[1])));
+      }
+    };
     await import("./main.ts");
 
     await test.step("successful generation journals before quota/provider and replay adds no effects", async () => {
@@ -371,7 +495,11 @@ Deno.test("actual generation handler preserves durable operation recovery across
 
     await test.step("generation and durable replay preserve commas and semicolons within each AI entry", async () => {
       db = new GenerationHTTPStore();
-      db.providerWords = ["Piano, grand", "Drums; electronic", ...WORDS.slice(2)];
+      db.providerWords = [
+        "Piano, grand",
+        "Drums; electronic",
+        ...WORDS.slice(2),
+      ];
       const first = await invoke();
       assertEquals(first.status, 200);
       const expected = db.providerWords.slice(0, 12);
@@ -380,6 +508,243 @@ Deno.test("actual generation handler preserves durable operation recovery across
       assertEquals(replay.status, 200);
       assertEquals((await replay.json()).words, expected);
       expectNoNewEffects(1, 1);
+    });
+
+    await test.step("shared hit is a successful charged generation even with prefer_fresh, and replay is free", async () => {
+      db = new GenerationHTTPStore();
+      library = new LibraryHTTPStore();
+      sharedEnabled = true;
+      try {
+        await seedLibrary();
+        const first = await invoke();
+        assertEquals(first.status, 200);
+        const payload = await first.json();
+        assertEquals(payload.words, WORDS.slice(0, 12));
+        assertEquals(payload.cache_hit, true);
+        assertEquals(payload.ai_generations_today, 1);
+        assertEquals(metrics.at(-1)?.source, "shared_library");
+        assertEquals(db.rows("AiWordPackOperation")[0].state, "completed");
+        assertEquals(library.readCalls, 1);
+        assertEquals(library.claimCalls, 0);
+        const replay = await invoke();
+        assertEquals(replay.status, 200);
+        assertEquals((await replay.json()).request_replayed, true);
+        assertEquals(
+          library.readCalls,
+          1,
+          "exact durable replay does not depend on the library",
+        );
+        expectNoNewEffects(0, 1);
+      } finally {
+        sharedEnabled = false;
+      }
+    });
+
+    await test.step("each independent shared hit consumes a point and cached words do not bypass an exhausted balance", async () => {
+      db = new GenerationHTTPStore();
+      library = new LibraryHTTPStore();
+      sharedEnabled = true;
+      try {
+        await seedLibrary();
+        for (let i = 1; i <= 3; i++) {
+          const response = await invoke(`shared-success-${i}`);
+          assertEquals(response.status, 200);
+          assertEquals((await response.json()).ai_generations_today, i);
+        }
+        assertEquals((await invoke("no-points-left")).status, 429);
+        assertEquals(library.readCalls, 3);
+        expectNoNewEffects(0, 3);
+      } finally {
+        sharedEnabled = false;
+      }
+    });
+
+    await test.step("shared hit spends an earned bonus once after daily points are exhausted", async () => {
+      db = new GenerationHTTPStore();
+      library = new LibraryHTTPStore();
+      sharedEnabled = true;
+      try {
+        await seedLibrary();
+        db.rows("AiGenerationUsage").push({
+          id: "spent-daily-quota",
+          quota_key: quotaKey(db.userID),
+          user_id: db.userID,
+          usage_date: utcUsageDate(),
+          generations_used: 3,
+        });
+        db.rows("GenerationReward").push({
+          id: "earned-bonus",
+          user_id: db.userID,
+          attempt_id: crypto.randomUUID(),
+          state: "earned",
+        });
+        const response = await invoke("shared-bonus-request");
+        assertEquals(response.status, 200);
+        assertEquals((await response.json()).cache_hit, true);
+        assertEquals(db.rows("GenerationReward")[0].state, "spent");
+        assertEquals(
+          db.rows("GenerationReward")[0].generation_request_id,
+          "shared-bonus-request",
+        );
+        assertEquals((await invoke("shared-bonus-request")).status, 200);
+        assertEquals(db.rows("GenerationReward")[0].state, "spent");
+        assertEquals((await invoke("needs-another-point")).status, 429);
+        expectNoNewEffects(0, 0);
+      } finally {
+        sharedEnabled = false;
+      }
+    });
+
+    await test.step("a generated pack is reused by another account with a separate successful charge", async () => {
+      db = new GenerationHTTPStore();
+      library = new LibraryHTTPStore();
+      sharedEnabled = true;
+      try {
+        const generated = await invoke("first-author");
+        assertEquals(generated.status, 200);
+        assertEquals((await generated.json()).cache_hit, false);
+        assertEquals(library.records.length, 1);
+        assertEquals(library.publishCalls, 1);
+        assertEquals(library.releaseCalls, 1);
+        db.userID = "second-player";
+        const reused = await invoke("second-player-request");
+        assertEquals(reused.status, 200);
+        const payload = await reused.json();
+        assertEquals(payload.cache_hit, true);
+        assertEquals(payload.ai_generations_today, 1);
+        assertEquals(payload.words, WORDS.slice(0, 12));
+        assertEquals(
+          db.rows("AiGenerationUsage").map((
+            row,
+          ) => [row.user_id, row.generations_used]),
+          [["journal-user", 1], ["second-player", 1]],
+        );
+        expectNoNewEffects(1, 2);
+      } finally {
+        sharedEnabled = false;
+      }
+    });
+
+    await test.step("library outage stops before journal, point reservation and model, then the same request recovers", async () => {
+      db = new GenerationHTTPStore();
+      library = new LibraryHTTPStore();
+      sharedEnabled = true;
+      try {
+        library.readUnavailable = true;
+        const failed = await invoke();
+        assertEquals(failed.status, 503);
+        const unavailable = await failed.json();
+        assertEquals(unavailable.retryable, true);
+        assertEquals(unavailable.retry_phase, "before_effects");
+        assertEquals(unavailable.effects_started, false);
+        assertEquals(db.rows("AiWordPackOperation").length, 0);
+        expectNoNewEffects(0, 0);
+        library.readUnavailable = false;
+        await seedLibrary();
+        assertEquals((await invoke()).status, 200);
+        expectNoNewEffects(0, 1);
+      } finally {
+        sharedEnabled = false;
+      }
+    });
+
+    await test.step("another topic producer causes a retryable response without a point charge", async () => {
+      db = new GenerationHTTPStore();
+      library = new LibraryHTTPStore();
+      sharedEnabled = true;
+      try {
+        library.claimBusy = true;
+        const failed = await invoke();
+        assertEquals(failed.status, 503);
+        const payload = await failed.json();
+        assertEquals(payload.code, "shared_library_busy");
+        assertEquals(payload.retryable, true);
+        assertEquals(payload.retry_phase, "before_effects");
+        assertEquals(payload.effects_started, false);
+        assertEquals(db.rows("AiWordPackOperation").length, 0);
+        assertEquals(library.releaseCalls, 0);
+        expectNoNewEffects(0, 0);
+        await seedLibrary();
+        assertEquals((await invoke()).status, 200);
+        expectNoNewEffects(0, 1);
+      } finally {
+        sharedEnabled = false;
+      }
+    });
+
+    await test.step("library publication failure preserves a charged durable success and replay does not regenerate", async () => {
+      db = new GenerationHTTPStore();
+      library = new LibraryHTTPStore();
+      sharedEnabled = true;
+      try {
+        library.publicationUnavailable = true;
+        assertEquals((await invoke()).status, 200);
+        assertEquals(library.publishCalls, 1);
+        assertEquals(library.releaseCalls, 1);
+        assertEquals(db.rows("AiWordPackOperation")[0].state, "completed");
+        assertEquals((await invoke()).status, 200);
+        expectNoNewEffects(1, 1);
+      } finally {
+        sharedEnabled = false;
+      }
+    });
+
+    await test.step("unknown provider outcome keeps its topic lease so another account cannot duplicate paid work", async () => {
+      db = new GenerationHTTPStore();
+      library = new LibraryHTTPStore();
+      sharedEnabled = true;
+      try {
+        db.loseProviderResponse = true;
+        const first = await invoke("unknown-shared-outcome");
+        assertEquals(first.status, 503);
+        assertEquals(db.rows("AiWordPackOperation")[0].state, "running");
+        assertEquals(library.releaseCalls, 0);
+        assert(library.token);
+        assert(library.leaseUntil > Date.now());
+        const ownerToken = library.token;
+        expectNoNewEffects(1, 1);
+
+        db.userID = "second-player";
+        db.loseProviderResponse = false;
+        const second = await invoke("second-player-same-topic");
+        assertEquals(second.status, 503);
+        const busy = await second.json();
+        assertEquals(busy.code, "shared_library_busy");
+        assertEquals(busy.retryable, true);
+        assertEquals(busy.retry_phase, "before_effects");
+        assertEquals(busy.effects_started, false);
+        assertEquals(library.token, ownerToken);
+        assertEquals(library.releaseCalls, 0);
+        assertEquals(db.rows("AiWordPackOperation").length, 1);
+        assertEquals(db.rows("AiGenerationUsage").map((row) => row.user_id), [
+          "journal-user",
+        ]);
+        expectNoNewEffects(1, 1);
+
+        db.userID = "journal-user";
+        const retry = await invoke("unknown-shared-outcome");
+        assertEquals(retry.status, 503);
+        // The original journal remains unresolved; a library lease expiry must
+        // never make that original paid request executable a second time.
+        assertEquals(db.rows("AiWordPackOperation")[0].state, "running");
+        assertEquals(library.token, ownerToken);
+        assertEquals(library.releaseCalls, 0);
+        expectNoNewEffects(1, 1);
+
+        library.leaseUntil = Date.now() - 1;
+        const afterExpiry = await invoke("unknown-shared-outcome");
+        assertEquals(afterExpiry.status, 503);
+        assertEquals(
+          (await afterExpiry.json()).code,
+          "generation_outcome_unknown",
+        );
+        assertEquals(db.rows("AiWordPackOperation")[0].state, "running");
+        assertEquals(library.token, null);
+        assertEquals(library.releaseCalls, 1);
+        expectNoNewEffects(1, 1);
+      } finally {
+        sharedEnabled = false;
+      }
     });
 
     await test.step("disabled reward rollout preserves live unlimited access with the global LIMITLESS flag enabled", async () => {

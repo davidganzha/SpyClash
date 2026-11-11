@@ -54,6 +54,7 @@ final class SupabaseAppSession {
     private let persistLegacy: (SupabaseLegacyCredential) throws -> Void
     private let removeLegacy: () -> Void
     private let appStoreRetrySleep: @MainActor (Duration) async throws -> Void
+    private let sharedGenerationRetrySleep: @MainActor (Duration) async throws -> Void
     private(set) var legacyCredential: SupabaseLegacyCredential?
     private var legacyCandidates: [String: SupabaseLegacyCredential] = [:]
     private(set) var session: SupabaseStoredSession?
@@ -68,11 +69,12 @@ final class SupabaseAppSession {
     var userID: String { session?.userID ?? "" }
     var isNativeGameCenterSession: Bool { session?.nativeCredentialKind == .gameCenter }
 
-    init(configuration: SupabaseAppConfiguration? = nil, session: URLSession? = nil, storedSession: SupabaseStoredSession? = SupabaseSessionKeychain.read(), saveSession: @escaping (SupabaseStoredSession) throws -> Void = SupabaseSessionKeychain.save, clearSession: @escaping () -> Void = SupabaseSessionKeychain.clear, mutationJournal: SupabaseAppMutationJournal = SupabaseAppMutationJournal(), storedLegacy: SupabaseLegacyCredential? = SupabaseLegacyKeychain.read(), saveLegacy: @escaping (SupabaseLegacyCredential) throws -> Void = SupabaseLegacyKeychain.save, clearLegacy: @escaping () -> Void = SupabaseLegacyKeychain.clear, appStoreRetrySleep: @escaping @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
+    init(configuration: SupabaseAppConfiguration? = nil, session: URLSession? = nil, storedSession: SupabaseStoredSession? = SupabaseSessionKeychain.read(), saveSession: @escaping (SupabaseStoredSession) throws -> Void = SupabaseSessionKeychain.save, clearSession: @escaping () -> Void = SupabaseSessionKeychain.clear, mutationJournal: SupabaseAppMutationJournal = SupabaseAppMutationJournal(), storedLegacy: SupabaseLegacyCredential? = SupabaseLegacyKeychain.read(), saveLegacy: @escaping (SupabaseLegacyCredential) throws -> Void = SupabaseLegacyKeychain.save, clearLegacy: @escaping () -> Void = SupabaseLegacyKeychain.clear, appStoreRetrySleep: @escaping @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }, sharedGenerationRetrySleep: @escaping @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
         persistSession = saveSession; removeSession = clearSession
         self.mutationJournal = mutationJournal
         persistLegacy = saveLegacy; removeLegacy = clearLegacy
         self.appStoreRetrySleep = appStoreRetrySleep
+        self.sharedGenerationRetrySleep = sharedGenerationRetrySleep
         legacyCredential = storedLegacy?.actorID == storedSession?.userID ? storedLegacy : nil
         configurationResult = Result { try configuration?.validated() ?? SupabaseAppConfiguration.bundled() }
         if let session { http = session }
@@ -291,6 +293,8 @@ final class SupabaseAppSession {
             let value: JSONValue
             if isAppStoreDelivery {
                 value = try await appStoreDeliveryRequest(body: .object(wireBody), actorID: actorID, token: credential, epoch: epoch, permitsRevalidation: token == nil)
+            } else if write && service == "legacy" && action == "generate" {
+                value = try await sharedLibraryGenerationRequest(body: .object(wireBody), actorID: actorID, token: credential, epoch: epoch, permitsRevalidation: token == nil)
             } else {
                 value = try await authenticatedRequest(path: "/functions/v1/app-services", body: .object(wireBody), token: credential, epoch: epoch, permitsRevalidation: token == nil)
             }
@@ -325,6 +329,38 @@ final class SupabaseAppSession {
             throw error
         }
     }
+
+    /// Retry only an explicitly retryable shared-library lookup or topic wait.
+    /// The journal has already fixed the request UUID and payload; every attempt
+    /// observes that same logical generation and its single server-side charge.
+    private func sharedLibraryGenerationRequest(body: JSONValue, actorID: String, token: String, epoch: UUID,
+                                                 permitsRevalidation: Bool) async throws -> JSONValue {
+        let delays: [Duration] = [.milliseconds(500), .seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(15), .seconds(15), .seconds(15)]
+        var completedRetries = 0
+        while true {
+            try Task.checkCancellation()
+            guard generation == epoch, userID == actorID else { throw CancellationError() }
+            do {
+                let result = try await authenticatedRequest(path: "/functions/v1/app-services", body: body, token: token,
+                                                            epoch: epoch, permitsRevalidation: permitsRevalidation)
+                try Task.checkCancellation()
+                guard generation == epoch, userID == actorID else { throw CancellationError() }
+                return result
+            } catch let error as Base44Error {
+                try Task.checkCancellation()
+                guard generation == epoch, userID == actorID else { throw CancellationError() }
+                guard error.statusCode == 503, error.retryable,
+                      Self.sharedLibraryRetryCodes.contains(error.code ?? ""),
+                      delays.indices.contains(completedRetries) else { throw error }
+                let serverDelay = Duration.seconds(min(max(error.retryAfterSeconds ?? 0, 0), 15))
+                let delay = max(delays[completedRetries], serverDelay)
+                completedRetries += 1
+                try await sharedGenerationRetrySleep(delay)
+            }
+        }
+    }
+
+    private static let sharedLibraryRetryCodes: Set<String> = ["shared_generation_in_progress", "shared_library_busy", "shared_library_unavailable"]
 
     private func recoverAppStoreTransaction(_ saved: [String: JSONValue], actorID: String, credential: String,
                                             legacyToken: String?, epoch: UUID, permitsRevalidation: Bool) async throws {
@@ -459,9 +495,10 @@ final class SupabaseAppSession {
         guard (200..<300).contains(response.statusCode) else {
             let details = json["error"].object == nil ? json : json["error"]
             let code = details["code"].string ?? details["error_code"].string ?? details["error"].string ?? "http_\(response.statusCode)"
-            // The binding retry contract requires the server's explicit flag;
-            // a generic 503 must not invent retry permission for this code.
-            let retryable = code == "apple_account_binding_busy" ? details["retryable"].bool : response.statusCode >= 500 || details["retryable"].bool
+            // Binding and shared-library retries require the server's explicit
+            // flag; a generic 503 must not invent retry permission for them.
+            let needsExplicitRetryFlag = code == "apple_account_binding_busy" || Self.sharedLibraryRetryCodes.contains(code)
+            let retryable = needsExplicitRetryFlag ? details["retryable"].bool : response.statusCode >= 500 || details["retryable"].bool
             let bodyDelay: Int?
             if case .number(let seconds) = details["retry_after_seconds"], seconds.isFinite, seconds >= 0 {
                 bodyDelay = Int(exactly: seconds.rounded(.up))
