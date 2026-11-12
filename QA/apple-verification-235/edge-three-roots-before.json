@@ -1,0 +1,20 @@
+{
+  "runtime": {
+    "deno": "supabase-edge-runtime-1.70.5 (compatible with Deno v2.1.4)",
+    "v8": "11.6.189.12",
+    "typescript": "5.1.6"
+  },
+  "checks": {},
+  "stages": [
+    {
+      "stage": "verifyCertificateChainWithoutCaching",
+      "ok": false,
+      "error": {}
+    }
+  ],
+  "verification": {
+    "status": 1,
+    "statusName": "VERIFICATION_FAILURE"
+  },
+  "root_config_compact_json_sha256": "47e18bba161091237e42d517077bf4e40a0b91e6e52f63a836e237c91e32e8ac"
+}

@@ -10,8 +10,8 @@ import {ensureAppleOCSPDateParsing} from '../../supabase/functions/app-services/
 export async function runAppleVerifierRegressionCases(fixtures: ReturnType<typeof createAppleVerifierFixtures>) {
   const {SignedDataVerifier,Environment,VerificationStatus,VerificationException,AppStoreServerAPIClient} = await import('npm:@apple/app-store-server-library@3.1.0');
   const results: string[] = [];
-  const verifier = (environment = Environment.SANDBOX, root = fixtures.rootDER) => {
-    const value=new SignedDataVerifier([root],true,environment,'com.spyclash.ios',6793534085);
+  const verifier = (environment = Environment.SANDBOX, root:Buffer|Buffer[] = fixtures.rootDER) => {
+    const value=new SignedDataVerifier(Array.isArray(root)?root:[root],true,environment,'com.spyclash.ios',6793534085);
     ensureAppleOCSPDateParsing(value);
     return value;
   };
@@ -35,6 +35,23 @@ export async function runAppleVerifierRegressionCases(fixtures: ReturnType<typeo
   await run('valid Production P-256 transaction with live OCSP',async()=>{
     const value=await verifier(Environment.PRODUCTION).verifyAndDecodeTransaction(fixtures.signed({environment:'Production'}));
     assert.equal(value.environment,'Production');assert.equal(fixtures.calls,2);
+  });
+  await run('mixed RSA roots before trusted EC root allow a valid signed transaction',async()=>{
+    for(const roots of [[...fixtures.rsaRootDERs,fixtures.rootDER],[fixtures.rootDER,...fixtures.rsaRootDERs]]) {
+      fixtures.setMode('good');
+      const value=await verifier(Environment.SANDBOX,roots).verifyAndDecodeTransaction(fixtures.signed());
+      assert.equal(value.transactionId,'2000000000000001');assert.equal(fixtures.calls,2);
+    }
+  });
+  await run('mixed RSA and EC roots without the issuing root reject the chain',async()=>{
+    await assert.rejects(verifier(Environment.SANDBOX,[...fixtures.rsaRootDERs,fixtures.foreignRootDER]).verifyAndDecodeTransaction(fixtures.signed()),rejected());
+    assert.equal(fixtures.calls,0);
+  });
+  await run('mixed trust roots still reject a forged JWS signature',async()=>{
+    const pieces=fixtures.signed().split('.');
+    const signature=Buffer.from(pieces[2],'base64url');signature[signature.length-1]^=1;pieces[2]=signature.toString('base64url');
+    await assert.rejects(verifier(Environment.SANDBOX,[...fixtures.rsaRootDERs,fixtures.rootDER]).verifyAndDecodeTransaction(pieces.join('.')),rejected());
+    assert.equal(fixtures.calls,2);
   });
   await run('Sandbox keeps environment mismatch signal for Production-first selection',async()=>{
     await assert.rejects(verifier(Environment.PRODUCTION).verifyAndDecodeTransaction(fixtures.signed()),rejected(VerificationStatus.INVALID_ENVIRONMENT));

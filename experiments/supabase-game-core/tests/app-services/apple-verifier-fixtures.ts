@@ -14,9 +14,9 @@ export function createAppleVerifierFixtures(origin: string) {
   const pairs = Array.from({length: 7}, () => KEYUTIL.generateKeypair('EC', 'secp256r1'));
   let serial = 1;
   const now = Date.now();
-  function certificate(subject: string, issuer: string, pair: any, issuerPair: any, ext: any[] = [], options: {expired?: boolean} = {}) {
+  function certificate(subject: string, issuer: string, pair: any, issuerPair: any, ext: any[] = [], options: {expired?: boolean;sigalg?:string} = {}) {
     return KJUR.asn1.x509.X509Util.newCertPEM({
-      serial: {int: serial++}, sigalg: 'SHA256withECDSA',
+      serial: {int: serial++}, sigalg: options.sigalg || 'SHA256withECDSA',
       issuer: {str: issuer}, subject: {str: subject}, sbjpubkey: pair.pubKeyObj,
       notbefore: time(now - 86400_000), notafter: time(options.expired ? now - 3600_000 : now + 86400_000),
       ext, cakey: issuerPair.prvKeyObj,
@@ -26,6 +26,13 @@ export function createAppleVerifierFixtures(origin: string) {
   const intermediateName = '/CN=Disposable Apple verifier test intermediate';
   const leafName = '/CN=Disposable Apple verifier test leaf';
   const root = certificate(rootName, rootName, pairs[0], pairs[0], [{extname:'basicConstraints',critical:true,cA:true}]);
+  // Production trusts older RSA Apple roots before its EC root. A mismatched
+  // issuer key must return false so verification reaches the matching root.
+  const rsaRoots = [1,2].map(index=>{
+    const pair=KEYUTIL.generateKeypair('RSA',2048);
+    const name=`/CN=Disposable RSA verifier test root ${index}`;
+    return certificate(name,name,pair,pair,[{extname:'basicConstraints',critical:true,cA:true}],{sigalg:'SHA256withRSA'});
+  });
   const intermediateExtensions = [
     {extname:'basicConstraints',critical:true,cA:true},
     {extname:'1.2.840.113635.100.6.2.1',extn:'0500'},
@@ -76,7 +83,7 @@ export function createAppleVerifierFixtures(origin: string) {
     return bytes;
   }
   return {
-    rootDER: der(root), foreignRootDER: der(foreignRoot), leafDER: der(leaf), intermediateDER: der(intermediate),
+    rootDER: der(root), rsaRootDERs:rsaRoots.map(der), foreignRootDER: der(foreignRoot), leafDER: der(leaf), intermediateDER: der(intermediate),wrongCurveLeafDER:der(wrongCurveLeaf),
     privateSigningKeyPEM: KEYUTIL.getPEM(pairs[2].prvKeyObj,'PKCS8PRV') as string,
     verifyClientJWT(token: string) { return KJUR.jws.JWS.verify(token,pairs[2].pubKeyObj,['ES256']); },
     get calls() { return calls; },

@@ -1,0 +1,48 @@
+{
+  "node": "v22.22.1",
+  "jsrsasign": "11.1.3",
+  "root_config_compact_json_sha256": "47e18bba161091237e42d517077bf4e40a0b91e6e52f63a836e237c91e32e8ac",
+  "certificate_signature_algorithm": "SHA384withECDSA",
+  "results": [
+    {
+      "index": 0,
+      "subject": "C=US\nO=Apple Inc.\nOU=Apple Certification Authority\nCN=Apple Root CA",
+      "type": "rsa",
+      "certificate_sha256": "b0b1730ecbc7ff4505142c49f1295e6eda6bcaed7e2c68c5be91b5a11001f024",
+      "native": {
+        "result": false
+      },
+      "adapter_backend": {
+        "error": "Signature: unsupported public key alg: ecdsa",
+        "thrown_type": "string",
+        "instanceof_error": false
+      }
+    },
+    {
+      "index": 1,
+      "subject": "CN=Apple Root CA - G2\nOU=Apple Certification Authority\nO=Apple Inc.\nC=US",
+      "type": "rsa",
+      "certificate_sha256": "c2b9b042dd57830e7d117dac55ac8ae19407d38e41d88f3215bc3a890444a050",
+      "native": {
+        "result": false
+      },
+      "adapter_backend": {
+        "error": "Signature: unsupported public key alg: ecdsa",
+        "thrown_type": "string",
+        "instanceof_error": false
+      }
+    },
+    {
+      "index": 2,
+      "subject": "CN=Apple Root CA - G3\nOU=Apple Certification Authority\nO=Apple Inc.\nC=US",
+      "type": "ec",
+      "certificate_sha256": "63343abfb89a6a03ebb57e9b3f5fa7be7c4f5c756f3017b3a8c488c3653e9179",
+      "native": {
+        "result": true
+      },
+      "adapter_backend": {
+        "result": true
+      }
+    }
+  ]
+}

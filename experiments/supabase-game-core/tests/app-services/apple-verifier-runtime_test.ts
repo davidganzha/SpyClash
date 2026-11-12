@@ -36,7 +36,7 @@ Deno.test('Apple SDK validates signed transactions and OCSP with runtime compati
       assert.throws(()=>new nodeCrypto.X509Certificate(fixtures.rootDER).toString(),/Not implemented/);
     }
     const previous=nodeCrypto.X509Certificate;
-    ensureAppleX509Compatibility(fixtures.rootDER);
+    ensureAppleX509Compatibility(fixtures.rsaRootDERs[0]);
     const installed=nodeCrypto.X509Certificate;
     ensureAppleX509Compatibility(fixtures.rootDER);
     assert.equal(nodeCrypto.X509Certificate,installed);
@@ -48,6 +48,23 @@ Deno.test('Apple SDK validates signed transactions and OCSP with runtime compati
       assert.equal(certificate.toString(),pem);
     }
     const results=await runAppleVerifierRegressionCases(fixtures);
+    if(installed!==previous) {
+      // Check the adapter's Node-compatible verification contract. Modern Deno's
+      // untouched native implementation has separate cross-key-type behavior.
+      const rsaRoot=new installed(fixtures.rsaRootDERs[0]);
+      const ecRoot=new installed(fixtures.rootDER);
+      assert.equal(rsaRoot.verify(rsaRoot.publicKey),true);
+      assert.equal(rsaRoot.verify(ecRoot.publicKey),false);
+      assert.equal(ecRoot.verify(rsaRoot.publicKey),false);
+      const intermediate=new installed(fixtures.intermediateDER);
+      const leaf=new installed(fixtures.leafDER);
+      assert.equal(leaf.verify(intermediate.publicKey),true);
+      assert.equal(leaf.verify(ecRoot.publicKey),false);
+      assert.equal(leaf.verify(new installed(fixtures.wrongCurveLeafDER).publicKey),false);
+      const tamperedCertificate=Buffer.from(fixtures.leafDER);
+      tamperedCertificate[tamperedCertificate.length-1]^=1;
+      assert.equal(new installed(tamperedCertificate).verify(intermediate.publicKey),false);
+    }
     console.log(JSON.stringify({emulatedEdgeRuntime:emulate,passed:results.length,cases:results}));
   } finally { await server.shutdown(); }
 });

@@ -85,6 +85,14 @@ export function ensureAppleX509Compatibility(rootCertificate: Uint8Array): void 
         return lines.length ? lines.join('\n') : undefined;
       }
       override verify(publicKey: KeyObject): boolean {
+        const signatureAlgorithm = this.#parsed.getSignatureAlgorithmField();
+        const issuerKeyType = publicKey.asymmetricKeyType;
+        // Native X509 returns false when a candidate issuer has the wrong key
+        // type. jsrsasign throws for an ECDSA certificate with an RSA key, which
+        // would abort Apple's trusted-root search before a later matching root.
+        if (signatureAlgorithm.endsWith('withECDSA') && issuerKeyType !== 'ec') return false;
+        if (/withRSA(?:andMGF1)?$/.test(signatureAlgorithm)
+            && issuerKeyType !== 'rsa' && issuerKeyType !== 'rsa-pss') return false;
         // Use the SDK's pinned ASN.1/signature library for the missing synchronous
         // X509 operation. This verifies the certificate signature, never bypasses it.
         return this.#parsed.verifySignature(String(publicKey.export({ type: 'spki', format: 'pem' })));

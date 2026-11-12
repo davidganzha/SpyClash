@@ -1,0 +1,11 @@
+--- a/app-services/billing-rules/apple-x509-compatibility.ts
++++ b/app-services/billing-rules/apple-x509-compatibility.ts
+@@ -87,0 +88,8 @@
++        const signatureAlgorithm = this.#parsed.getSignatureAlgorithmField();
++        const issuerKeyType = publicKey.asymmetricKeyType;
++        // Native X509 returns false when a candidate issuer has the wrong key
++        // type. jsrsasign throws for an ECDSA certificate with an RSA key, which
++        // would abort Apple's trusted-root search before a later matching root.
++        if (signatureAlgorithm.endsWith('withECDSA') && issuerKeyType !== 'ec') return false;
++        if (/withRSA(?:andMGF1)?$/.test(signatureAlgorithm)
++            && issuerKeyType !== 'rsa' && issuerKeyType !== 'rsa-pss') return false;
