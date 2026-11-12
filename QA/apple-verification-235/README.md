@@ -31,3 +31,9 @@ The new regression fixtures place two RSA roots before the trusted EC root, asse
 This candidate is prepared for a fresh explicit approval to replace `app-services` in Supabase project `bbkfsgnordtdiblgdzkg`. The previous approval covered the already completed v24 deployment. Before another publication, re-read the hosted v24 bundle and compare every file against [baseline](live-baseline.json); rebase if it has changed.
 
 The user's real purchase remains unconfirmed. After an approved publication, TestFlight restoration/reconciliation is still required for acceptance. Local tests do not establish that acceptance.
+
+## Approved publication — 2026-11-12
+
+The user gave fresh confirmation “да” after the exact target and reviewed follow-up operation were presented. The current v24 bundle still matched the baseline byte-for-byte. The candidate was published as **app-services v25**, with JWT verification retained and only the intended adapter changed. All 77 retrieved source files exactly matched the reviewed candidate. [Receipt](deployment.json).
+
+A read-only GET reached the v25 function and returned its expected `405 / method_not_allowed` at 12:19:14 UTC. An independently scheduled maintenance invocation returned 200 on v25. These confirm publication and startup; successful verification of the user's real purchase remains pending.

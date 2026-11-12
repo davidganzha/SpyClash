@@ -1,0 +1,43 @@
+{
+  "approval": {
+    "date": "2026-11-12",
+    "user_confirmation": "да",
+    "scope": "Publish the reviewed mixed-root Apple verification repair to Supabase bbkfsgnordtdiblgdzkg/app-services"
+  },
+  "source_commit": "77bf532fb9794af5de5285f0823c6d44b7b39e94",
+  "baseline_version": 24,
+  "baseline_source_sha256": "ea11fd2beac08db80f2ee269e0f29e3e1ddba06e5b6efb56a17fad69df1a41b2",
+  "deployed": {
+    "id": "a271cf0c-f0c7-4589-8448-406e286082fa",
+    "name": "app-services",
+    "version": 25,
+    "status": "ACTIVE",
+    "updated_at": 1794485938006,
+    "verify_jwt": true,
+    "ezbr_sha256": "6d997c5b2cf6d13825786e7e64be4313f6e23edfd637c06a68fe38d0415f5052"
+  },
+  "readback": {
+    "all_files_match_reviewed_candidate": true,
+    "file_count": 77,
+    "changed_from_baseline": [
+      "app-services/billing-rules/apple-x509-compatibility.ts"
+    ]
+  },
+  "checks": {
+    "runtime_boot": {
+      "method": "GET",
+      "status": 405,
+      "code": "method_not_allowed",
+      "timestamp": "2026-11-12T12:19:14.296000Z",
+      "logged_version": "25",
+      "read_only": true
+    },
+    "observed_scheduled_maintenance": {
+      "status": 200,
+      "version": "25",
+      "timestamp": "2026-11-12T12:19:01.430000Z",
+      "triggered_by_this_task": false
+    },
+    "real_user_purchase": "Not yet confirmed; TestFlight restoration/reconciliation required"
+  }
+}
