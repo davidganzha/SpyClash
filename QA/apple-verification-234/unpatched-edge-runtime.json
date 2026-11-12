@@ -1,0 +1,39 @@
+{
+  "runtime": {
+    "deno": "supabase-edge-runtime-1.70.5 (compatible with Deno v2.1.4)",
+    "v8": "11.6.189.12",
+    "typescript": "5.1.6"
+  },
+  "methods": {
+    "toString": {
+      "ok": false,
+      "error": "Not implemented: crypto.X509Certificate.prototype.toString",
+      "code": "ERR_NOT_IMPLEMENTED"
+    },
+    "raw": {
+      "ok": false,
+      "error": "Not implemented: crypto.X509Certificate.prototype.raw",
+      "code": "ERR_NOT_IMPLEMENTED"
+    },
+    "verify": {
+      "ok": false,
+      "error": "Not implemented: crypto.X509Certificate.prototype.verify",
+      "code": "ERR_NOT_IMPLEMENTED"
+    },
+    "infoAccess": {
+      "ok": false,
+      "error": "Not implemented: crypto.X509Certificate.prototype.infoAccess",
+      "code": "ERR_NOT_IMPLEMENTED"
+    },
+    "ca": {
+      "ok": true,
+      "result": "true"
+    }
+  },
+  "verification": {
+    "status": 1,
+    "statusName": "VERIFICATION_FAILURE",
+    "cause": "Not implemented: crypto.X509Certificate.prototype.toString",
+    "code": "ERR_NOT_IMPLEMENTED"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "runtime": {
+    "deno": "supabase-edge-runtime-1.70.5 (compatible with Deno v2.1.4)",
+    "v8": "11.6.189.12",
+    "typescript": "5.1.6"
+  },
+  "checks": {
+    "pemBufferRoundtrip": {
+      "ok": true,
+      "value": true
+    },
+    "realIntermediateSignature": {
+      "ok": true,
+      "value": true
+    },
+    "realAppleChainOnlineThenInvalidSignature": {
+      "ok": false,
+      "status": 1,
+      "statusName": "VERIFICATION_FAILURE",
+      "cause": "\"ES256\" signatures must be \"64\" bytes, saw \"1\"",
+      "message": ""
+    },
+    "validSignedUpstreamTransaction": {
+      "ok": true,
+      "value": {
+        "bundleId": "com.example",
+        "environment": "Sandbox"
+      }
+    },
+    "validSignedUpstreamRenewal": {
+      "ok": true,
+      "value": {
+        "environment": "Sandbox"
+      }
+    },
+    "tamperedPayloadRejected": {
+      "ok": false,
+      "status": 1,
+      "statusName": "VERIFICATION_FAILURE",
+      "cause": "invalid signature",
+      "message": ""
+    }
+  },
+  "adapter_sha256": "849f65b71c721b5970b3f4a2518e4cdaf94fe60b397ee95e06814140101b0f0d"
+}

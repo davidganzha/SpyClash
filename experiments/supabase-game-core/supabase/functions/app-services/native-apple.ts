@@ -1,6 +1,8 @@
 import {AppServiceError} from './contracts.ts';
 import {readCanonicalAppleSubscriptionStatus} from './billing-rules/apple-subscription-status.ts';
 import {readAppleLoyaltyHistory, type AppleLoyaltySnapshot} from './billing-rules/apple-loyalty.ts';
+import {appleVerificationFailure} from './billing-rules/apple-verification-failure.ts';
+import {ensureAppleOCSPDateParsing} from './billing-rules/apple-ocsp-date.ts';
 
 export const MAIN_APPLE_BUNDLE = 'com.spyclash.ios';
 export const MAIN_APPLE_APP_ID = 6793534085;
@@ -36,17 +38,22 @@ export function appleVerificationConfigured(config:Config) {
     && config.APP_IAP_PRIVATE_KEY_P8 && config.APP_IAP_ROOT_CERTIFICATES_JSON);
 }
 async function appleTools(config:Config,target:Target) {
-  const {AppStoreServerAPIClient,Environment,SignedDataVerifier,VerificationStatus,GetTransactionHistoryVersion} = await import('npm:@apple/app-store-server-library@3.1.0');
   const {Buffer} = await import('node:buffer');
   const roots = JSON.parse(config.APP_IAP_ROOT_CERTIFICATES_JSON!);
   if (!Array.isArray(roots) || !roots.length || roots.some(r=>typeof r !== 'string'))
     throw new AppServiceError('apple_roots_unconfigured','Apple verification roots are not configured.',503);
+  const certificates = roots.map(r=>Buffer.from(r,'base64'));
+  const {ensureAppleX509Compatibility} = await import('./billing-rules/apple-x509-compatibility.ts');
+  ensureAppleX509Compatibility(certificates[0]);
+  const {AppStoreServerAPIClient,Environment,SignedDataVerifier,VerificationStatus,GetTransactionHistoryVersion} = await import('npm:@apple/app-store-server-library@3.1.0');
   const environment = target.environment === 'Production' ? Environment.PRODUCTION : Environment.SANDBOX;
   const client = new AppStoreServerAPIClient(config.APP_IAP_PRIVATE_KEY_P8!,config.APP_IAP_KEY_ID!,config.APP_IAP_ISSUER_ID!,target.bundle,environment);
+  const verifier = new SignedDataVerifier(certificates,true,environment,target.bundle,target.appAppleID);
+  ensureAppleOCSPDateParsing(verifier);
   return {
     invalidEnvironment:VerificationStatus.INVALID_ENVIRONMENT,
     retryableFailure:VerificationStatus.RETRYABLE_VERIFICATION_FAILURE,
-    verifier:new SignedDataVerifier(roots.map(r=>Buffer.from(r,'base64')),true,environment,target.bundle,target.appAppleID),
+    verifier,
     client,
     getHistory:(id:string,revision:string|null)=>client.getTransactionHistory(id,revision,{},GetTransactionHistoryVersion.V2),
   };
@@ -83,7 +90,9 @@ export async function verifyApple(signed:string,config:Config,dependencies?:{too
     let transaction;
     try { transaction = await tools.verifier.verifyAndDecodeTransaction(signed); } catch (error:any) {
       if (error?.status === tools.invalidEnvironment) continue;
-      if (error?.status === tools.retryableFailure)
+      const failure = appleVerificationFailure(error);
+      console.warn('apple_transaction_verification_failed', {environment:target.environment,...failure});
+      if (error?.status === tools.retryableFailure || failure.runtimeFailure)
         throw new AppServiceError('apple_verification_unavailable','Apple verification is temporarily unavailable. Retry the saved transaction.',503,true);
       throw new AppServiceError('invalid_apple_transaction','The App Store transaction could not be verified for this app.',422);
     }

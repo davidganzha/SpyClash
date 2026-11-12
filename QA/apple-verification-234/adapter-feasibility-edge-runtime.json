@@ -1,0 +1,64 @@
+{
+  "runtime": {
+    "deno": "supabase-edge-runtime-1.70.5 (compatible with Deno v2.1.4)",
+    "v8": "11.6.189.12",
+    "typescript": "5.1.6"
+  },
+  "defaultSame": true,
+  "descriptor": {
+    "writable": true,
+    "enumerable": true,
+    "configurable": true
+  },
+  "methods": {
+    "toString": {
+      "ok": true,
+      "result": "-----BEGIN CERTIFICATE-----\nMIICQzCCAcmgAwIBAgIILcX8iNLFS5UwCgYIKoZIzj0EAwMwZzEbMBkGA1UEAwwS\nQXBwbGUgUm9vdCBDQSAtIEczMSY"
+    },
+    "raw": {
+      "ok": true,
+      "result": "583"
+    },
+    "verify": {
+      "ok": true,
+      "result": "true"
+    },
+    "infoAccess": {
+      "ok": true,
+      "result": "OCSP - URI:http://ocsp.apple.com/ocsp03-applerootcag3"
+    },
+    "ca": {
+      "ok": true,
+      "result": "true"
+    },
+    "issuer": {
+      "ok": true,
+      "result": "CN=Apple Root CA - G3\nOU=Apple Certification Authority\nO=Apple Inc.\nC=US"
+    },
+    "subject": {
+      "ok": true,
+      "result": "CN=Apple Root CA - G3\nOU=Apple Certification Authority\nO=Apple Inc.\nC=US"
+    }
+  },
+  "mutation": {
+    "ok": true,
+    "defaultReplaced": true
+  },
+  "originalCurves": {
+    "leaf": {
+      "namedCurve": "p256"
+    },
+    "recreated": {
+      "namedCurve": "p256"
+    }
+  },
+  "canonicalCurve": {
+    "namedCurve": "prime256v1"
+  },
+  "verifierUsesCompat": true,
+  "verification": {
+    "status": 1,
+    "statusName": "VERIFICATION_FAILURE",
+    "cause": "\"ES256\" signatures must be \"64\" bytes, saw \"1\""
+  }
+}

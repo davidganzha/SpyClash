@@ -1,0 +1,38 @@
+{
+  "ok": true,
+  "runtime": {
+    "deno": "supabase-edge-runtime-1.70.5 (compatible with Deno v2.1.4)",
+    "v8": "11.6.189.12",
+    "typescript": "5.1.6"
+  },
+  "count": 20,
+  "results": [
+    "valid Sandbox P-256 transaction with live OCSP",
+    "valid Production P-256 transaction with live OCSP",
+    "Sandbox keeps environment mismatch signal for Production-first selection",
+    "wrong bundle rejected after full verification",
+    "tampered signed payload rejected",
+    "untrusted root rejected",
+    "expired signing certificate rejected",
+    "missing Apple signing OID rejected",
+    "ES256 cannot accept a P-384 signing key",
+    "JWS algorithm none rejected",
+    "JWS algorithm HS256 rejected",
+    "OCSP revoked rejected",
+    "OCSP unknown rejected",
+    "OCSP stale rejected",
+    "OCSP invalid-time rejected",
+    "OCSP wrong-signer rejected",
+    "OCSP tampered rejected",
+    "OCSP outage remains retryable",
+    "diagnostics classify runtime failure without exposing the payload",
+    "App Store API client signs an ES256 authorization JWT"
+  ],
+  "source_sha256": {
+    "experiments/supabase-game-core/supabase/functions/app-services/billing-rules/apple-x509-compatibility.ts": "61ef2a1f16a65bf0d10c845db9fbe9fc6ac9f8f9d9e33343974c0689ec015f08",
+    "experiments/supabase-game-core/supabase/functions/app-services/billing-rules/apple-ocsp-date.ts": "58251720e452a996dab8dbe43776fcc51c7a394946b7e5e869d7e6decc10e44b",
+    "experiments/supabase-game-core/tests/app-services/apple-verifier-fixtures.ts": "c42f612de35becc7a17bd1bc62e391f0fe8af0352309816c3ec81ded1a8953c1",
+    "experiments/supabase-game-core/tests/app-services/apple-verifier-regression.ts": "72f07a8eb398380ba16b27d0c96d2475cebc383abbd35cb2117c85bf5f304e8d",
+    "QA/apple-verification-234/edge-runtime/index.ts": "4281086aa128806f8c5da5ba77293f91ae30a6b81f849234a3cb79a29469cc94"
+  }
+}
