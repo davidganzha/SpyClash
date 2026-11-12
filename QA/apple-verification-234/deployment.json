@@ -1,0 +1,41 @@
+{
+  "approval": {
+    "scope": "Replace Supabase app-services in bbkfsgnordtdiblgdzkg with the reviewed Apple verification candidate",
+    "user_confirmation": "\u0434\u0430 \u043f\u0443\u0431\u043b\u0438\u043a\u0443\u0439",
+    "date": "2026-11-12"
+  },
+  "source_commit": "44316748d3ae03ca89104fff6a12a3fe7375d3c0",
+  "baseline_version": 23,
+  "deployed": {
+    "id": "a271cf0c-f0c7-4589-8448-406e286082fa",
+    "name": "app-services",
+    "status": "ACTIVE",
+    "version": 24,
+    "updated_at": 1794484750333,
+    "verify_jwt": true,
+    "ezbr_sha256": "ea11fd2beac08db80f2ee269e0f29e3e1ddba06e5b6efb56a17fad69df1a41b2"
+  },
+  "readback": {
+    "version": 24,
+    "files": 77,
+    "all_files_match_reviewed_candidate": true,
+    "verify_jwt": true
+  },
+  "checks": {
+    "real_user_purchase": "Not yet confirmed; user restoration/reconciliation required",
+    "runtime_boot": {
+      "method": "GET",
+      "status": 405,
+      "code": "method_not_allowed",
+      "read_only": true,
+      "logged_version": "24",
+      "timestamp": "2026-11-12T11:59:58.118000Z"
+    },
+    "observed_maintenance": {
+      "status": 200,
+      "version": "24",
+      "timestamp": "2026-11-12T12:00:05.100000Z",
+      "triggered_by_this_task": false
+    }
+  }
+}

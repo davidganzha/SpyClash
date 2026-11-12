@@ -8,7 +8,7 @@ Read-only inspection of Supabase project `bbkfsgnordtdiblgdzkg` found six HTTP 4
 
 The deployed verifier collapses non-retryable Apple SDK exceptions, including unsupported server crypto primitives, into `invalid_apple_transaction` / 422. Its handler does not log the nested exception; the precise nested cause of the user's request is therefore unavailable. A local reproduction using the actual pinned Apple SDK and official Supabase Edge Runtime deterministically fails before signature validation because the runtime's X509 methods are unimplemented. See [runtime reproduction](runtime-reproduction.md).
 
-The app leaves the StoreKit transaction unfinished until server acknowledgement, allowing reconciliation after the server repair. No charge, purchase, restore, entitlement grant, production configuration change, or deployment was performed during this investigation.
+The app leaves the StoreKit transaction unfinished until server acknowledgement, allowing reconciliation after the server repair. Diagnosis and preparation did not perform a charge, purchase, restore, entitlement grant, production configuration change, or deployment. The subsequently approved deployment is recorded below.
 
 ## Scope
 
@@ -36,3 +36,9 @@ The minimal candidate has 77 files: the original 74, one modified verifier modul
 Production publication requires fresh explicit approval for replacing **Supabase `app-services` in project `bbkfsgnordtdiblgdzkg`**. Before publication, re-read the hosted source and compare it with the recorded v23 baseline. Stop and rebase the repair if that baseline has changed. A GitHub push or successful local test is not production approval.
 
 Successful local signed-fixture validation does not prove that the user's real transaction has been accepted. After an approved deployment, restore/reconciliation on the user's TestFlight installation remains the acceptance check.
+
+## Approved deployment — 2026-11-12
+
+After the exact target and operation were presented, the user confirmed “да публикуй” in this chat. The fresh hosted v23 source matched all 74 baseline files and the original bundle hash. The reviewed 77-file candidate was published as **app-services v24**, retaining JWT verification. All 77 downloaded files exactly matched the reviewed candidate after publication. [Deployment receipt](deployment.json).
+
+A read-only GET reached the new function and returned its expected `405 / method_not_allowed` response at 11:59:58 UTC; the server log identifies v24. An independently scheduled maintenance invocation subsequently returned 200 on v24. These establish publication and runtime startup, not successful verification of the user's real purchase. The installed TestFlight app still needs restoration/reconciliation to establish that acceptance.
