@@ -1,0 +1,12 @@
+{
+  "scope": "Local-only fixture capacity observation; not the live 150-second hang",
+  "supavisorVersion": "2.9.13",
+  "sessionPoolSize": 3,
+  "simultaneousWorkers": 2,
+  "postgresJSMaxPerWorker": 3,
+  "observedDriverErrorCode": "XX000",
+  "observedPoolerErrorCode": "EMAXCONNSESSION",
+  "poolerMessage": "max clients reached in session mode - max clients are limited to pool_size: 3",
+  "harnessResult": "Both simultaneous max3 session suites failed their first cold wave; isolated max3 session suites pass.",
+  "interpretation": "Two workers can request six session connections against a three-session pool; session pooling requires an adequate aggregate connection budget."
+}

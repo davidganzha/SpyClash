@@ -6,46 +6,58 @@ import { prepareLegacyExternal } from './legacy.ts';
 import { processAccountDeletionJobs } from './lifecycle.ts';
 import { prepareMainAccountDeletion } from './main-account-deletion.ts';
 import { prepareGenerationRewards } from './generation-rewards.ts';
+import { watchAppRequest, type SlowRequestDiagnosticDependencies } from './slow-request-diagnostic.ts';
 
-export function createAppHandler({ db, authenticate, config = {}, fetch: fetcher = fetch }: {
+export function createAppHandler({ db, authenticate, config = {}, fetch: fetcher = fetch, slowRequestDiagnostics }: {
   db: any; authenticate: (token: string) => Promise<any>;
   config?: Record<string, string | undefined>; fetch?: typeof fetch;
+  slowRequestDiagnostics?: SlowRequestDiagnosticDependencies;
 }) {
   return async (request: Request): Promise<Response> => {
     if (request.method !== 'POST') return Response.json({ code: 'method_not_allowed', message: 'POST required', retryable: false }, { status: 405 });
+    const progress = watchAppRequest(slowRequestDiagnostics);
     try {
       const bearer = request.headers.get('authorization') || '';
       if (!bearer.startsWith('Bearer ')) throw new AppServiceError('unauthorized', 'Sign in to continue.', 401);
       const token = bearer.slice(7);
       const user = await authenticate(token);
       const id = requireUUID(user?.id, 'actor');
+      progress.stage('session_gate');
       await sessionGate(db, id, verifiedSessionID(token));
+      progress.stage('read_command');
       const raw = await request.text();
       if (new TextEncoder().encode(raw).byteLength > 131072) throw new AppServiceError('request_too_large', 'Request too large.', 413);
       let body: any;
       try { body = JSON.parse(raw); } catch { throw new AppServiceError('invalid_json', 'Invalid request.'); }
       validateCommand(body);
+      progress.command(body);
       const actor = { id, email: id + '@example.test', contactEmail: String(user.email || ''),
         full_name: String(user.user_metadata?.full_name || user.user_metadata?.name || 'Operative').slice(0, 80),
         metadata: user.user_metadata || {} };
       // Avoid provider requests from already tombstoned accounts. executeApp
       // rechecks under the write lock after any external verification.
       if (!(body.service === 'profile' && body.action === 'delete')) {
+        progress.stage('account_gate');
         await db.begin(async (tx: any) => { await accountGate(tx, id); });
+        progress.stage('receipt');
         const replay = await replayAppReceipt(db, actor, body);
         if (replay) return Response.json(replay.body, { status: replay.status, headers: { 'Cache-Control': 'no-store' } });
       }
+      progress.stage('refresh_membership');
       const accountConfig = body.service === 'profile' && body.action === 'delete' ? config
         : await refreshNativeMembership({actor,body,config},{db});
       let evidence;
+      progress.stage('prepare_external');
       if (body.service === 'membership') evidence = await prepareMembershipExternal({ actor, body, config:accountConfig }, { db, fetch: fetcher });
       if (body.service === 'legacy') evidence = await prepareLegacyExternal({ actor, body, config:accountConfig }, { db, fetch: fetcher });
       if (body.service === 'generation_rewards') evidence = await prepareGenerationRewards({actor,body,config:accountConfig},{db,fetch:fetcher});
       if (body.service === 'profile' && body.action === 'delete') evidence = await prepareMainAccountDeletion({ actor, body, config }, { db, fetch: fetcher });
+      progress.stage('execute');
       const result = await executeApp(db, actor, body, accountConfig, evidence);
       if (body.service === 'profile' && body.action === 'delete' && result.status === 200) {
         // The tombstone already committed. Auth cleanup is safe to retry after
         // a lost response; the durable job remains if Auth is unavailable.
+        progress.stage('cleanup');
         try { await processAccountDeletionJobs(db, config, fetcher, actor.id); } catch { /* worker retries */ }
       }
       return Response.json(result.body, { status: result.status, headers: { 'Cache-Control': 'no-store' } });
@@ -55,6 +67,8 @@ export function createAppHandler({ db, authenticate, config = {}, fetch: fetcher
       }
       console.error('app-services request failed', String(error?.code || error?.name || 'internal'));
       return Response.json({ code: 'app_service_unavailable', message: 'The action could not be confirmed. Retry the saved request.', retryable: true }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
+    } finally {
+      progress.finish();
     }
   };
 }

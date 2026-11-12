@@ -1,0 +1,20 @@
+{
+  "patchReconstructionMatches": true,
+  "candidateFiles": 78,
+  "changedFiles": [
+    "app-services/handler.ts",
+    "app-services/index.ts",
+    "app-services/slow-request-diagnostic.ts"
+  ],
+  "sourceBuild": 236,
+  "fullSourceTypecheck": "passed",
+  "candidateTypecheck": "passed",
+  "diagnosticTestsPassed": 10,
+  "deployed": false,
+  "finalSessionWorkers": 2,
+  "finalSessionPoolMaxPerWorker": 1,
+  "finalConcurrentRequestsPassed": 234,
+  "finalMaximumRequestMilliseconds": 2930,
+  "runtime": "Supabase Edge Runtime 1.77.9 / Deno 2.1.4",
+  "exactProductionHangReproduced": false
+}

@@ -1,0 +1,125 @@
+--- a/app-services/handler.ts
++++ b/app-services/handler.ts
+@@ -8,0 +9 @@
++import { watchAppRequest, type SlowRequestDiagnosticDependencies } from './slow-request-diagnostic.ts';
+@@ -10 +11 @@
+-export function createAppHandler({ db, authenticate, config = {}, fetch: fetcher = fetch }: {
++export function createAppHandler({ db, authenticate, config = {}, fetch: fetcher = fetch, slowRequestDiagnostics }: {
+@@ -12,0 +14 @@
++  slowRequestDiagnostics?: SlowRequestDiagnosticDependencies;
+@@ -15,0 +18 @@
++    const progress = watchAppRequest(slowRequestDiagnostics);
+@@ -21,0 +25 @@
++      progress.stage('session_gate');
+@@ -22,0 +27 @@
++      progress.stage('read_command');
+@@ -27,0 +33 @@
++      progress.command(body);
+@@ -33,0 +40 @@
++        progress.stage('account_gate');
+@@ -34,0 +42 @@
++        progress.stage('receipt');
+@@ -37,0 +46 @@
++      progress.stage('refresh_membership');
+@@ -40,0 +50 @@
++      progress.stage('prepare_external');
+@@ -44,0 +55 @@
++      progress.stage('execute');
+@@ -48,0 +60 @@
++        progress.stage('cleanup');
+@@ -57,0 +70,2 @@
++    } finally {
++      progress.finish();
+--- a/app-services/index.ts
++++ b/app-services/index.ts
+@@ -18 +18,3 @@
+-  connection.port = '6543';
++  // Postgres.js pipelines queries, which Supavisor transaction mode does not
++  // support. Session mode keeps replies and sql.begin() on the same backend.
++  connection.port = '5432';
+@@ -21 +23,2 @@
+-const db = postgres(connection.href, { prepare: false, max: 3, idle_timeout: 15, connect_timeout: 8, ...(local ? {} : { ssl: 'require' }) });
++// Session mode pins a backend per connection; keep one per warm worker.
++const db = postgres(connection.href, { prepare: false, max: 1, idle_timeout: 15, connect_timeout: 8, ...(local ? {} : { ssl: 'require' }) });
+--- /dev/null
++++ b/app-services/slow-request-diagnostic.ts
+@@ -0,0 +1,79 @@
++const slowRequestStages = [
++  'authenticate', 'session_gate', 'read_command', 'account_gate', 'receipt',
++  'refresh_membership', 'prepare_external', 'execute', 'cleanup',
++] as const;
++
++export type SlowRequestStage = typeof slowRequestStages[number];
++type SlowRequestOperation = 'unclassified' | 'profile' | 'profile.delete' | 'community'
++  | 'notifications' | 'push' | 'legacy' | 'generation_rewards' | 'membership'
++  | 'membership.check' | 'membership.check_subscription' | 'membership.prepare'
++  | 'membership.prepare_purchase' | 'membership.sync_transaction';
++
++export interface SlowRequestDiagnostic {
++  stage: SlowRequestStage;
++  operation: SlowRequestOperation;
++}
++
++export interface SlowRequestDiagnosticDependencies {
++  /** Returns a cancellation function; the callback must be scheduled once. */
++  schedule?: (callback: () => void, delayMilliseconds: number) => () => void;
++  diagnose?: (event: SlowRequestDiagnostic) => void;
++}
++
++function commandOperation(command: unknown): SlowRequestOperation {
++  if (!command || typeof command !== 'object' || Array.isArray(command)) return 'unclassified';
++  const { service, action } = command as { service?: unknown; action?: unknown };
++  switch (service) {
++    case 'profile': return action === 'delete' ? 'profile.delete' : 'profile';
++    case 'community': return 'community';
++    case 'notifications': return 'notifications';
++    case 'push': return 'push';
++    case 'legacy': return 'legacy';
++    case 'generation_rewards': return 'generation_rewards';
++    case 'membership':
++      switch (action) {
++        case 'check': return 'membership.check';
++        case 'check_subscription': return 'membership.check_subscription';
++        case 'prepare': return 'membership.prepare';
++        case 'prepare_purchase': return 'membership.prepare_purchase';
++        case 'sync_transaction': return 'membership.sync_transaction';
++        default: return 'membership';
++      }
++    default: return 'unclassified';
++  }
++}
++
++/** Observe a slow request without cancelling it, retrying it, or logging its data. */
++export function watchAppRequest({ schedule, diagnose }: SlowRequestDiagnosticDependencies = {}) {
++  let stage: SlowRequestStage = 'authenticate';
++  let operation: SlowRequestOperation = 'unclassified';
++  let finished = false;
++  let warned = false;
++  let cancel = () => {};
++  const scheduleOnce = schedule ?? ((callback: () => void, delay: number) => {
++    const timer = setTimeout(callback, delay);
++    return () => clearTimeout(timer);
++  });
++  const report = diagnose ?? ((event: SlowRequestDiagnostic) => {
++    console.warn('app-services slow request', JSON.stringify(event));
++  });
++  try {
++    cancel = scheduleOnce(() => {
++      if (finished || warned) return;
++      warned = true;
++      // A logging failure must not escape the timer or affect the request.
++      try { report({ stage, operation }); } catch { /* diagnostic only */ }
++    }, 12_000);
++  } catch { /* Diagnostics must not prevent a request from running. */ }
++  return {
++    stage(next: SlowRequestStage) {
++      if (slowRequestStages.includes(next)) stage = next;
++    },
++    command(command: unknown) { operation = commandOperation(command); },
++    finish() {
++      if (finished) return;
++      finished = true;
++      try { cancel(); } catch { /* diagnostic only */ }
++    },
++  };
++}

@@ -1,0 +1,909 @@
+{
+  "mode": "session",
+  "runtime": {
+    "deno": "supabase-edge-runtime-1.77.9 (compatible with Deno v2.1.4)",
+    "v8": "11.6.189.12",
+    "typescript": "5.1.6"
+  },
+  "postgresJS": "3.4.9",
+  "handlerSHA256": "3494e531a074421741221483966c0ca55393c8ed754e5ccfc07925507772d428",
+  "deadlineMilliseconds": 20000,
+  "idleSeconds": 16,
+  "scenarios": [
+    {
+      "concurrency": 3,
+      "waves": [
+        {
+          "label": "cold-membership-first",
+          "results": [
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 300,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 634
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 644
+            }
+          ]
+        },
+        {
+          "label": "repeat",
+          "results": [
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 147,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 85
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 94
+            }
+          ]
+        },
+        {
+          "label": "after-idle-timeout",
+          "results": [
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 164,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 106
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 116
+            }
+          ]
+        }
+      ],
+      "queries": 301,
+      "externalCalls": 0
+    },
+    {
+      "concurrency": 12,
+      "waves": [
+        {
+          "label": "cold-membership-first",
+          "results": [
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 394,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 228
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 253
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 400,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 242
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 287
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 408,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 290
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 313
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 444,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 325
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 349
+            }
+          ]
+        },
+        {
+          "label": "repeat",
+          "results": [
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 365,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 199
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 203
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 379,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 234
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 222
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 416,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 268
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 268
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 380,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 304
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 308
+            }
+          ]
+        }
+      ],
+      "queries": 785,
+      "externalCalls": 0
+    },
+    {
+      "concurrency": 30,
+      "waves": [
+        {
+          "label": "cold-membership-first",
+          "results": [
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 890,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 480
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 467
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 897,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 501
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 506
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 945,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 541
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 547
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 895,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 580
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 583
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 950,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 582
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 628
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 998,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 635
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 653
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 950,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 670
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 707
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 1001,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 705
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 722
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 1046,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 745
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 786
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 1005,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 766
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 786
+            }
+          ]
+        },
+        {
+          "label": "repeat",
+          "results": [
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 827,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 413
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 419
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 832,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 427
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 465
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 843,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 470
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 489
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 882,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 504
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 531
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 891,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 541
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 554
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 898,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 587
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 583
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 929,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 612
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 629
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 942,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 645
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 660
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 951,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 679
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 698
+            },
+            {
+              "service": "membership",
+              "action": "check",
+              "requestBytes": 41,
+              "status": 200,
+              "milliseconds": 982,
+              "active": false,
+              "remaining": 10
+            },
+            {
+              "service": "profile",
+              "action": "current",
+              "requestBytes": 40,
+              "status": 200,
+              "milliseconds": 724
+            },
+            {
+              "service": "notifications",
+              "action": "summary",
+              "requestBytes": 46,
+              "status": 200,
+              "milliseconds": 733
+            }
+          ]
+        }
+      ],
+      "queries": 1951,
+      "externalCalls": 0
+    }
+  ],
+  "identityAndRollback": {
+    "results": [
+      {
+        "account": "alpha",
+        "service": "profile",
+        "identityMatched": true
+      },
+      {
+        "account": "bravo",
+        "service": "profile",
+        "identityMatched": true
+      },
+      {
+        "account": "alpha",
+        "service": "membership",
+        "identityMatched": true
+      },
+      {
+        "account": "bravo",
+        "service": "membership",
+        "identityMatched": true
+      },
+      {
+        "account": "alpha",
+        "service": "profile",
+        "identityMatched": true
+      },
+      {
+        "account": "bravo",
+        "service": "profile",
+        "identityMatched": true
+      },
+      {
+        "account": "alpha",
+        "service": "membership",
+        "identityMatched": true
+      },
+      {
+        "account": "bravo",
+        "service": "membership",
+        "identityMatched": true
+      },
+      {
+        "account": "alpha",
+        "service": "profile",
+        "identityMatched": true
+      },
+      {
+        "account": "bravo",
+        "service": "profile",
+        "identityMatched": true
+      },
+      {
+        "account": "alpha",
+        "service": "membership",
+        "identityMatched": true
+      },
+      {
+        "account": "bravo",
+        "service": "membership",
+        "identityMatched": true
+      },
+      {
+        "account": "alpha",
+        "service": "profile",
+        "identityMatched": true
+      },
+      {
+        "account": "bravo",
+        "service": "profile",
+        "identityMatched": true
+      },
+      {
+        "account": "alpha",
+        "service": "membership",
+        "identityMatched": true
+      },
+      {
+        "account": "bravo",
+        "service": "membership",
+        "identityMatched": true
+      },
+      {
+        "account": "alpha",
+        "service": "profile",
+        "identityMatched": true
+      },
+      {
+        "account": "bravo",
+        "service": "profile",
+        "identityMatched": true
+      },
+      {
+        "account": "alpha",
+        "service": "membership",
+        "identityMatched": true
+      },
+      {
+        "account": "bravo",
+        "service": "membership",
+        "identityMatched": true
+      },
+      {
+        "account": "alpha",
+        "service": "profile",
+        "identityMatched": true
+      },
+      {
+        "account": "bravo",
+        "service": "profile",
+        "identityMatched": true
+      },
+      {
+        "account": "alpha",
+        "service": "membership",
+        "identityMatched": true
+      },
+      {
+        "account": "bravo",
+        "service": "membership",
+        "identityMatched": true
+      }
+    ],
+    "rollbackVerified": true
+  },
+  "poolMax": 3
+}

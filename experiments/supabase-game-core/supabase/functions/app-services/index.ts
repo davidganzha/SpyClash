@@ -16,10 +16,13 @@ const connection = new URL(databaseURL);
 if (!local) {
   if (connection.hostname !== 'db.bbkfsgnordtdiblgdzkg.supabase.co' || connection.username !== 'postgres') throw new Error('Unexpected staging database configuration.');
   connection.hostname = 'aws-0-eu-west-1.pooler.supabase.com';
-  connection.port = '6543';
+  // Postgres.js pipelines queries, which Supavisor transaction mode does not
+  // support. Session mode keeps replies and sql.begin() on the same backend.
+  connection.port = '5432';
   connection.username = 'postgres.bbkfsgnordtdiblgdzkg';
 }
-const db = postgres(connection.href, { prepare: false, max: 3, idle_timeout: 15, connect_timeout: 8, ...(local ? {} : { ssl: 'require' }) });
+// Session mode pins a backend per connection; keep one per warm worker.
+const db = postgres(connection.href, { prepare: false, max: 1, idle_timeout: 15, connect_timeout: 8, ...(local ? {} : { ssl: 'require' }) });
 const authenticate = async (token: string) => {
   const key = Deno.env.get('SUPABASE_ANON_KEY');
   if (!key) throw new Error('Missing Auth client configuration.');

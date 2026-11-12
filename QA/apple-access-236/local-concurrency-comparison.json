@@ -1,0 +1,153 @@
+{
+  "recordedAt": "2026-11-12T12:54:09.183334+00:00",
+  "localHangReproduced": false,
+  "provesHostedIncidentResolved": false,
+  "comparisons": [
+    {
+      "artifact": "local-direct-concurrency.json",
+      "runtime": "2.8.3",
+      "mode": "direct",
+      "poolMax": 3,
+      "handlerSHA256": "3494e531a074421741221483966c0ca55393c8ed754e5ccfc07925507772d428",
+      "requestCount": 117,
+      "coldRepeatedIdleRequests": 93,
+      "statusCodes": [
+        200
+      ],
+      "maxRequestMilliseconds": 392,
+      "crossAccountChecks": 24,
+      "rollbackVerified": true,
+      "externalCalls": 0,
+      "simultaneousWorkers": 1
+    },
+    {
+      "artifact": "local-transaction-concurrency.json",
+      "runtime": "2.8.3",
+      "mode": "transaction",
+      "poolMax": 3,
+      "handlerSHA256": "3494e531a074421741221483966c0ca55393c8ed754e5ccfc07925507772d428",
+      "requestCount": 117,
+      "coldRepeatedIdleRequests": 93,
+      "statusCodes": [
+        200
+      ],
+      "maxRequestMilliseconds": 719,
+      "crossAccountChecks": 24,
+      "rollbackVerified": true,
+      "externalCalls": 0,
+      "simultaneousWorkers": 1
+    },
+    {
+      "artifact": "local-session-concurrency.json",
+      "runtime": "2.8.3",
+      "mode": "session",
+      "poolMax": 3,
+      "handlerSHA256": "3494e531a074421741221483966c0ca55393c8ed754e5ccfc07925507772d428",
+      "requestCount": 117,
+      "coldRepeatedIdleRequests": 93,
+      "statusCodes": [
+        200
+      ],
+      "maxRequestMilliseconds": 265,
+      "crossAccountChecks": 24,
+      "rollbackVerified": true,
+      "externalCalls": 0,
+      "simultaneousWorkers": 1
+    },
+    {
+      "artifact": "edge-direct-concurrency.json",
+      "runtime": "supabase-edge-runtime-1.77.9 (compatible with Deno v2.1.4)",
+      "mode": "direct",
+      "poolMax": 3,
+      "handlerSHA256": "3494e531a074421741221483966c0ca55393c8ed754e5ccfc07925507772d428",
+      "requestCount": 117,
+      "coldRepeatedIdleRequests": 93,
+      "statusCodes": [
+        200
+      ],
+      "maxRequestMilliseconds": 909,
+      "crossAccountChecks": 24,
+      "rollbackVerified": true,
+      "externalCalls": 0,
+      "simultaneousWorkers": 1
+    },
+    {
+      "artifact": "edge-transaction-concurrency.json",
+      "runtime": "supabase-edge-runtime-1.77.9 (compatible with Deno v2.1.4)",
+      "mode": "transaction",
+      "poolMax": 3,
+      "handlerSHA256": "3494e531a074421741221483966c0ca55393c8ed754e5ccfc07925507772d428",
+      "requestCount": 117,
+      "coldRepeatedIdleRequests": 93,
+      "statusCodes": [
+        200
+      ],
+      "maxRequestMilliseconds": 1110,
+      "crossAccountChecks": 24,
+      "rollbackVerified": true,
+      "externalCalls": 0,
+      "simultaneousWorkers": 1
+    },
+    {
+      "artifact": "edge-session-concurrency.json",
+      "runtime": "supabase-edge-runtime-1.77.9 (compatible with Deno v2.1.4)",
+      "mode": "session",
+      "poolMax": 3,
+      "handlerSHA256": "3494e531a074421741221483966c0ca55393c8ed754e5ccfc07925507772d428",
+      "requestCount": 117,
+      "coldRepeatedIdleRequests": 93,
+      "statusCodes": [
+        200
+      ],
+      "maxRequestMilliseconds": 1046,
+      "crossAccountChecks": 24,
+      "rollbackVerified": true,
+      "externalCalls": 0,
+      "simultaneousWorkers": 1
+    },
+    {
+      "artifact": "final-session-max1-worker-a.json",
+      "runtime": "supabase-edge-runtime-1.77.9 (compatible with Deno v2.1.4)",
+      "mode": "session",
+      "poolMax": 1,
+      "handlerSHA256": "a45ce4e21f65918ad816e5af8d20a23ec9b1da0365df4d3275619858ed8e0fa5",
+      "requestCount": 117,
+      "coldRepeatedIdleRequests": 93,
+      "statusCodes": [
+        200
+      ],
+      "maxRequestMilliseconds": 2925,
+      "crossAccountChecks": 24,
+      "rollbackVerified": true,
+      "externalCalls": 0,
+      "simultaneousWorkers": 2
+    },
+    {
+      "artifact": "final-session-max1-worker-b.json",
+      "runtime": "supabase-edge-runtime-1.77.9 (compatible with Deno v2.1.4)",
+      "mode": "session",
+      "poolMax": 1,
+      "handlerSHA256": "a45ce4e21f65918ad816e5af8d20a23ec9b1da0365df4d3275619858ed8e0fa5",
+      "requestCount": 117,
+      "coldRepeatedIdleRequests": 93,
+      "statusCodes": [
+        200
+      ],
+      "maxRequestMilliseconds": 2930,
+      "crossAccountChecks": 24,
+      "rollbackVerified": true,
+      "externalCalls": 0,
+      "simultaneousWorkers": 2
+    }
+  ],
+  "limitations": [
+    "Synthetic local authentication and migrated local test database; no real device, purchase, hosted Auth or TLS.",
+    "Local Supavisor2.9.13 is not evidence of the hosted pooler version or load.",
+    "Parallel max3 session clients exceeded the intentional local pool_size3; isolated max3 and final two-worker max1 cases passed."
+  ],
+  "checks": {
+    "qaTypeCheck": "passed",
+    "perBatchDeadlineMilliseconds": 20000,
+    "idleReopenSeconds": 16
+  }
+}
