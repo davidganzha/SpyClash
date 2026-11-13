@@ -25,7 +25,7 @@ const UK_PRIVACY_SECTIONS = [
   },
   {
     title: "5. ПРОДУКТОВІ МЕТРИКИ ТА СХОВИЩЕ ВЕБСАЙТУ",
-    text: "SpyClash зберігає описані вище обмежені записи про взаємодію з продуктом, пов'язані з обліковим записом, для роботи застосунку й аналітики надійності функцій. Вебсайт використовує локальне сховище для мови та стану сеансу автентифікації. У релізній версії вебсайту вимкнено автоматичну сторонню й платформну аналітику використання сайту; нативний застосунок для iOS не містить SDK для реклами або міжзастосункового відстеження."
+    text: "SpyClash зберігає описані вище обмежені записи про взаємодію з продуктом, пов'язані з обліковим записом, для роботи застосунку й аналітики надійності функцій. Вебсайт використовує локальне сховище для мови та стану сеансу автентифікації. У релізній версії вебсайту вимкнено автоматичну сторонню й платформну аналітику використання сайту; нативний застосунок для iOS містить Unity Ads для необов'язкової реклами за додаткову генерацію. Ми налаштовуємо неперсоналізовану рекламу та передаємо Unity відмову від згоди й відстеження до запуску SDK. Це не означає відсутність збору даних. Unity може обробляти приблизне місцеположення, ідентифікатори, покупки, взаємодію, рекламу, використання, продуктивність і дані пристрою для реклами, аналітики та роботи SDK; звернення щодо реклами — для підтримки. SpyClash зберігає пов'язані з акаунтом спроби перегляду та підтвердження винагороди для надання генерацій і запобігання повторному зарахуванню. Ми не передаємо Unity ваші слова, ролі або вміст кімнат. Відомості Unity та керування даними доступні на https://unity.com/legal/game-player-and-app-user-privacy-policy і через значок конфіденційності в рекламі. Активний підтверджений LIMITLESS надає генерацію без цієї реклами."
   },
   {
     title: "6. КОНФІДЕНЦІЙНІСТЬ ДІТЕЙ",
@@ -60,7 +60,7 @@ const RU_PRIVACY_SECTIONS = [
   },
   {
     title: "5. ПРОДУКТОВЫЕ МЕТРИКИ И ХРАНЕНИЕ НА САЙТЕ",
-    text: "SpyClash хранит описанные выше ограниченные записи взаимодействия с продуктом, связанные с учетной записью, для работы приложения и анализа надежности функций. Сайт использует локальное хранилище для языка и состояния сеанса аутентификации. В релизной версии сайта автоматическая сторонняя и платформенная аналитика использования отключена; нативное приложение iOS не содержит SDK для рекламы или межприложенческого отслеживания."
+    text: "SpyClash хранит описанные выше ограниченные записи взаимодействия с продуктом, связанные с учетной записью, для работы приложения и анализа надежности функций. Сайт использует локальное хранилище для языка и состояния сеанса аутентификации. В релизной версии сайта автоматическая сторонняя и платформенная аналитика использования отключена; нативное приложение для iOS содержит Unity Ads для необязательной рекламы за дополнительную генерацию. Мы настраиваем неперсонализированную рекламу и передаём Unity отказ от согласия и отслеживания до запуска SDK. Это не означает отсутствие сбора данных. Unity может обрабатывать примерное местоположение, идентификаторы, покупки, взаимодействия, рекламу, использование, производительность и данные устройства для рекламы, аналитики и работы SDK; обращения о рекламе — для поддержки. SpyClash хранит связанные с аккаунтом попытки просмотра и подтверждения награды для выдачи генераций и предотвращения повторного начисления. Мы не передаём Unity ваши слова, роли или содержимое комнат. Сведения Unity и управление данными доступны на https://unity.com/legal/game-player-and-app-user-privacy-policy и через значок конфиденциальности в рекламе. Активный подтверждённый LIMITLESS даёт генерацию без этой рекламы."
   },
   {
     title: "6. КОНФИДЕНЦИАЛЬНОСТЬ ДЕТЕЙ",
@@ -95,7 +95,7 @@ const ES_PRIVACY_SECTIONS = [
   },
   {
     title: "5. MÉTRICAS DEL PRODUCTO Y ALMACENAMIENTO DEL SITIO WEB",
-    text: "SpyClash conserva los registros limitados de interacción con el producto vinculados a la cuenta descritos anteriormente para el funcionamiento de la aplicación y el análisis de fiabilidad de las funciones. El sitio web utiliza almacenamiento local para el idioma y el estado de la sesión de autenticación. El análisis automático de uso del sitio web por terceros y por la plataforma está desactivado en la versión publicada; la aplicación nativa de iOS no incluye SDK de publicidad ni de seguimiento entre aplicaciones."
+    text: "SpyClash conserva los registros limitados de interacción con el producto vinculados a la cuenta descritos anteriormente para el funcionamiento de la aplicación y el análisis de fiabilidad de las funciones. El sitio web utiliza almacenamiento local para el idioma y el estado de la sesión de autenticación. El análisis automático de uso del sitio web por terceros y por la plataforma está desactivado en la versión publicada; la aplicación nativa de iOS incluye Unity Ads para anuncios opcionales que permiten obtener una generación adicional. Configuramos anuncios no personalizados y enviamos a Unity señales de consentimiento denegado y exclusión antes de iniciar el SDK. Esto no significa que no se recopilen datos. Unity puede procesar ubicación aproximada, identificadores, compras, interacciones, publicidad, uso, rendimiento y datos del dispositivo para anuncios, análisis y funcionamiento del SDK; los reportes de anuncios se usan para soporte. SpyClash conserva intentos y confirmaciones de recompensa vinculados a la cuenta para conceder generaciones y evitar duplicados. No enviamos a Unity tus palabras, roles ni contenido de salas. Consulta https://unity.com/legal/game-player-and-app-user-privacy-policy y el icono de privacidad del anuncio para conocer las prácticas y controles de Unity. LIMITLESS activo y verificado permite generar sin estos anuncios."
   },
   {
     title: "6. PRIVACIDAD DE LOS MENORES",
@@ -130,7 +130,7 @@ export default function PrivacyPolicy() {
           <h1 style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 36, letterSpacing: 3, marginBottom: 8, color: "#fff" }}>
             {localize(lang, "PRIVACY POLICY", "ПОЛИТИКА КОНФИДЕНЦИАЛЬНОСТИ", "ПОЛІТИКА КОНФІДЕНЦІЙНОСТІ", "POLÍTICA DE PRIVACIDAD")}
           </h1>
-          <div style={{ color: "#444", fontSize: 11, letterSpacing: 2, marginBottom: 48 }}>{localize(lang, "Last updated: September 2026", "Последнее обновление: сентябрь 2026 г.", "Останнє оновлення: вересень 2026 р.", "Última actualización: septiembre de 2026")}</div>
+          <div style={{ color: "#444", fontSize: 11, letterSpacing: 2, marginBottom: 48 }}>{localize(lang, "Last updated: November 2026", "Последнее обновление: ноябрь 2026 г.", "Останнє оновлення: листопад 2026 р.", "Última actualización: noviembre de 2026")}</div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 36 }}>
             {(PRIVACY_SECTIONS_BY_LANGUAGE[lang] ?? [
@@ -152,7 +152,7 @@ export default function PrivacyPolicy() {
               },
               {
                 title: "5. PRODUCT METRICS AND WEBSITE STORAGE",
-                text: "SpyClash retains the limited account-linked product-interaction records described above for app functionality and feature-reliability analytics. The website uses local storage for language and authentication session state. Automatic third-party and platform website-usage analytics are disabled in the release website; the native iOS app does not include advertising or cross-app tracking SDKs."
+                text: "SpyClash retains the limited account-linked product-interaction records described above for app functionality and feature-reliability analytics. The website uses local storage for language and authentication session state. Automatic third-party and platform website-usage analytics are disabled in the release website; the native iOS app includes Unity Ads for optional advertisements that earn an additional generation. We configure non-personalized ads and send denied-consent and opt-out signals before SDK initialization. This does not mean no data is collected. Unity may process coarse location, identifiers, purchases, interactions, advertising, usage, performance, and device data for advertising, analytics, and SDK functionality; ad reports may be used for support. SpyClash retains account-linked viewing attempts and reward confirmations to grant generations and prevent duplicate credits. We do not send Unity your words, roles, or room content. See https://unity.com/legal/game-player-and-app-user-privacy-policy and the ad privacy icon for Unity's practices and data controls. Active verified LIMITLESS provides generation without these advertisements."
               },
               {
                 title: "6. CHILDREN'S PRIVACY",
