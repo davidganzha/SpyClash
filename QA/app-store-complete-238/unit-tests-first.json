@@ -1,0 +1,151 @@
+{
+  "devicesAndConfigurations" : [
+    {
+      "device" : {
+        "architecture" : "arm64",
+        "deviceId" : "68A18B86-12EB-4FCF-84C1-70E600BA24FD",
+        "deviceName" : "SpyClash Membership Tests — iPhone 17",
+        "modelName" : "iPhone 17",
+        "osBuildNumber" : "23F77",
+        "osVersion" : "26.5",
+        "platform" : "iOS Simulator"
+      },
+      "expectedFailures" : 0,
+      "failedTests" : 12,
+      "passedTests" : 873,
+      "skippedTests" : 1,
+      "testPlanConfiguration" : {
+        "configurationId" : "1",
+        "configurationName" : "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription" : "SpyClash · Built with macOS 26.5.2",
+  "expectedFailures" : 0,
+  "failedTests" : 12,
+  "finishTime" : 1794533558.209,
+  "passedTests" : 873,
+  "result" : "Failed",
+  "skippedTests" : 1,
+  "startTime" : 1794533485.327,
+  "statistics" : [
+
+  ],
+  "testFailures" : [
+    {
+      "failureText" : "failed: caught error: \"notEntitled\"",
+      "targetName" : "SpyClashTests",
+      "testIdentifier" : 815,
+      "testIdentifierString" : "StoreKitSandboxIntegrationTests/testAccessUnverifiedStartsNoPaymentAndRetryCanCompleteRealPurchase()",
+      "testIdentifierURL" : "test://com.apple.xcode/SpyClash/SpyClashTests/StoreKitSandboxIntegrationTests/testAccessUnverifiedStartsNoPaymentAndRetryCanCompleteRealPurchase",
+      "testName" : "testAccessUnverifiedStartsNoPaymentAndRetryCanCompleteRealPurchase()"
+    },
+    {
+      "failureText" : "XCTAssertEqual failed: (\"Optional([\"multi_spy_v1\", \"fan_mode_v1\", \"fan_mode_v2\", \"fan_mode_v3\"])\") is not equal to (\"Optional([\"multi_spy_v1\"])\")",
+      "targetName" : "SpyClashTests",
+      "testIdentifier" : 108,
+      "testIdentifierString" : "Base44ClientRoomActionTests/testArmRouletteSendsExpectedLobbyRevision()",
+      "testIdentifierURL" : "test://com.apple.xcode/SpyClash/SpyClashTests/Base44ClientRoomActionTests/testArmRouletteSendsExpectedLobbyRevision",
+      "testName" : "testArmRouletteSendsExpectedLobbyRevision()"
+    },
+    {
+      "failureText" : "XCTAssertEqual failed: (\"Optional([\"multi_spy_v1\", \"fan_mode_v1\", \"fan_mode_v2\", \"fan_mode_v3\"])\") is not equal to (\"Optional([\"multi_spy_v1\"])\")",
+      "targetName" : "SpyClashTests",
+      "testIdentifier" : 120,
+      "testIdentifierString" : "Base44ClientRoomActionTests/testCreateAndJoinAdvertiseMultiSpyCapabilityInsidePlayerAndTopLevel()",
+      "testIdentifierURL" : "test://com.apple.xcode/SpyClash/SpyClashTests/Base44ClientRoomActionTests/testCreateAndJoinAdvertiseMultiSpyCapabilityInsidePlayerAndTopLevel",
+      "testName" : "testCreateAndJoinAdvertiseMultiSpyCapabilityInsidePlayerAndTopLevel()"
+    },
+    {
+      "failureText" : "XCTAssertEqual failed: (\"[\"Harbor\", \"Airport\", \"Vault\", \"Embassy, VAULT\"]\") is not equal to (\"[\"Harbor\", \"Airport\", \"Vault\", \"Embassy\"]\")",
+      "targetName" : "SpyClashTests",
+      "testIdentifier" : 884,
+      "testIdentifierString" : "WordPackPersistenceIntegrationTests/testEditedWordDeletionPersistsInUpdatePayloadAndReopenedList()",
+      "testIdentifierURL" : "test://com.apple.xcode/SpyClash/SpyClashTests/WordPackPersistenceIntegrationTests/testEditedWordDeletionPersistsInUpdatePayloadAndReopenedList",
+      "testName" : "testEditedWordDeletionPersistsInUpdatePayloadAndReopenedList()"
+    },
+    {
+      "failureText" : "failed: caught error: \"notEntitled\"",
+      "targetName" : "SpyClashTests",
+      "testIdentifier" : 816,
+      "testIdentifierString" : "StoreKitSandboxIntegrationTests/testEmptyRestoreUsesRealAppStoreSyncAndDoesNotInventAccess()",
+      "testIdentifierURL" : "test://com.apple.xcode/SpyClash/SpyClashTests/StoreKitSandboxIntegrationTests/testEmptyRestoreUsesRealAppStoreSyncAndDoesNotInventAccess",
+      "testName" : "testEmptyRestoreUsesRealAppStoreSyncAndDoesNotInventAccess()"
+    },
+    {
+      "failureText" : "failed: caught error: \"notEntitled\"",
+      "targetName" : "SpyClashTests",
+      "testIdentifier" : 817,
+      "testIdentifierString" : "StoreKitSandboxIntegrationTests/testLegacyWeeklyPurchaseStillRestoresWithoutPreparingMonthlyCheckout()",
+      "testIdentifierURL" : "test://com.apple.xcode/SpyClash/SpyClashTests/StoreKitSandboxIntegrationTests/testLegacyWeeklyPurchaseStillRestoresWithoutPreparingMonthlyCheckout",
+      "testName" : "testLegacyWeeklyPurchaseStillRestoresWithoutPreparingMonthlyCheckout()"
+    },
+    {
+      "failureText" : "XCTAssertTrue failed",
+      "targetName" : "SpyClashTests",
+      "testIdentifier" : 7,
+      "testIdentifierString" : "AcquisitionSurveyIntegrationTests/testRadarUpgradeRetainsPendingVersionOneSourceWhenCompletionIsDeferred()",
+      "testIdentifierURL" : "test://com.apple.xcode/SpyClash/SpyClashTests/AcquisitionSurveyIntegrationTests/testRadarUpgradeRetainsPendingVersionOneSourceWhenCompletionIsDeferred",
+      "testName" : "testRadarUpgradeRetainsPendingVersionOneSourceWhenCompletionIsDeferred()"
+    },
+    {
+      "failureText" : "failed: caught error: \"notEntitled\"",
+      "targetName" : "SpyClashTests",
+      "testIdentifier" : 818,
+      "testIdentifierString" : "StoreKitSandboxIntegrationTests/testRealAskToBuyApprovalCompletesThroughTransactionUpdates()",
+      "testIdentifierURL" : "test://com.apple.xcode/SpyClash/SpyClashTests/StoreKitSandboxIntegrationTests/testRealAskToBuyApprovalCompletesThroughTransactionUpdates",
+      "testName" : "testRealAskToBuyApprovalCompletesThroughTransactionUpdates()"
+    },
+    {
+      "failureText" : "failed: caught error: \"notEntitled\"",
+      "targetName" : "SpyClashTests",
+      "testIdentifier" : 819,
+      "testIdentifierString" : "StoreKitSandboxIntegrationTests/testRealPurchaseDeliversFinishesAndRestoresOnFreshMembershipStore()",
+      "testIdentifierURL" : "test://com.apple.xcode/SpyClash/SpyClashTests/StoreKitSandboxIntegrationTests/testRealPurchaseDeliversFinishesAndRestoresOnFreshMembershipStore",
+      "testName" : "testRealPurchaseDeliversFinishesAndRestoresOnFreshMembershipStore()"
+    },
+    {
+      "failureText" : "failed: caught error: \"notEntitled\"",
+      "targetName" : "SpyClashTests",
+      "testIdentifier" : 820,
+      "testIdentifierString" : "StoreKitSandboxIntegrationTests/testRejectedDeliveryStaysUnfinishedAndExplicitRestoreRetriesIt()",
+      "testIdentifierURL" : "test://com.apple.xcode/SpyClash/SpyClashTests/StoreKitSandboxIntegrationTests/testRejectedDeliveryStaysUnfinishedAndExplicitRestoreRetriesIt",
+      "testName" : "testRejectedDeliveryStaysUnfinishedAndExplicitRestoreRetriesIt()"
+    },
+    {
+      "failureText" : "XCTAssertEqual failed: (\"Optional([\"multi_spy_v1\", \"fan_mode_v1\", \"fan_mode_v2\", \"fan_mode_v3\"])\") is not equal to (\"Optional([\"multi_spy_v1\"])\")",
+      "targetName" : "SpyClashTests",
+      "testIdentifier" : 177,
+      "testIdentifierString" : "Base44ClientRoomActionTests/testResumeWaitingRoomUsesIdempotentJoinToUpgradePlayerCapability()",
+      "testIdentifierURL" : "test://com.apple.xcode/SpyClash/SpyClashTests/Base44ClientRoomActionTests/testResumeWaitingRoomUsesIdempotentJoinToUpgradePlayerCapability",
+      "testName" : "testResumeWaitingRoomUsesIdempotentJoinToUpgradePlayerCapability()"
+    },
+    {
+      "failureText" : "XCTAssertEqual failed: (\"Optional([\"multi_spy_v1\", \"fan_mode_v1\", \"fan_mode_v2\", \"fan_mode_v3\"])\") is not equal to (\"Optional([\"multi_spy_v1\"])\")",
+      "targetName" : "SpyClashTests",
+      "testIdentifier" : 196,
+      "testIdentifierString" : "Base44ClientRoomActionTests/testUpdateLobbyStateSendsRevisionedMutationEnvelope()",
+      "testIdentifierURL" : "test://com.apple.xcode/SpyClash/SpyClashTests/Base44ClientRoomActionTests/testUpdateLobbyStateSendsRevisionedMutationEnvelope",
+      "testName" : "testUpdateLobbyStateSendsRevisionedMutationEnvelope()"
+    }
+  ],
+  "title" : "Test - SpyClash",
+  "topInsights" : [
+    {
+      "category" : "Common Failures",
+      "impact" : "33% of failures",
+      "text" : "8 runs of 4 tests failed with XCTAssertEqual failed: (\"Optional([\"multi_spy_v1\", \"fan_mode_v1\", \"fan_mode_v2\", \"fan_mode_v3\"])\") is not equal to (\"Optional([\"multi_spy_v1\"])\")"
+    },
+    {
+      "category" : "Common Failures",
+      "impact" : "50% of failures",
+      "text" : "6 runs of 6 tests failed with failed: caught error: \"notEntitled\""
+    },
+    {
+      "category" : "Longest Test Runs",
+      "impact" : "60% of duration",
+      "text" : "10 longest test runs with outlier durations exceeding 1.27s (three standard deviations)"
+    }
+  ],
+  "totalTestCount" : 886
+}

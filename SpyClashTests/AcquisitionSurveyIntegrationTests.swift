@@ -201,7 +201,7 @@ final class AcquisitionSurveyIntegrationTests: XCTestCase {
         XCTAssertFalse(state.canPresentAcquisitionSurvey)
     }
 
-    func testRadarUpgradeRetainsPendingVersionOneSourceWhenCompletionIsDeferred() async throws {
+    func testCompletedVersionOneKeepsPendingAnswerWhenFinishIsCalledAgain() async throws {
         var user = try makeUser()
         user.onboardingCompleted = nil
         user.onboardingVersion = nil
@@ -213,20 +213,28 @@ final class AcquisitionSurveyIntegrationTests: XCTestCase {
             version: 1
         ), for: user.id)
 
-        XCTAssertTrue(state.requiresLocalNetworkOnboardingUpgrade)
+        // Permission recovery belongs to Radar/Settings; an older durable
+        // completion must not reopen account onboarding.
+        XCTAssertFalse(state.requiresLocalNetworkOnboardingUpgrade)
+        XCTAssertFalse(state.requiresOnboarding)
         XCTAssertEqual(state.preservedOnboardingAcquisitionSource, .friendsOrFamily)
+        let original = try XCTUnwrap(OnboardingProgressStore.pendingSubmission(for: user.id))
+        XCTAssertEqual(OnboardingProgressStore.completedVersion(for: user.id), 1)
 
-        // A fake token reaches the injected offline transport. The real
-        // completion path must replace pending v1 with v2 without losing its answer.
+        // Completed setup is not run again. A stale UI completion callback
+        // must not replace the durable answer, bump its version, or replay
+        // the onboarding transition, even with a different submitted source.
         state.client.setToken("acquisition-survey-offline-test-token")
-        await state.finishOnboarding()
+        await state.finishOnboarding(source: .webSearch)
 
-        let migrated = try XCTUnwrap(OnboardingProgressStore.pendingSubmission(for: user.id))
-        XCTAssertEqual(migrated.version, OnboardingSubmission.currentVersion)
-        XCTAssertEqual(migrated.acquisitionSource, .friendsOrFamily)
+        XCTAssertEqual(OnboardingProgressStore.pendingSubmission(for: user.id), original)
+        XCTAssertEqual(OnboardingProgressStore.completedVersion(for: user.id), 1)
         XCTAssertEqual(state.preservedOnboardingAcquisitionSource, .friendsOrFamily)
         XCTAssertFalse(state.requiresOnboarding)
-        XCTAssertNil(state.user?.acquisitionSource, "Offline migration must not claim a remote acknowledgement.")
+        XCTAssertFalse(state.isFinishingOnboarding)
+        XCTAssertEqual(state.authHomeRevealPhase, .idle)
+        XCTAssertNil(state.onboardingLaunchMessage)
+        XCTAssertNil(state.user?.acquisitionSource, "A local completion must not claim a remote acknowledgement.")
     }
 
     private func makeState(user: SpyUser) -> AppState {

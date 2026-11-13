@@ -1,0 +1,8 @@
+............Installing com.spyclash.ios 1.0.3 (195); backend=supabase-main-candidate; simulator=CF9C8F53-AC2A-437D-9EC9-87F61A31644F
+..PASS: installed build 195; backend=supabase-main-candidate; signature and Keychain identity verified; bundle SHA-256=verified
+Installing com.spyclash.ios 1.0.3 (195); backend=supabase-main-candidate; simulator=CF9C8F53-AC2A-437D-9EC9-87F61A31644F
+...........
+----------------------------------------------------------------------
+Ran 25 tests in 0.037s
+
+OK

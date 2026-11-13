@@ -1,0 +1,336 @@
+TAP version 13
+# (node:74139) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: membership preserves universal and gated weekly; forged evidence cannot grant
+ok 1 - membership preserves universal and gated weekly; forged evidence cannot grant
+  ---
+  duration_ms: 83.477542
+  type: 'test'
+  ...
+# Subtest: verified canonical transaction enforces immutable owner and older status cannot overwrite
+ok 2 - verified canonical transaction enforces immutable owner and older status cannot overwrite
+  ---
+  duration_ms: 36.200333
+  type: 'test'
+  ...
+# Subtest: encrypted token binds actor and topic; duplicate registration and event enqueue are idempotent
+ok 3 - encrypted token binds actor and topic; duplicate registration and event enqueue are idempotent
+  ---
+  duration_ms: 44.115958
+  type: 'test'
+  ...
+# Subtest: hidden notification and deleted-account outbox work is cancelled before delivery
+ok 4 - hidden notification and deleted-account outbox work is cancelled before delivery
+  ---
+  duration_ms: 23.246208
+  type: 'test'
+  ...
+# Subtest: legacy bridge rejects redirected canonical app and binds verified identity before durable generation
+ok 5 - legacy bridge rejects redirected canonical app and binds verified identity before durable generation
+  ---
+  duration_ms: 71.354291
+  type: 'test'
+  ...
+# Subtest: import dry run rejects conflicting identity ownership and source drift
+ok 6 - import dry run rejects conflicting identity ownership and source drift
+  ---
+  duration_ms: 0.389041
+  type: 'test'
+  ...
+# Subtest: Supabase JWT is rejected before any legacy HTTP request
+ok 7 - Supabase JWT is rejected before any legacy HTTP request
+  ---
+  duration_ms: 2.289166
+  type: 'test'
+  ...
+# Subtest: lost generation response keeps durable request for retry and rejects changed body
+ok 8 - lost generation response keeps durable request for retry and rejects changed body
+  ---
+  duration_ms: 33.296
+  type: 'test'
+  ...
+# Subtest: proven library failure preserves its retry code and immutable reservation across legacy action aliases
+ok 9 - proven library failure preserves its retry code and immutable reservation across legacy action aliases
+  ---
+  duration_ms: 83.001458
+  type: 'test'
+  ...
+# Subtest: definite daily allowance rejection reaches legacy callers without authorizing generation or losing request ownership
+ok 10 - definite daily allowance rejection reaches legacy callers without authorizing generation or losing request ownership
+  ---
+  duration_ms: 38.443458
+  type: 'test'
+  ...
+# Subtest: push transport outage retries once eligible; competing workers cannot claim same lease
+ok 11 - push transport outage retries once eligible; competing workers cannot claim same lease
+  ---
+  duration_ms: 26.683125
+  type: 'test'
+  ...
+# Subtest: committed live events preserve privacy, replay dedup, and terminal end after room advanced
+ok 12 - committed live events preserve privacy, replay dedup, and terminal end after room advanced
+  ---
+  duration_ms: 41.537792
+  type: 'test'
+  ...
+# Subtest: import dry run reports unresolved verified mappings without writing content
+ok 13 - import dry run reports unresolved verified mappings without writing content
+  ---
+  duration_ms: 2.609333
+  type: 'test'
+  ...
+# Subtest: expired claimed tail reclaimed by another worker is never sent by stale owner
+ok 14 - expired claimed tail reclaimed by another worker is never sent by stale owner
+  ---
+  duration_ms: 16.44
+  type: 'test'
+  ...
+# (node:75150) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: existing weekly billing owns the purchase token; durable retry never allocates a new token
+ok 15 - existing weekly billing owns the purchase token; durable retry never allocates a new token
+  ---
+  duration_ms: 84.103208
+  type: 'test'
+  ...
+# Subtest: verified linked membership is mirrored with bounded TTL and revocation; wrong owner makes no billing call
+ok 16 - verified linked membership is mirrored with bounded TTL and revocation; wrong owner makes no billing call
+  ---
+  duration_ms: 24.630875
+  type: 'test'
+  ...
+# Subtest: unverified Apple result cannot grant, and replayed old snapshot never extends entitlement freshness
+ok 17 - unverified Apple result cannot grant, and replayed old snapshot never extends entitlement freshness
+  ---
+  duration_ms: 27.322042
+  type: 'test'
+  ...
+# Subtest: restore accepts verified existing weekly and monthly products while monthly checkout is disabled
+ok 18 - restore accepts verified existing weekly and monthly products while monthly checkout is disabled
+  ---
+  duration_ms: 104.763875
+  type: 'test'
+  ...
+# Subtest: monthly legacy checkout requires both gates and the exact prepared product, while older clients retain weekly
+ok 19 - monthly legacy checkout requires both gates and the exact prepared product, while older clients retain weekly
+  ---
+  duration_ms: 47.30275
+  type: 'test'
+  ...
+# Subtest: restore never accepts an unknown canonical or submitted product even with a verification flag
+ok 20 - restore never accepts an unknown canonical or submitted product even with a verification flag
+  ---
+  duration_ms: 17.306875
+  type: 'test'
+  ...
+# Subtest: verified revoked monthly restore is acknowledged without granting membership
+ok 21 - verified revoked monthly restore is acknowledged without granting membership
+  ---
+  duration_ms: 10.444625
+  type: 'test'
+  ...
+# Subtest: verified Loyalty chains survive membership checks and deduplicate restores while newer refunds replace older history
+ok 22 - verified Loyalty chains survive membership checks and deduplicate restores while newer refunds replace older history
+  ---
+  duration_ms: 62.751542
+  type: 'test'
+  ...
+# Subtest: optional Loyalty outage, malformed history and sandbox responses preserve prior production progress
+ok 23 - optional Loyalty outage, malformed history and sandbox responses preserve prior production progress
+  ---
+  duration_ms: 92.962292
+  type: 'test'
+  ...
+# Subtest: verified Loyalty response cannot be mirrored onto a foreign entitlement owner
+ok 24 - verified Loyalty response cannot be mirrored onto a foreign entitlement owner
+  ---
+  duration_ms: 11.883167
+  type: 'test'
+  ...
+# Subtest: Supabase credentials and mismatched legacy owners cannot reach existing billing
+ok 25 - Supabase credentials and mismatched legacy owners cannot reach existing billing
+  ---
+  duration_ms: 11.473125
+  type: 'test'
+  ...
+# Subtest: billing mutation reservation binds the original action and signed transaction
+ok 26 - billing mutation reservation binds the original action and signed transaction
+  ---
+  duration_ms: 14.615833
+  type: 'test'
+  ...
+# Subtest: typed Apple lease contention survives the bridge and the same saved weekly transaction can recover
+ok 27 - typed Apple lease contention survives the bridge and the same saved weekly transaction can recover
+  ---
+  duration_ms: 23.343375
+  type: 'test'
+  ...
+# Subtest: only the exact Apple sync 503 retryable marker receives bounded-retry authorization
+ok 28 - only the exact Apple sync 503 retryable marker receives bounded-retry authorization
+  ---
+  duration_ms: 47.337459
+  type: 'test'
+  ...
+# Subtest: main-topic push reaches only authenticated prepared Base44 relay and retains outbox fencing
+ok 29 - main-topic push reaches only authenticated prepared Base44 relay and retains outbox fencing
+  ---
+  duration_ms: 19.851333
+  type: 'test'
+  ...
+# Subtest: relay rejects missing signature, tampering and expired requests without APNs calls
+ok 30 - relay rejects missing signature, tampering and expired requests without APNs calls
+  ---
+  duration_ms: 1.017542
+  type: 'test'
+  ...
+# Subtest: main-bundle UUID-room Live Activity keeps private words out of relay and ends after closure
+ok 31 - main-bundle UUID-room Live Activity keeps private words out of relay and ends after closure
+  ---
+  duration_ms: 29.902167
+  type: 'test'
+  ...
+# (node:75530) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: verified weekly/monthly renewals and same-chain crossgrades restore with both new-purchase gates disabled
+ok 32 - verified weekly/monthly renewals and same-chain crossgrades restore with both new-purchase gates disabled
+  ---
+  duration_ms: 1.271
+  type: 'test'
+  ...
+# Subtest: monthly support never admits an unlisted submitted product, app, or environment
+ok 33 - monthly support never admits an unlisted submitted product, app, or environment
+  ---
+  duration_ms: 0.283041
+  type: 'test'
+  ...
+# Subtest: monthly canonical status cannot substitute another product, chain, owner, renewal, or app
+ok 34 - monthly canonical status cannot substitute another product, chain, owner, renewal, or app
+  ---
+  duration_ms: 0.6535
+  type: 'test'
+  ...
+# (node:75571) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: native main Apple targets require exact server app identity and explicit environment gate
+ok 35 - native main Apple targets require exact server app identity and explicit environment gate
+  ---
+  duration_ms: 1.033083
+  type: 'test'
+  ...
+# Subtest: native account gets gated free access even when legacy rollout flags are absent
+ok 36 - native account gets gated free access even when legacy rollout flags are absent
+  ---
+  duration_ms: 50.671625
+  type: 'test'
+  ...
+# Subtest: native monthly checkout is independently gated and preserves the existing owner token and old client weekly product
+ok 37 - native monthly checkout is independently gated and preserves the existing owner token and old client weekly product
+  ---
+  duration_ms: 56.413083
+  type: 'test'
+  ...
+# Subtest: native owned monthly restore and crossgrades work with checkout disabled and keep the exact submitted product
+ok 38 - native owned monthly restore and crossgrades work with checkout disabled and keep the exact submitted product
+  ---
+  duration_ms: 64.032166
+  type: 'test'
+  ...
+# Subtest: editable provider metadata cannot bypass the legacy credential bridge
+ok 39 - editable provider metadata cannot bypass the legacy credential bridge
+  ---
+  duration_ms: 2.765583
+  type: 'test'
+  ...
+# Subtest: native memberships count durable charged AI reservations only
+ok 40 - native memberships count durable charged AI reservations only
+  ---
+  duration_ms: 7.217625
+  type: 'test'
+  ...
+# Subtest: verified main native purchase cannot be restored by a different Game Center account
+ok 41 - verified main native purchase cannot be restored by a different Game Center account
+  ---
+  duration_ms: 25.560792
+  type: 'test'
+  ...
+# Subtest: preparing a new purchase cannot claim an older foreign chain before its first server sync; its owner can recover
+ok 42 - preparing a new purchase cannot claim an older foreign chain before its first server sync; its owner can recover
+  ---
+  duration_ms: 52.112958
+  type: 'test'
+  ...
+# Subtest: a prepared native account cannot adopt a verified historical token missing from the billing registry
+ok 43 - a prepared native account cannot adopt a verified historical token missing from the billing registry
+  ---
+  duration_ms: 16.600917
+  type: 'test'
+  ...
+# Subtest: canonical refresh reconciles expired owned subscription renewal and refund
+ok 44 - canonical refresh reconciles expired owned subscription renewal and refund
+  ---
+  duration_ms: 37.599791
+  type: 'test'
+  ...
+# Subtest: Apple outage fails closed without overwriting the last owned entitlement
+ok 45 - Apple outage fails closed without overwriting the last owned entitlement
+  ---
+  duration_ms: 17.467708
+  type: 'test'
+  ...
+# Subtest: refresh after concurrent account deletion cannot reactivate a purchase
+ok 46 - refresh after concurrent account deletion cannot reactivate a purchase
+  ---
+  duration_ms: 18.005292
+  type: 'test'
+  ...
+# apple_transaction_verification_failed {
+#   environment: 'Production',
+#   status: 'RETRYABLE_VERIFICATION_FAILURE',
+#   reason: 'VERIFICATION_REJECTED',
+#   runtimeFailure: false
+# }
+# apple_transaction_verification_failed {
+#   environment: 'Production',
+#   status: 'INVALID_CERTIFICATE',
+#   reason: 'VERIFICATION_REJECTED',
+#   runtimeFailure: false
+# }
+# Subtest: ordinary game/profile read does not require a provider round trip
+ok 47 - ordinary game/profile read does not require a provider round trip
+  ---
+  duration_ms: 12.531042
+  type: 'test'
+  ...
+# Subtest: temporary Apple certificate verification failure stays retryable and does not try another environment
+ok 48 - temporary Apple certificate verification failure stays retryable and does not try another environment
+  ---
+  duration_ms: 0.9865
+  type: 'test'
+  ...
+# Subtest: Apple environment mismatch alone can try the second explicitly enabled environment
+ok 49 - Apple environment mismatch alone can try the second explicitly enabled environment
+  ---
+  duration_ms: 0.214208
+  type: 'test'
+  ...
+# Subtest: native Loyalty persists unique verified periods, survives history outage and reconciles refunds
+ok 50 - native Loyalty persists unique verified periods, survives history outage and reconciles refunds
+  ---
+  duration_ms: 54.83275
+  type: 'test'
+  ...
+# Subtest: canonical Apple verification adds only complete Loyalty history, without making a history outage a purchase failure
+ok 51 - canonical Apple verification adds only complete Loyalty history, without making a history outage a purchase failure
+  ---
+  duration_ms: 0.530875
+  type: 'test'
+  ...
+1..51
+# tests 51
+# suites 0
+# pass 51
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5030.265292

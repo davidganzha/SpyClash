@@ -1,0 +1,449 @@
+TAP version 13
+# (node:6584) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:6584) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/davidganzha/Documents/SpyClash.worktrees/app-store-complete-238/.local/rewards238/prepared/supabase/app-services/app-services/membership.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /Users/davidganzha/package.json.
+# Subtest: membership preserves universal and gated weekly; forged evidence cannot grant
+ok 1 - membership preserves universal and gated weekly; forged evidence cannot grant
+  ---
+  duration_ms: 143.439042
+  type: 'test'
+  ...
+# Subtest: verified canonical transaction enforces immutable owner and older status cannot overwrite
+ok 2 - verified canonical transaction enforces immutable owner and older status cannot overwrite
+  ---
+  duration_ms: 65.881042
+  type: 'test'
+  ...
+# Subtest: encrypted token binds actor and topic; duplicate registration and event enqueue are idempotent
+ok 3 - encrypted token binds actor and topic; duplicate registration and event enqueue are idempotent
+  ---
+  duration_ms: 87.604625
+  type: 'test'
+  ...
+# Subtest: hidden notification and deleted-account outbox work is cancelled before delivery
+ok 4 - hidden notification and deleted-account outbox work is cancelled before delivery
+  ---
+  duration_ms: 65.958375
+  type: 'test'
+  ...
+# Subtest: legacy bridge rejects redirected canonical app and binds verified identity before durable generation
+ok 5 - legacy bridge rejects redirected canonical app and binds verified identity before durable generation
+  ---
+  duration_ms: 116.094667
+  type: 'test'
+  ...
+# Subtest: import dry run rejects conflicting identity ownership and source drift
+ok 6 - import dry run rejects conflicting identity ownership and source drift
+  ---
+  duration_ms: 0.531958
+  type: 'test'
+  ...
+# Subtest: Supabase JWT is rejected before any legacy HTTP request
+ok 7 - Supabase JWT is rejected before any legacy HTTP request
+  ---
+  duration_ms: 2.228208
+  type: 'test'
+  ...
+# Subtest: lost generation response keeps durable request for retry and rejects changed body
+ok 8 - lost generation response keeps durable request for retry and rejects changed body
+  ---
+  duration_ms: 63.57075
+  type: 'test'
+  ...
+# Subtest: proven library failure preserves its retry code and immutable reservation across legacy action aliases
+ok 9 - proven library failure preserves its retry code and immutable reservation across legacy action aliases
+  ---
+  duration_ms: 185.240791
+  type: 'test'
+  ...
+# Subtest: definite daily allowance rejection reaches legacy callers without authorizing generation or losing request ownership
+ok 10 - definite daily allowance rejection reaches legacy callers without authorizing generation or losing request ownership
+  ---
+  duration_ms: 88.553417
+  type: 'test'
+  ...
+# Subtest: push transport outage retries once eligible; competing workers cannot claim same lease
+ok 11 - push transport outage retries once eligible; competing workers cannot claim same lease
+  ---
+  duration_ms: 58.965459
+  type: 'test'
+  ...
+# Subtest: committed live events preserve privacy, replay dedup, and terminal end after room advanced
+ok 12 - committed live events preserve privacy, replay dedup, and terminal end after room advanced
+  ---
+  duration_ms: 104.305
+  type: 'test'
+  ...
+# Subtest: import dry run reports unresolved verified mappings without writing content
+ok 13 - import dry run reports unresolved verified mappings without writing content
+  ---
+  duration_ms: 6.185333
+  type: 'test'
+  ...
+# Subtest: expired claimed tail reclaimed by another worker is never sent by stale owner
+ok 14 - expired claimed tail reclaimed by another worker is never sent by stale owner
+  ---
+  duration_ms: 38.894417
+  type: 'test'
+  ...
+# (node:6604) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:6604) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/davidganzha/Documents/SpyClash.worktrees/app-store-complete-238/.local/rewards238/prepared/supabase/app-services/app-services/membership.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /Users/davidganzha/package.json.
+# Subtest: existing weekly billing owns the purchase token; durable retry never allocates a new token
+ok 15 - existing weekly billing owns the purchase token; durable retry never allocates a new token
+  ---
+  duration_ms: 190.865417
+  type: 'test'
+  ...
+# Subtest: verified linked membership is mirrored with bounded TTL and revocation; wrong owner makes no billing call
+ok 16 - verified linked membership is mirrored with bounded TTL and revocation; wrong owner makes no billing call
+  ---
+  duration_ms: 78.125208
+  type: 'test'
+  ...
+# Subtest: unverified Apple result cannot grant, and replayed old snapshot never extends entitlement freshness
+ok 17 - unverified Apple result cannot grant, and replayed old snapshot never extends entitlement freshness
+  ---
+  duration_ms: 84.952958
+  type: 'test'
+  ...
+# Subtest: restore accepts verified existing weekly and monthly products while monthly checkout is disabled
+ok 18 - restore accepts verified existing weekly and monthly products while monthly checkout is disabled
+  ---
+  duration_ms: 249.327667
+  type: 'test'
+  ...
+# Subtest: monthly legacy checkout requires both gates and the exact prepared product, while older clients retain weekly
+ok 19 - monthly legacy checkout requires both gates and the exact prepared product, while older clients retain weekly
+  ---
+  duration_ms: 129.346583
+  type: 'test'
+  ...
+# Subtest: restore never accepts an unknown canonical or submitted product even with a verification flag
+ok 20 - restore never accepts an unknown canonical or submitted product even with a verification flag
+  ---
+  duration_ms: 36.435833
+  type: 'test'
+  ...
+# Subtest: verified revoked monthly restore is acknowledged without granting membership
+ok 21 - verified revoked monthly restore is acknowledged without granting membership
+  ---
+  duration_ms: 26.016417
+  type: 'test'
+  ...
+# Subtest: verified Loyalty chains survive membership checks and deduplicate restores while newer refunds replace older history
+ok 22 - verified Loyalty chains survive membership checks and deduplicate restores while newer refunds replace older history
+  ---
+  duration_ms: 145.369
+  type: 'test'
+  ...
+# Subtest: optional Loyalty outage, malformed history and sandbox responses preserve prior production progress
+ok 23 - optional Loyalty outage, malformed history and sandbox responses preserve prior production progress
+  ---
+  duration_ms: 235.234459
+  type: 'test'
+  ...
+# Subtest: verified Loyalty response cannot be mirrored onto a foreign entitlement owner
+ok 24 - verified Loyalty response cannot be mirrored onto a foreign entitlement owner
+  ---
+  duration_ms: 32.912083
+  type: 'test'
+  ...
+# Subtest: Supabase credentials and mismatched legacy owners cannot reach existing billing
+ok 25 - Supabase credentials and mismatched legacy owners cannot reach existing billing
+  ---
+  duration_ms: 27.884416
+  type: 'test'
+  ...
+# Subtest: billing mutation reservation binds the original action and signed transaction
+ok 26 - billing mutation reservation binds the original action and signed transaction
+  ---
+  duration_ms: 37.186917
+  type: 'test'
+  ...
+# Subtest: typed Apple lease contention survives the bridge and the same saved weekly transaction can recover
+ok 27 - typed Apple lease contention survives the bridge and the same saved weekly transaction can recover
+  ---
+  duration_ms: 58.021333
+  type: 'test'
+  ...
+# Subtest: only the exact Apple sync 503 retryable marker receives bounded-retry authorization
+ok 28 - only the exact Apple sync 503 retryable marker receives bounded-retry authorization
+  ---
+  duration_ms: 114.799208
+  type: 'test'
+  ...
+# (node:6640) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:6640) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/davidganzha/Documents/SpyClash.worktrees/app-store-complete-238/.local/rewards238/prepared/supabase/app-services/app-services/native-apple.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /Users/davidganzha/package.json.
+# Subtest: verified weekly/monthly renewals and same-chain crossgrades restore with both new-purchase gates disabled
+ok 29 - verified weekly/monthly renewals and same-chain crossgrades restore with both new-purchase gates disabled
+  ---
+  duration_ms: 1.800125
+  type: 'test'
+  ...
+# Subtest: monthly support never admits an unlisted submitted product, app, or environment
+ok 30 - monthly support never admits an unlisted submitted product, app, or environment
+  ---
+  duration_ms: 0.521583
+  type: 'test'
+  ...
+# Subtest: monthly canonical status cannot substitute another product, chain, owner, renewal, or app
+ok 31 - monthly canonical status cannot substitute another product, chain, owner, renewal, or app
+  ---
+  duration_ms: 2.343208
+  type: 'test'
+  ...
+# (node:6641) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:6641) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/davidganzha/Documents/SpyClash.worktrees/app-store-complete-238/.local/rewards238/prepared/supabase/app-services/app-services/account-gate.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /Users/davidganzha/package.json.
+# Subtest: native main Apple targets require exact server app identity and explicit environment gate
+ok 32 - native main Apple targets require exact server app identity and explicit environment gate
+  ---
+  duration_ms: 1.983167
+  type: 'test'
+  ...
+# Subtest: native account gets gated free access even when legacy rollout flags are absent
+ok 33 - native account gets gated free access even when legacy rollout flags are absent
+  ---
+  duration_ms: 59.19075
+  type: 'test'
+  ...
+# Subtest: native monthly checkout is independently gated and preserves the existing owner token and old client weekly product
+ok 34 - native monthly checkout is independently gated and preserves the existing owner token and old client weekly product
+  ---
+  duration_ms: 82.342041
+  type: 'test'
+  ...
+# Subtest: native owned monthly restore and crossgrades work with checkout disabled and keep the exact submitted product
+ok 35 - native owned monthly restore and crossgrades work with checkout disabled and keep the exact submitted product
+  ---
+  duration_ms: 125.09775
+  type: 'test'
+  ...
+# Subtest: editable provider metadata cannot bypass the legacy credential bridge
+ok 36 - editable provider metadata cannot bypass the legacy credential bridge
+  ---
+  duration_ms: 6.879208
+  type: 'test'
+  ...
+# Subtest: native memberships count durable charged AI reservations only
+ok 37 - native memberships count durable charged AI reservations only
+  ---
+  duration_ms: 14.9695
+  type: 'test'
+  ...
+# Subtest: verified main native purchase cannot be restored by a different Game Center account
+ok 38 - verified main native purchase cannot be restored by a different Game Center account
+  ---
+  duration_ms: 44.464042
+  type: 'test'
+  ...
+# Subtest: preparing a new purchase cannot claim an older foreign chain before its first server sync; its owner can recover
+ok 39 - preparing a new purchase cannot claim an older foreign chain before its first server sync; its owner can recover
+  ---
+  duration_ms: 130.446167
+  type: 'test'
+  ...
+# Subtest: a prepared native account cannot adopt a verified historical token missing from the billing registry
+ok 40 - a prepared native account cannot adopt a verified historical token missing from the billing registry
+  ---
+  duration_ms: 28.135
+  type: 'test'
+  ...
+# Subtest: canonical refresh reconciles expired owned subscription renewal and refund
+ok 41 - canonical refresh reconciles expired owned subscription renewal and refund
+  ---
+  duration_ms: 66.342666
+  type: 'test'
+  ...
+# Subtest: Apple outage fails closed without overwriting the last owned entitlement
+ok 42 - Apple outage fails closed without overwriting the last owned entitlement
+  ---
+  duration_ms: 39.457583
+  type: 'test'
+  ...
+# Subtest: refresh after concurrent account deletion cannot reactivate a purchase
+ok 43 - refresh after concurrent account deletion cannot reactivate a purchase
+  ---
+  duration_ms: 52.376916
+  type: 'test'
+  ...
+# apple_transaction_verification_failed {
+#   environment: 'Production',
+#   status: 'RETRYABLE_VERIFICATION_FAILURE',
+#   reason: 'VERIFICATION_REJECTED',
+#   runtimeFailure: false
+# }
+# apple_transaction_verification_failed {
+#   environment: 'Production',
+#   status: 'INVALID_CERTIFICATE',
+#   reason: 'VERIFICATION_REJECTED',
+#   runtimeFailure: false
+# }
+# Subtest: ordinary game/profile read does not require a provider round trip
+ok 44 - ordinary game/profile read does not require a provider round trip
+  ---
+  duration_ms: 58.712625
+  type: 'test'
+  ...
+# Subtest: temporary Apple certificate verification failure stays retryable and does not try another environment
+ok 45 - temporary Apple certificate verification failure stays retryable and does not try another environment
+  ---
+  duration_ms: 1.404083
+  type: 'test'
+  ...
+# Subtest: Apple environment mismatch alone can try the second explicitly enabled environment
+ok 46 - Apple environment mismatch alone can try the second explicitly enabled environment
+  ---
+  duration_ms: 0.424041
+  type: 'test'
+  ...
+# Subtest: native Loyalty persists unique verified periods, survives history outage and reconciles refunds
+ok 47 - native Loyalty persists unique verified periods, survives history outage and reconciles refunds
+  ---
+  duration_ms: 178.578458
+  type: 'test'
+  ...
+# Subtest: canonical Apple verification adds only complete Loyalty history, without making a history outage a purchase failure
+ok 48 - canonical Apple verification adds only complete Loyalty history, without making a history outage a purchase failure
+  ---
+  duration_ms: 0.776125
+  type: 'test'
+  ...
+# (node:6666) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:6666) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/davidganzha/Documents/SpyClash.worktrees/app-store-complete-238/.local/rewards238/prepared/supabase/app-services/app-services/profile.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /Users/davidganzha/package.json.
+# Subtest: profile DTO keeps contact private, stable SPY ID, partial update and immutable authorization
+ok 49 - profile DTO keeps contact private, stable SPY ID, partial update and immutable authorization
+  ---
+  duration_ms: 109.31475
+  type: 'test'
+  ...
+# Subtest: concurrent first profile requests allocate one persistent unique non-reserved SPY ID
+ok 50 - concurrent first profile requests allocate one persistent unique non-reserved SPY ID
+  ---
+  duration_ms: 27.327375
+  type: 'test'
+  ...
+# Subtest: directory pages preserve ordering and block privacy with exact SPY-ID lookup
+ok 51 - directory pages preserve ordering and block privacy with exact SPY-ID lookup
+  ---
+  duration_ms: 150.2495
+  type: 'test'
+  ...
+# Subtest: profile signals target only self, accepted friends and recent unblocked active viewers
+ok 52 - profile signals target only self, accepted friends and recent unblocked active viewers
+  ---
+  duration_ms: 179.0165
+  type: 'test'
+  ...
+# Subtest: premium profile changes require verified grants while saved expired customization survives
+ok 53 - premium profile changes require verified grants while saved expired customization survives
+  ---
+  duration_ms: 24.574042
+  type: 'test'
+  ...
+# Subtest: concurrent friend requests commit one pair and inbox item; decisions are actor-bound and replay-safe
+ok 54 - concurrent friend requests commit one pair and inbox item; decisions are actor-bound and replay-safe
+  ---
+  duration_ms: 156.632459
+  type: 'test'
+  ...
+# Subtest: comments enforce author-wide cooldown, public safety and ownership; reports deduplicate
+ok 55 - comments enforce author-wide cooldown, public safety and ownership; reports deduplicate
+  ---
+  duration_ms: 145.422375
+  type: 'test'
+  ...
+# Subtest: block atomically hides profiles and removes pair content, invites, inbox and queued pushes
+ok 56 - block atomically hides profiles and removes pair content, invites, inbox and queued pushes
+  ---
+  duration_ms: 243.467833
+  type: 'test'
+  ...
+# Subtest: room invites check friendship, membership and waiting state; accept/consume recover safely
+ok 57 - room invites check friendship, membership and waiting state; accept/consume recover safely
+  ---
+  duration_ms: 329.420083
+  type: 'test'
+  ...
+# Subtest: inbox ownership, localized copy and scoped watermark preserve later unread events
+ok 58 - inbox ownership, localized copy and scoped watermark preserve later unread events
+  ---
+  duration_ms: 152.001958
+  type: 'test'
+  ...
+# Subtest: announcement authorization ignores metadata; drafts use revisions, cursor and withdrawal
+ok 59 - announcement authorization ignores metadata; drafts use revisions, cursor and withdrawal
+  ---
+  duration_ms: 106.848958
+  type: 'test'
+  ...
+# Subtest: public profile stats derive only canonical ranked history with original role rating rules
+ok 60 - public profile stats derive only canonical ranked history with original role rating rules
+  ---
+  duration_ms: 29.306208
+  type: 'test'
+  ...
+# Subtest: service transaction rolls friendship and inbox back together on infrastructure failure
+ok 61 - service transaction rolls friendship and inbox back together on infrastructure failure
+  ---
+  duration_ms: 55.430917
+  type: 'test'
+  ...
+# Subtest: target deletion row lock prevents late interaction; metadata-only signals enforce recipient RLS
+ok 62 - target deletion row lock prevents late interaction; metadata-only signals enforce recipient RLS
+  ---
+  duration_ms: 53.141459
+  type: 'test'
+  ...
+# Subtest: copied content and notification policy failures are definitive application errors
+ok 63 - copied content and notification policy failures are definitive application errors
+  ---
+  duration_ms: 40.882125
+  type: 'test'
+  ...
+# Subtest: independent invitation permissions allow opted-in strangers and revoke pending access
+ok 64 - independent invitation permissions allow opted-in strangers and revoke pending access
+  ---
+  duration_ms: 226.361042
+  type: 'test'
+  ...
+# Subtest: invitation visibility supports opted-in strangers across inbox, duplicate send and acceptance
+ok 65 - invitation visibility supports opted-in strangers across inbox, duplicate send and acceptance
+  ---
+  duration_ms: 165.578625
+  type: 'test'
+  ...
+# Subtest: invitation visibility hides disabled friends and cancels queued delivery after opt-out
+ok 66 - invitation visibility hides disabled friends and cancels queued delivery after opt-out
+  ---
+  duration_ms: 139.034208
+  type: 'test'
+  ...
+# Subtest: invitation visibility allows queued stranger push but cancels stale rooms before delivery
+ok 67 - invitation visibility allows queued stranger push but cancels stale rooms before delivery
+  ---
+  duration_ms: 139.712208
+  type: 'test'
+  ...
+1..67
+# tests 67
+# suites 0
+# pass 67
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 8518.382416

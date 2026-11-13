@@ -1,0 +1,32 @@
+running 12 tests from ../../base44/functions/app-store-entitlement/apple-entitlement_test.ts
+Apple commerce identity matches the David Ganzha app ... ok (358µs)
+purchase selection preserves weekly for older clients and gates monthly separately ... ok (227µs)
+purchase selection rejects invalid explicit selectors without a weekly fallback ... ok (53µs)
+verification recognizes weekly and monthly independently of new purchase rollout ... ok (75µs)
+CASADA retires new App Store purchase preparation ... ok (108µs)
+Apple status grants access only for active and grace period ... ok (92µs)
+late lifecycle notifications cannot replace the current canonical renewal ... ok (80µs)
+refund reversal reinstates canonical active access despite historical revocation ... ok (921µs)
+refund reversal does not revive an expired canonical subscription ... ok (95µs)
+Apple entitlement uses grace-period expiry and stable original transaction key ... ok (824µs)
+older or duplicate provider events cannot overwrite newer state ... ok (150µs)
+duplicate notification can recover a newer canonically verified status ... ok (107µs)
+------- post-test output -------
+(node:74185) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+----- post-test output end -----
+running 12 tests from ../../base44/functions/app-store-entitlement/apple-subscription-status_test.ts
+refunded old period reconciles to the current paid renewal ... ok (510µs)
+weekly and monthly restore reconcile their current period with rollout disabled ... ok (117µs)
+current supported product may change within the same verified subscription chain ... ok (66µs)
+monthly support does not admit another product or subscription chain ... ok (207µs)
+current canonical expiry, billing retry and revocation remove access ... ok (129µs)
+cancellation retains the paid period and grace uses the verified grace expiry ... ok (72µs)
+renewal proof must belong to the same transaction chain, product and environment ... ok (90µs)
+current transaction and renewal cannot transfer the app account binding ... ok (43µs)
+missing optional current token retains only the verified submitted binding ... ok (50µs)
+status response identity and subscription status fail closed ... ok (80µs)
+failed provider or JWS verification can be retried without an unverified grant ... ok (263µs)
+production status must identify the exact App Store Connect app ... ok (112µs)
+
+ok | 24 passed | 0 failed (202ms)
+

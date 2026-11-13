@@ -1,0 +1,46 @@
+{
+  "checks": [
+    {
+      "log": "candidate-app-typecheck.log",
+      "exit_code": 0
+    },
+    {
+      "log": "candidate-ssv-typecheck.log",
+      "exit_code": 0
+    },
+    {
+      "log": "candidate-base44-typecheck.log",
+      "exit_code": 0
+    },
+    {
+      "log": "candidate-native-integration.log",
+      "exit_code": 0
+    },
+    {
+      "log": "candidate-base44-integration.log",
+      "exit_code": 0
+    },
+    {
+      "log": "candidate-gateway-tests.log",
+      "exit_code": 0
+    },
+    {
+      "log": "candidate-base44-monthly-tests.log",
+      "exit_code": 0
+    },
+    {
+      "log": "candidate-profile-policy-tests.log",
+      "exit_code": 0
+    },
+    {
+      "log": "candidate-billing-community-tests.tap",
+      "exit_code": 0
+    }
+  ],
+  "excluded_source_tests": [
+    "main-topic push reaches only authenticated prepared Base44 relay and retains outbox fencing",
+    "relay rejects missing signature, tampering and expired requests without APNs calls",
+    "main-bundle UUID-room Live Activity keeps private words out of relay and ends after closure"
+  ],
+  "reason": "Dormant main-app Base44 push bridge is outside the active release scope; live push transport preserved."
+}

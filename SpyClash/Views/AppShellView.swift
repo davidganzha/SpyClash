@@ -328,6 +328,7 @@ struct AppShellView: View {
             }
         )
         let shouldShowShellChrome = !appState.isShellChromeSuppressed
+        let isOnlineIntro = contentTab == .game && appState.activeRoom?.normalizedStatus == "roulette"
         let shouldShowDock = (
             isCommunityRoute || isNotificationsRoute || contentTab.showsBottomDock
         ) && shouldShowShellChrome
@@ -417,10 +418,10 @@ struct AppShellView: View {
                         requestCommunityTab(tab)
                     }
                     .opacity(shouldShowDock ? 1 : 0)
-                    .offset(y: shouldShowDock ? 0 : 78)
+                    .offset(y: shouldShowDock || isOnlineIntro ? 0 : 78)
                     .allowsHitTesting(shouldShowDock)
                     .accessibilityHidden(!shouldShowDock)
-                    .animation(.easeOut(duration: 0.20), value: shouldShowDock)
+                    .animation(isOnlineIntro ? .easeInOut(duration: 0.34) : .easeOut(duration: 0.20), value: shouldShowDock)
                 }
                 .background(SpyTheme.black)
                 .safeAreaInset(edge: .top, spacing: 0) {
@@ -434,10 +435,10 @@ struct AppShellView: View {
                         notificationUnreadCount: appState.notificationInbox.unread.total
                     )
                         .opacity(shouldShowShellChrome ? 1 : 0)
-                        .offset(y: shouldShowShellChrome ? 0 : -140)
+                        .offset(y: shouldShowShellChrome || isOnlineIntro ? 0 : -140)
                         .allowsHitTesting(shouldShowShellChrome)
                         .accessibilityHidden(!shouldShowShellChrome)
-                        .animation(.easeOut(duration: 0.18), value: shouldShowShellChrome)
+                        .animation(isOnlineIntro ? .easeInOut(duration: 0.34) : .easeOut(duration: 0.18), value: shouldShowShellChrome)
                     }
                 }
             }

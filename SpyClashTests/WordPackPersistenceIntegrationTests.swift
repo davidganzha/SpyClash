@@ -60,7 +60,9 @@ final class WordPackPersistenceIntegrationTests: XCTestCase {
         var draft = WordPackDraft(pack: pack)
         draft.removeWord("Museum")
         XCTAssertFalse(draft.wordAnalysis.words.contains("Museum"))
-        draft.addWords("Embassy, VAULT")
+        // Saved packs use newline boundaries: punctuation is part of the entry.
+        // A separate case-insensitive duplicate must still be removed.
+        draft.addWords("Embassy, VAULT\nVAULT")
         draft.name = "Edited Places"
 
         _ = try await client.updateWordPack(
@@ -73,7 +75,7 @@ final class WordPackPersistenceIntegrationTests: XCTestCase {
         XCTAssertEqual(refreshed.count, 1)
         XCTAssertEqual(reopenedPack.id, original.id)
         XCTAssertEqual(reopened.normalizedName, "Edited Places")
-        XCTAssertEqual(reopened.words, ["Harbor", "Airport", "Vault", "Embassy"])
+        XCTAssertEqual(reopened.words, ["Harbor", "Airport", "Vault", "Embassy, VAULT"])
         XCTAssertEqual(reopened.wordAnalysis.words, reopened.words)
         XCTAssertEqual(store.requests.map(\.action), ["list", "update", "list"])
         XCTAssertEqual(store.requests[1].packID, original.id)

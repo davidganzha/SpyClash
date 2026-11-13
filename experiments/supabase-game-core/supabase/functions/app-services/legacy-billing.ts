@@ -2,17 +2,18 @@ import {AppServiceError, requireUUID, type AppActor, type AppContext} from './co
 import {canonical, digest} from './integration-crypto.ts';
 import {assertIsolatedSupabase, canonicalBase44Configuration, verifyLegacyCredential, boundedLegacyJSON, CANONICAL_BASE44_APP_ID, CANONICAL_BASE44_ORIGIN} from './legacy-provider.ts';
 import type {AppleLoyaltySnapshot} from './billing-rules/apple-loyalty.ts';
+import {WEEKLY_PRODUCT,MONTHLY_PRODUCT,APPLE_SUBSCRIPTION_PRODUCTS,isAppleSubscriptionProduct,monthlyAppleCheckoutEnabled} from './billing-rules/apple-products.ts';
 
 type Config = Record<string,string|undefined>;
 const evidenceSet = new WeakSet<object>();
-const WEEKLY = 'com.spyclash.ios.limitless.weekly';
+const WEEKLY = WEEKLY_PRODUCT;
 // Fixed canonical route: the original name currently serves an obsolete
 // Stripe-only contract. Never accept an endpoint from client input or fall back
 // to that response when the verified membership route is unavailable.
 const MEMBERSHIP_FUNCTION = 'checkSubscriptionV2';
-// Checkout stays weekly. Restore may reconcile either existing product, but
+// Monthly checkout has a separate gate. Restore may reconcile either product, but
 // Base44 must verify its signature, canonical status and immutable owner first.
-const RESTORABLE_PRODUCTS = new Set([WEEKLY, 'com.spyclash.ios.limitless.monthly']);
+const RESTORABLE_PRODUCTS: ReadonlySet<string> = new Set(APPLE_SUBSCRIPTION_PRODUCTS);
 const actions = new Set(['check','prepare','sync_transaction']);
 export function usesLegacyBilling(config:Config) { return config.APP_BILLING_PROVIDER === 'base44'; }
 export function legacyBillingConfigured(config:Config) {
@@ -29,8 +30,9 @@ function request(body:Record<string,any>) {
   if (action === 'check') return {action};
   requireUUID(body.request_id,'request_id');
   if (action === 'prepare') {
-    if ((body.requested_product_id || WEEKLY) !== WEEKLY) throw new AppServiceError('unsupported_product','Only the current weekly subscription is enabled.',422);
-    return {action,requested_product_id:WEEKLY};
+    const productID = body.requested_product_id === undefined ? WEEKLY : body.requested_product_id;
+    if (!isAppleSubscriptionProduct(productID)) throw new AppServiceError('unsupported_product','Unsupported App Store subscription product.',422);
+    return {action,requested_product_id:productID};
   }
   if (typeof body.signed_transaction !== 'string' || body.signed_transaction.length < 20 || body.signed_transaction.length > 250_000) throw new AppServiceError('invalid_transaction','A signed Apple transaction is required.');
   return {action,signed_transaction:body.signed_transaction};
@@ -88,6 +90,8 @@ export async function prepareLegacyBilling(input:{actor:AppActor,body:Record<str
   if (!legacyBillingConfigured(input.config)) throw new AppServiceError('legacy_billing_unconfigured','The existing billing bridge is not enabled.',503);
   const command = request(input.body);
   if (command.action === 'prepare' && input.config.APP_LEGACY_PURCHASES_ENABLED !== 'true') throw new AppServiceError('apple_purchase_unconfigured','Purchases have not been enabled for this candidate.',503);
+  if (command.action === 'prepare' && command.requested_product_id === MONTHLY_PRODUCT && !monthlyAppleCheckoutEnabled(input.config))
+    throw new AppServiceError('apple_monthly_purchase_unconfigured','Monthly App Store purchases are not enabled.',503);
   const fetcher = dependencies.fetch || fetch;
   const verified = await verifyLegacyCredential(input.config,input.body.base44_access_token,fetcher);
   const hash = await digest(canonical({service:'membership',...command}));
@@ -124,7 +128,7 @@ export async function prepareLegacyBilling(input:{actor:AppActor,body:Record<str
   else {
     result = await invoke('app-store-entitlement',command);
     if (command.action === 'prepare') {
-      if (result?.product_id !== WEEKLY) throw new AppServiceError('legacy_billing_response_invalid','The existing product does not match the weekly subscription.',502);
+      if (result?.product_id !== command.requested_product_id) throw new AppServiceError('legacy_billing_response_invalid','The prepared product does not match the requested subscription.',502);
       requireUUID(result.app_account_token,'app_account_token');
     } else {
       if (result?.success !== true || result?.server_status_verified !== true

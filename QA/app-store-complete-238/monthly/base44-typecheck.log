@@ -1,0 +1,16 @@
+Initialize @base44/sdk@0.8.31
+Initialize socket.io-client@4.8.3
+Initialize uuid@13.0.2
+Initialize axios@1.18.1
+Initialize @socket.io/component-emitter@3.1.2
+Initialize debug@4.4.3
+Initialize engine.io-client@6.6.6
+Initialize socket.io-parser@4.2.6
+Initialize follow-redirects@1.16.0
+Initialize proxy-from-env@2.1.0
+Initialize https-proxy-agent@5.0.1
+Initialize xmlhttprequest-ssl@2.1.2
+Initialize ws@8.21.0
+Initialize engine.io-parser@5.2.3
+Initialize agent-base@6.0.2
+Check ../../base44/functions/app-store-entitlement/entry.ts

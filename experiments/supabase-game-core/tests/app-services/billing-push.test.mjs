@@ -37,7 +37,7 @@ test('membership preserves universal and gated weekly; forged evidence cannot gr
   const a=await fixture();
   assert.equal((await call(dispatchMembership,a,{action:'check'})).protocol,'casada');
   assert.equal((await call(dispatchMembership,a,{action:'check'},billing)).active,false);
-  await assert.rejects(call(dispatchMembership,a,{action:'prepare',requested_product_id:'com.spyclash.ios.limitless.monthly'},billing),e=>e.code==='unsupported_product');
+  await assert.rejects(call(dispatchMembership,a,{action:'prepare',requested_product_id:'com.spyclash.ios.limitless.monthly'},billing),e=>e.code==='apple_monthly_purchase_unconfigured');
   const contexts=await Promise.all(Array.from({length:4},()=>call(dispatchMembership,a,{action:'prepare'},billing)));
   assert.equal(new Set(contexts.map(c=>c.app_account_token)).size,1);assert.equal(contexts[0].product_id,WEEKLY_PRODUCT);
   await assert.rejects(call(dispatchMembership,a,{action:'sync_transaction',signed_transaction:'x'.repeat(30)},billing,{actor:a.id,verified:{}}),e=>e.code==='verified_transaction_required');

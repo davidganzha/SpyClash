@@ -1,0 +1,38 @@
+PASS new tables are private with RLS and no client grants
+PASS feature defaults off and demo ad unit cannot mint credits
+PASS test allowlist matches only an exact authenticated account and never enables the quota
+PASS test offer grants one real signed credit without consuming or changing the existing free quota
+PASS allowlisted LIMITLESS test preserves unlimited generation and never needs entitlement changes
+PASS removing test access blocks new offers but preserves issued late callbacks and credit recovery
+PASS test allowlist cannot offer a missing or Google demo unit
+PASS valid signed SSV earns exactly one bonus across concurrent duplicate callbacks
+PASS forged signature, wrong user/unit/amount/item, reused transaction and expired event never earn
+PASS uppercase native request IDs issue canonical tokens accepted by the public gateway
+PASS late delivery honors a signed event in its issued window and routes without user auth
+PASS legacy rewards proxy verifies account mapping and keeps Base44 as the only credit owner
+PASS concurrent generations consume 3 free then one credit and never double-charge retries
+PASS definitive bonus failure refunds once and successful replacement spends that same credit
+PASS LIMITLESS is server-owned and unlimited; expiry falls back to 3 free
+PASS UTC daily reset restores free allowance without expiring unused bonus
+PASS unknown direct provider result retains reservation and same request cannot repeat provider work
+PASS successful direct result survives write failure and lost commit ACK without another provider call
+PASS persistent success-save outage stays unknown and never refunds or repeats the provider
+PASS HTTP 200 with interrupted response body stays unknown and cannot refund its credit
+PASS late signed relay completion recovers expired worker lease without another provider call
+PASS deleted account rejects late signed reward and erased ledger cannot reappear
+PASS prepare rejects stale client offers after free reset or a late bonus credit
+PASS Unity native public route grants exactly one credit and exactly one additional generation
+PASS Unity never grants from client assertions, tampered callbacks or another placement
+PASS Unity missing secret closes offers; verified LIMITLESS never needs a rewarded ad
+PASS Unity disabled rollout still settles issued callbacks and expired duplicates remain idempotent
+PASS Unity expired pending attempt and account deletion never mint or recreate credits
+PASS old unenrolled native accounts retain 10 daily generations and receive no ad offer
+error: Uncaught (in promise) AssertionError: Expected values to be strictly equal:
+
+10 !== 3
+
+    const initial=await membership(a);assert.equal(initial.benefits.ai_generations_daily_limit,3);assert.equal(initial.ai_remaining,3);
+                                             ^
+    at file:///Users/davidganzha/Documents/SpyClash.worktrees/app-store-complete-238/experiments/supabase-game-core/tests/game-center/rewarded-generation-integration.ts:391:46
+    at async check (file:///Users/davidganzha/Documents/SpyClash.worktrees/app-store-complete-238/experiments/supabase-game-core/tests/game-center/rewarded-generation-integration.ts:29:56)
+    at async file:///Users/davidganzha/Documents/SpyClash.worktrees/app-store-complete-238/experiments/supabase-game-core/tests/game-center/rewarded-generation-integration.ts:386:3

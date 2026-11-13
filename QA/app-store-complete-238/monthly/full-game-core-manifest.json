@@ -1,0 +1,415 @@
+{
+  "operation": "local preparation only",
+  "baseline": "Exact UTF-8 content from fresh get_edge_function raw JSON; no newline normalization",
+  "baseline_file_count": 44,
+  "candidate_file_count": 51,
+  "changed_existing_files": [
+    "app-services/native-apple.ts",
+    "app-services/membership.ts",
+    "app-services/legacy-billing.ts",
+    "app-services/billing-rules/apple-subscription-status.ts"
+  ],
+  "added_import_dependencies": [
+    "app-services/billing-rules/apple-loyalty.ts",
+    "app-services/billing-rules/apple-ocsp-date.ts",
+    "app-services/billing-rules/apple-products.ts",
+    "app-services/billing-rules/apple-verification-failure.ts",
+    "app-services/billing-rules/apple-x509-compatibility.ts",
+    "app-services/generation-reward-ledger.ts",
+    "app-services/unity-ssv.ts"
+  ],
+  "unchanged_full_game_core": true,
+  "baseline_version": 16,
+  "baseline_function_id": "f9124f9f-fe82-42fe-adfd-ae9585972768",
+  "verify_jwt": true,
+  "baseline_bundle_sha256": "1b071b6680215b910239112072164993e93eb77c068efecbb4ab22de01115cce",
+  "raw_snapshot_sha256": "83739c10ef17f7af2bd8cb77928f0fe4d269d90d857cebdc805e737183266527",
+  "baseline_exact_to_raw": true,
+  "unmodified_files_exact_to_raw": 40,
+  "overlay_bytes_unchanged_from_previous_tested_candidate": true,
+  "patch_sha256": "3a08308de57daa7c49b526ab9557c0871609637fd22280fb559b8103cde4a706",
+  "files": [
+    {
+      "path": "app-services/account-gate.ts",
+      "sha256": "c8f3c162b768965caee4279761ce5ee16d6181d20264af2c32e64acf883b6b20"
+    },
+    {
+      "path": "app-services/billing-rules/apple-entitlement.ts",
+      "sha256": "cbc76d8a7500defa7170c00668f796b83831c1d0fa2af61d0ac01ab52f2e9664"
+    },
+    {
+      "path": "app-services/billing-rules/apple-loyalty.ts",
+      "sha256": "63fa108cb661c524edfba53694528128a4d78b874c24f60a1ec6189a5386e1ec"
+    },
+    {
+      "path": "app-services/billing-rules/apple-ocsp-date.ts",
+      "sha256": "58251720e452a996dab8dbe43776fcc51c7a394946b7e5e869d7e6decc10e44b"
+    },
+    {
+      "path": "app-services/billing-rules/apple-products.ts",
+      "sha256": "2b187d7ced7f72e36c4717eb01d92e48161e49f648554e68d71b7053f089ebd5"
+    },
+    {
+      "path": "app-services/billing-rules/apple-subscription-status.ts",
+      "sha256": "e4a37ea4bdb88a7b3adc98b283ec00fa6d4fe7c65e97e8a69912c0c3130e8e28"
+    },
+    {
+      "path": "app-services/billing-rules/apple-verification-failure.ts",
+      "sha256": "50a4b2685ba3329ce0c6e21358077846a46d7777b633a01df89587a9796a5ad6"
+    },
+    {
+      "path": "app-services/billing-rules/apple-x509-compatibility.ts",
+      "sha256": "eadfdf8ae654a49c904db9424279648d502afe01866bef04708369f7a8f75308"
+    },
+    {
+      "path": "app-services/billing-rules/limitless-rollout.ts",
+      "sha256": "4b554789725e48c10c56d2ecd9294d2f1f95949c7d556d5a1ff95fc606a20b02"
+    },
+    {
+      "path": "app-services/contracts.ts",
+      "sha256": "b794347818f730710a6b0b9622bf6583781d9f24c332e905372b98191476d0a3"
+    },
+    {
+      "path": "app-services/generation-reward-ledger.ts",
+      "sha256": "6e9992aecbfec67500ed5bc5b8046703ce3e4890e595dcbf969630230d64b023"
+    },
+    {
+      "path": "app-services/integration-crypto.ts",
+      "sha256": "27b6ea3966e7844d4114d76525902da5a9b0a4253185a52858042225c14cb970"
+    },
+    {
+      "path": "app-services/legacy-billing.ts",
+      "sha256": "47eb95fe030bd528c095ad201f10b70716c77fbb67244c4529e9e1e6a7eb8129"
+    },
+    {
+      "path": "app-services/legacy-provider.ts",
+      "sha256": "41ea1277efb74f98e15c8adac83ff91c82bc427a802aba2e829e314c1447ca03"
+    },
+    {
+      "path": "app-services/membership.ts",
+      "sha256": "e393397fb6ded2d55ee2a6fae64ee8acd00fc5d9fb69e896e90bb0386ef03735"
+    },
+    {
+      "path": "app-services/native-apple.ts",
+      "sha256": "ed614ee47a8306e800c859caf6cbdc63427961e33816962d25ada951641d19af"
+    },
+    {
+      "path": "app-services/native-game-center.ts",
+      "sha256": "a7506648fac186abab3dbf1cd0bbbf6c66a7b93215de2b589e9a69218eb1c442"
+    },
+    {
+      "path": "app-services/unity-ssv.ts",
+      "sha256": "76447820be5805604e232be2a5cdac3ef83b8b327990562eea862ad52dab5c3a"
+    },
+    {
+      "path": "full-game-core/deno.json",
+      "sha256": "fa0a2b84dda16ce3da477576c9c16de04368302cd170425853b731027fb48a83"
+    },
+    {
+      "path": "full-game-core/engine.ts",
+      "sha256": "47d610c1d053eefc8bfb1cfdd82b98290a9691813fe00f4cdbe133d8fa5bc502"
+    },
+    {
+      "path": "full-game-core/handler.ts",
+      "sha256": "b3c505227356b69459b5eed834c199e97c843f5ef88776c58e1365151acb8f78"
+    },
+    {
+      "path": "full-game-core/index.ts",
+      "sha256": "fd50e28c94aae041a42e98b70372198c970f95099b189e9d05f601619eebbdd5"
+    },
+    {
+      "path": "full-game-core/leaderboard-service.ts",
+      "sha256": "569a4f55257f5066a104f0f152fb2678da873b94f4951191e5e4563c34438818"
+    },
+    {
+      "path": "full-game-core/rules/active-game-lobby-return-policy.ts",
+      "sha256": "ac77f8e56b1f92b30b8db54c32a5a80f2f5bde917a306d32d1fa18980c7b2b67"
+    },
+    {
+      "path": "full-game-core/rules/association-turn-order.ts",
+      "sha256": "5dc3497378f59ed654d85ef8e0f0669e7497a4094fd67f76465a7e352ed81ffa"
+    },
+    {
+      "path": "full-game-core/rules/competitive-stats.ts",
+      "sha256": "b4af87f26a96d223300a0c689247dadb409f419ad494bdc7a86d0bdca4680c95"
+    },
+    {
+      "path": "full-game-core/rules/content-safety.ts",
+      "sha256": "9d2698787d133a6eb4a7807c9765ceafdcf726671839621248189cfcb634e84b"
+    },
+    {
+      "path": "full-game-core/rules/detective-vote-policy.ts",
+      "sha256": "74e51a572605127319b48c018fd6fb8169f96237077c56a2d9f76f2ec9cad5c4"
+    },
+    {
+      "path": "full-game-core/rules/fan-mode-policy.ts",
+      "sha256": "9546a9b13df1cacb8ad0ccf05c1763a8d43e2cab13857c0939e1ff5c4fccea76"
+    },
+    {
+      "path": "full-game-core/rules/finished-room-departure-policy.ts",
+      "sha256": "d27b46836bb44f1d8086af6bcb03481f16ac801b993117c9539c427fbb18ab14"
+    },
+    {
+      "path": "full-game-core/rules/game-history-idempotency.ts",
+      "sha256": "8e27cd9df57aa9cdf7ee2c0164bf9a92e40fa70c93227946a5d3b748f44502d0"
+    },
+    {
+      "path": "full-game-core/rules/game-round.ts",
+      "sha256": "85c38cfba7b78ec6dbb5060d8478c5c4ebd454d835f1999f700030bdfc3684af"
+    },
+    {
+      "path": "full-game-core/rules/game-timer-policy.ts",
+      "sha256": "b18f5a64f5020d5f131ba3434cdd061adb8741641ef55b4864e73a5c26c157c1"
+    },
+    {
+      "path": "full-game-core/rules/leaderboard.ts",
+      "sha256": "1127d3b778fb47c6e8bc0ea3b176ec84e2e99638f2db35d3ce2ea8e575b34b94"
+    },
+    {
+      "path": "full-game-core/rules/lobby-host-transfer-policy.ts",
+      "sha256": "19fa2d97fdf7d4caaf98afdebddd55f5497ddb7a18fe071fa8fcaddd83ef91f2"
+    },
+    {
+      "path": "full-game-core/rules/lobby-kick-policy.ts",
+      "sha256": "37eb0383c205282027e5420bb2aef6a73955dd8fa67d27e568e4fb83f2eb74a6"
+    },
+    {
+      "path": "full-game-core/rules/lobby-state-policy.ts",
+      "sha256": "394ddfd69db1047c043ef0b5c87ba8157ba0d9b341bd067a2e5917bff2248f2a"
+    },
+    {
+      "path": "full-game-core/rules/multi-spy-policy.ts",
+      "sha256": "7513c66a19b074502c591186aa2ffac96ac9974af7c67f45318e3288b834c267"
+    },
+    {
+      "path": "full-game-core/rules/question-turn-order.ts",
+      "sha256": "8da578fb29e840b1aa9c5b967fac64475f4eb8bb0ac83922e4ce2c279af361ef"
+    },
+    {
+      "path": "full-game-core/rules/replay-auto-start-policy.ts",
+      "sha256": "ad52cd32af20e4ab28c73bc92c9c0e86fbb8c459363f820dd5caacf3caa28815"
+    },
+    {
+      "path": "full-game-core/rules/replay-policy.ts",
+      "sha256": "87f19132b355bc97b54ee802f83a92976364d09716184a14d7717a5950841380"
+    },
+    {
+      "path": "full-game-core/rules/room-interaction-safety.ts",
+      "sha256": "b6183d05fb00fdd2cfd473f50afb92ed58a0f98d2f2f21c7611f5fb72264b06c"
+    },
+    {
+      "path": "full-game-core/rules/room-membership-generation.ts",
+      "sha256": "97f10bf14a8dff24547a372e7bd26f423b17660eb524f7e3bf75965478fbc10b"
+    },
+    {
+      "path": "full-game-core/rules/room-projection.ts",
+      "sha256": "58912c75cad09b6580d1b5724ba9a2133497529a7d800f7196fa393008f74770"
+    },
+    {
+      "path": "full-game-core/rules/room-result-policy.ts",
+      "sha256": "0ac6c88f26cf8b45dd5dcc8cef5ae5069c53bc99487c267a0c853c37fffa2d78"
+    },
+    {
+      "path": "full-game-core/rules/round-action-access.ts",
+      "sha256": "8175ec5ddf9bb115549b36c81b6e6c2b345cc703aae6df95df9957b46d8e5dda"
+    },
+    {
+      "path": "full-game-core/rules/start-word-pool-policy.ts",
+      "sha256": "b4f7df0d7eb40050a65413d6c33db3c5f81965ccf0e64584b24f60160c97b01b"
+    },
+    {
+      "path": "full-game-core/rules/terminal-finalization-scope.ts",
+      "sha256": "ecddb8175e7bb0d2d09019a4074aa59e5ae2ed3fc2873c0b4791459a3370dc12"
+    },
+    {
+      "path": "full-game-core/rules/terminal-outbox-commit.ts",
+      "sha256": "6b87e575425faee886dff8e93534f68ac821a59760d7c30da829efcdc84bba1e"
+    },
+    {
+      "path": "full-game-core/service.ts",
+      "sha256": "78069f09043e2c1747909e720f3451c24f0f562e342f71f28ab554571f4b5578"
+    },
+    {
+      "path": "full-game-core/word-pack-content-safety.ts",
+      "sha256": "ffb2554d847ef452d50750c7a0e57951826bbfe40a1dd11a22e88be058319937"
+    }
+  ],
+  "baseline_files": [
+    {
+      "path": "app-services/account-gate.ts",
+      "sha256": "c8f3c162b768965caee4279761ce5ee16d6181d20264af2c32e64acf883b6b20"
+    },
+    {
+      "path": "app-services/billing-rules/apple-entitlement.ts",
+      "sha256": "cbc76d8a7500defa7170c00668f796b83831c1d0fa2af61d0ac01ab52f2e9664"
+    },
+    {
+      "path": "app-services/billing-rules/apple-subscription-status.ts",
+      "sha256": "3dcd0223033f0524e14c75c4745ced9f19910aede55a3ef4639cf1e46ace5366"
+    },
+    {
+      "path": "app-services/billing-rules/limitless-rollout.ts",
+      "sha256": "4b554789725e48c10c56d2ecd9294d2f1f95949c7d556d5a1ff95fc606a20b02"
+    },
+    {
+      "path": "app-services/contracts.ts",
+      "sha256": "b794347818f730710a6b0b9622bf6583781d9f24c332e905372b98191476d0a3"
+    },
+    {
+      "path": "app-services/integration-crypto.ts",
+      "sha256": "27b6ea3966e7844d4114d76525902da5a9b0a4253185a52858042225c14cb970"
+    },
+    {
+      "path": "app-services/legacy-billing.ts",
+      "sha256": "6ab49a565985df9d9e60556ee15f5c2c4eb10c7e17119d706d9198f858ebb403"
+    },
+    {
+      "path": "app-services/legacy-provider.ts",
+      "sha256": "41ea1277efb74f98e15c8adac83ff91c82bc427a802aba2e829e314c1447ca03"
+    },
+    {
+      "path": "app-services/membership.ts",
+      "sha256": "6991c6d56fa7a9475ba877bf7b82e4e7b9096a05249ff962012c6d1c0240000f"
+    },
+    {
+      "path": "app-services/native-apple.ts",
+      "sha256": "ba7bdd9a65f20501f057f78290203361a9b9a983cb2158a4bb7c308ee50a45f2"
+    },
+    {
+      "path": "app-services/native-game-center.ts",
+      "sha256": "a7506648fac186abab3dbf1cd0bbbf6c66a7b93215de2b589e9a69218eb1c442"
+    },
+    {
+      "path": "full-game-core/deno.json",
+      "sha256": "fa0a2b84dda16ce3da477576c9c16de04368302cd170425853b731027fb48a83"
+    },
+    {
+      "path": "full-game-core/engine.ts",
+      "sha256": "47d610c1d053eefc8bfb1cfdd82b98290a9691813fe00f4cdbe133d8fa5bc502"
+    },
+    {
+      "path": "full-game-core/handler.ts",
+      "sha256": "b3c505227356b69459b5eed834c199e97c843f5ef88776c58e1365151acb8f78"
+    },
+    {
+      "path": "full-game-core/index.ts",
+      "sha256": "fd50e28c94aae041a42e98b70372198c970f95099b189e9d05f601619eebbdd5"
+    },
+    {
+      "path": "full-game-core/leaderboard-service.ts",
+      "sha256": "569a4f55257f5066a104f0f152fb2678da873b94f4951191e5e4563c34438818"
+    },
+    {
+      "path": "full-game-core/rules/active-game-lobby-return-policy.ts",
+      "sha256": "ac77f8e56b1f92b30b8db54c32a5a80f2f5bde917a306d32d1fa18980c7b2b67"
+    },
+    {
+      "path": "full-game-core/rules/association-turn-order.ts",
+      "sha256": "5dc3497378f59ed654d85ef8e0f0669e7497a4094fd67f76465a7e352ed81ffa"
+    },
+    {
+      "path": "full-game-core/rules/competitive-stats.ts",
+      "sha256": "b4af87f26a96d223300a0c689247dadb409f419ad494bdc7a86d0bdca4680c95"
+    },
+    {
+      "path": "full-game-core/rules/content-safety.ts",
+      "sha256": "9d2698787d133a6eb4a7807c9765ceafdcf726671839621248189cfcb634e84b"
+    },
+    {
+      "path": "full-game-core/rules/detective-vote-policy.ts",
+      "sha256": "74e51a572605127319b48c018fd6fb8169f96237077c56a2d9f76f2ec9cad5c4"
+    },
+    {
+      "path": "full-game-core/rules/fan-mode-policy.ts",
+      "sha256": "9546a9b13df1cacb8ad0ccf05c1763a8d43e2cab13857c0939e1ff5c4fccea76"
+    },
+    {
+      "path": "full-game-core/rules/finished-room-departure-policy.ts",
+      "sha256": "d27b46836bb44f1d8086af6bcb03481f16ac801b993117c9539c427fbb18ab14"
+    },
+    {
+      "path": "full-game-core/rules/game-history-idempotency.ts",
+      "sha256": "8e27cd9df57aa9cdf7ee2c0164bf9a92e40fa70c93227946a5d3b748f44502d0"
+    },
+    {
+      "path": "full-game-core/rules/game-round.ts",
+      "sha256": "85c38cfba7b78ec6dbb5060d8478c5c4ebd454d835f1999f700030bdfc3684af"
+    },
+    {
+      "path": "full-game-core/rules/game-timer-policy.ts",
+      "sha256": "b18f5a64f5020d5f131ba3434cdd061adb8741641ef55b4864e73a5c26c157c1"
+    },
+    {
+      "path": "full-game-core/rules/leaderboard.ts",
+      "sha256": "1127d3b778fb47c6e8bc0ea3b176ec84e2e99638f2db35d3ce2ea8e575b34b94"
+    },
+    {
+      "path": "full-game-core/rules/lobby-host-transfer-policy.ts",
+      "sha256": "19fa2d97fdf7d4caaf98afdebddd55f5497ddb7a18fe071fa8fcaddd83ef91f2"
+    },
+    {
+      "path": "full-game-core/rules/lobby-kick-policy.ts",
+      "sha256": "37eb0383c205282027e5420bb2aef6a73955dd8fa67d27e568e4fb83f2eb74a6"
+    },
+    {
+      "path": "full-game-core/rules/lobby-state-policy.ts",
+      "sha256": "394ddfd69db1047c043ef0b5c87ba8157ba0d9b341bd067a2e5917bff2248f2a"
+    },
+    {
+      "path": "full-game-core/rules/multi-spy-policy.ts",
+      "sha256": "7513c66a19b074502c591186aa2ffac96ac9974af7c67f45318e3288b834c267"
+    },
+    {
+      "path": "full-game-core/rules/question-turn-order.ts",
+      "sha256": "8da578fb29e840b1aa9c5b967fac64475f4eb8bb0ac83922e4ce2c279af361ef"
+    },
+    {
+      "path": "full-game-core/rules/replay-auto-start-policy.ts",
+      "sha256": "ad52cd32af20e4ab28c73bc92c9c0e86fbb8c459363f820dd5caacf3caa28815"
+    },
+    {
+      "path": "full-game-core/rules/replay-policy.ts",
+      "sha256": "87f19132b355bc97b54ee802f83a92976364d09716184a14d7717a5950841380"
+    },
+    {
+      "path": "full-game-core/rules/room-interaction-safety.ts",
+      "sha256": "b6183d05fb00fdd2cfd473f50afb92ed58a0f98d2f2f21c7611f5fb72264b06c"
+    },
+    {
+      "path": "full-game-core/rules/room-membership-generation.ts",
+      "sha256": "97f10bf14a8dff24547a372e7bd26f423b17660eb524f7e3bf75965478fbc10b"
+    },
+    {
+      "path": "full-game-core/rules/room-projection.ts",
+      "sha256": "58912c75cad09b6580d1b5724ba9a2133497529a7d800f7196fa393008f74770"
+    },
+    {
+      "path": "full-game-core/rules/room-result-policy.ts",
+      "sha256": "0ac6c88f26cf8b45dd5dcc8cef5ae5069c53bc99487c267a0c853c37fffa2d78"
+    },
+    {
+      "path": "full-game-core/rules/round-action-access.ts",
+      "sha256": "8175ec5ddf9bb115549b36c81b6e6c2b345cc703aae6df95df9957b46d8e5dda"
+    },
+    {
+      "path": "full-game-core/rules/start-word-pool-policy.ts",
+      "sha256": "b4f7df0d7eb40050a65413d6c33db3c5f81965ccf0e64584b24f60160c97b01b"
+    },
+    {
+      "path": "full-game-core/rules/terminal-finalization-scope.ts",
+      "sha256": "ecddb8175e7bb0d2d09019a4074aa59e5ae2ed3fc2873c0b4791459a3370dc12"
+    },
+    {
+      "path": "full-game-core/rules/terminal-outbox-commit.ts",
+      "sha256": "6b87e575425faee886dff8e93534f68ac821a59760d7c30da829efcdc84bba1e"
+    },
+    {
+      "path": "full-game-core/service.ts",
+      "sha256": "78069f09043e2c1747909e720f3451c24f0f562e342f71f28ab554571f4b5578"
+    },
+    {
+      "path": "full-game-core/word-pack-content-safety.ts",
+      "sha256": "ffb2554d847ef452d50750c7a0e57951826bbfe40a1dd11a22e88be058319937"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+running 5 tests from ./base44/functions/generationRewardAction/admob-ssv_test.ts
+SSV verifies DER signature and decodes percent escaping once without losing plus ... ok (76ms)
+SSV rejects tampered reward, wrong key and reordered signed content ... ok (3ms)
+SSV rejects duplicate fields, appended unsigned fields and decoded delimiters ... ok (4ms)
+SSV rejects malformed DER and never accepts raw WebCrypto signatures as DER ... ok (2ms)
+SSV key-service failure is retryable and cannot grant a reward ... ok (2ms)
+running 5 tests from ./base44/functions/generationRewardAction/unity-ssv_test.ts
+Unity HMAC authenticates provider, game, placement, complete SID and offer ... ok (22ms)
+Unity callback signature uses alphabetical decoded values independent of URL parameter order ... ok (1ms)
+Unity signed callback fails closed for mutation, duplicate keys and ambiguous canonicalization ... ok (1ms)
+Unity requires owned project and support-issued server secret, without fallback ... ok (0ms)
+Unity attempt exposes only SDK placement/game/SID while preserving AdMob IDs ... ok (0ms)
+running 9 tests from ./base44/functions/generateWordPack/generation-rewards_test.ts
+reward preparation retries a lost create acknowledgement without duplicate attempt ... ok (26ms)
+previously issued unnamespaced attempt remains recoverable and earns once ... ok (1ms)
+verified reward duplicate and lost write acknowledgement mint one credit ... ok (0ms)
+reward rejects other owner, token, ad unit, amount, item and impossible event time ... ok (0ms)
+late delivery grants earned credit without imposing credit expiration ... ok (0ms)
+credit reservation is exclusive and definitive failure refunds once across lost ACK ... ok (0ms)
+successful credit spend cannot be refunded by stale failure or duplicate callback ... ok (0ms)
+status has exactly three daily free attempts and separate persistent bonus ... ok (0ms)
+disabled rollout never reads new storage or enables advertising ... ok (0ms)
+
+ok | 19 passed | 0 failed (236ms)
+

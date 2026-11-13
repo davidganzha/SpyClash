@@ -1,0 +1,135 @@
+{
+  "prepared_only": true,
+  "production_target_changed": false,
+  "candidate_directory": ".local/rewards238/prepared/base44/generateWordPack",
+  "app_id": "69a0e57fa939f578082f8091",
+  "function": "generateWordPack",
+  "baseline_deployment_id": "d3fe3582212845d29097f301c919a3fb",
+  "entrypoint": "base44/functions/generateWordPack/entry.ts",
+  "automations_preserved": [],
+  "reviewed_overlays": {
+    "entry.ts": "main.ts",
+    "generation-rewards.ts": "generation-rewards.ts"
+  },
+  "missing_dependencies_added": [],
+  "baseline_files": 18,
+  "candidate_files": 18,
+  "changed_files": [
+    "base44/functions/generateWordPack/entry.ts",
+    "base44/functions/generateWordPack/generation-rewards.ts"
+  ],
+  "preserved_files": 16,
+  "all_unrelated_files_byte_identical": true,
+  "patch": "QA/app-store-complete-238/rewards/base44-generateWordPack.patch",
+  "patch_sha256": "4a4de69872a74f9db932a8ea6c05b6a992514a1a4c3a46eff3ba0457eef41fd0",
+  "files": [
+    {
+      "path": "base44/functions/generateWordPack/ai-provider-resilience.ts",
+      "before_sha256": "98a314fafb31d5790b7c37730323ec93b80803be1c87be181a69d87bc868db45",
+      "after_sha256": "98a314fafb31d5790b7c37730323ec93b80803be1c87be181a69d87bc868db45",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/base44-context.ts",
+      "before_sha256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de",
+      "after_sha256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/billing-identity-lifecycle.ts",
+      "before_sha256": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25",
+      "after_sha256": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/content-safety.ts",
+      "before_sha256": "817ba01e58d5eb8036a59148a20cc3e6a9b30df0ee33f254bf84e56e98629042",
+      "after_sha256": "817ba01e58d5eb8036a59148a20cc3e6a9b30df0ee33f254bf84e56e98629042",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/entry.ts",
+      "before_sha256": "d437d2a9057c6c2c4a7cd2511af11fd092a216141cbc219319801591262696b4",
+      "after_sha256": "9966215596f6c1d2a3c89659ee4a07ef77fde33d99db2aaaa27e67f5fa91bd27",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/generateWordPack/generation-cache.ts",
+      "before_sha256": "39365535caef5535036fb986c0746df4429a1e5cb9c20bb2df22810d5389e278",
+      "after_sha256": "39365535caef5535036fb986c0746df4429a1e5cb9c20bb2df22810d5389e278",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/generation-idempotency.ts",
+      "before_sha256": "c0fd8afdc9373bc18cca920d9d681f10b122aa025d5c9e36e48962b39413a0e0",
+      "after_sha256": "c0fd8afdc9373bc18cca920d9d681f10b122aa025d5c9e36e48962b39413a0e0",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/generation-operation.ts",
+      "before_sha256": "7d2fa55d518f716ce9be9152f61be5b8afd146845ca7102459546a7eeacb7eef",
+      "after_sha256": "7d2fa55d518f716ce9be9152f61be5b8afd146845ca7102459546a7eeacb7eef",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/generation-retry-contract.ts",
+      "before_sha256": "8855e7cd8e69c1c3ba64aaed667f7d0e3a8eb9e5e62994efb96159cf02b8d6e8",
+      "after_sha256": "8855e7cd8e69c1c3ba64aaed667f7d0e3a8eb9e5e62994efb96159cf02b8d6e8",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/generation-rewards.ts",
+      "before_sha256": "9e9ed71cc3ed57da819ad63af92334939a1ad870b06db8f31a21c58dd142bc74",
+      "after_sha256": "ccf451fbd45071a27fd6d46f8df05d7c38eee7c9eff8a67a215ba322c13ac686",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/generateWordPack/generation-write-lifecycle.ts",
+      "before_sha256": "0b50f5159baf5271e085ca8363d030be840039e3a1b1ba236ad9f4d4e4e6179f",
+      "after_sha256": "0b50f5159baf5271e085ca8363d030be840039e3a1b1ba236ad9f4d4e4e6179f",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/membership.ts",
+      "before_sha256": "c0ca269c61ef4df2a65646c4d8c0b033a06e218d6f44d6b3c2dc98ccd6090df4",
+      "after_sha256": "c0ca269c61ef4df2a65646c4d8c0b033a06e218d6f44d6b3c2dc98ccd6090df4",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/openai-word-pack-provider.ts",
+      "before_sha256": "69b748717ad66e75d4906b9443f6aec672b3ca3f8d730cb594452a4ab17715c4",
+      "after_sha256": "69b748717ad66e75d4906b9443f6aec672b3ca3f8d730cb594452a4ab17715c4",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/quota.ts",
+      "before_sha256": "4b77aeff53148483316fd5d443b2bbc03b6ff2fcf13b19acc90609f42c2c36be",
+      "after_sha256": "4b77aeff53148483316fd5d443b2bbc03b6ff2fcf13b19acc90609f42c2c36be",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/shared-word-pack-library.ts",
+      "before_sha256": "6c0e43856c82c905129761bcaaab32ce7bee6827083aa3f39a60a97644c81072",
+      "after_sha256": "6c0e43856c82c905129761bcaaab32ce7bee6827083aa3f39a60a97644c81072",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/shared-word-pack-rest.ts",
+      "before_sha256": "b9d82c95dd3e196655b5b735fb2edc8160576ee43e0cb7ae1de2509b07412ab6",
+      "after_sha256": "b9d82c95dd3e196655b5b735fb2edc8160576ee43e0cb7ae1de2509b07412ab6",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/word-normalization.ts",
+      "before_sha256": "fa65bd50a34f22c7e7f6b680407cf5dc8db0308e03b05a57d1667715df594111",
+      "after_sha256": "fa65bd50a34f22c7e7f6b680407cf5dc8db0308e03b05a57d1667715df594111",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/word-pack-quality.ts",
+      "before_sha256": "c0aa06a9708d6b3a08930f0d9df35d848652e36fd8a71f0a7e72c0f870e2b5e6",
+      "after_sha256": "c0aa06a9708d6b3a08930f0d9df35d848652e36fd8a71f0a7e72c0f870e2b5e6",
+      "changed": false
+    }
+  ]
+}

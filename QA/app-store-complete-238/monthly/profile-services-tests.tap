@@ -1,0 +1,129 @@
+TAP version 13
+# (node:4851) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:4851) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/davidganzha/Documents/SpyClash.worktrees/app-store-complete-238/.local/rewards238/prepared/supabase/app-services/app-services/profile.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /Users/davidganzha/package.json.
+# Subtest: profile DTO keeps contact private, stable SPY ID, partial update and immutable authorization
+ok 1 - profile DTO keeps contact private, stable SPY ID, partial update and immutable authorization
+  ---
+  duration_ms: 102.719958
+  type: 'test'
+  ...
+# Subtest: concurrent first profile requests allocate one persistent unique non-reserved SPY ID
+ok 2 - concurrent first profile requests allocate one persistent unique non-reserved SPY ID
+  ---
+  duration_ms: 23.824834
+  type: 'test'
+  ...
+# Subtest: directory pages preserve ordering and block privacy with exact SPY-ID lookup
+ok 3 - directory pages preserve ordering and block privacy with exact SPY-ID lookup
+  ---
+  duration_ms: 100.500291
+  type: 'test'
+  ...
+# Subtest: profile signals target only self, accepted friends and recent unblocked active viewers
+ok 4 - profile signals target only self, accepted friends and recent unblocked active viewers
+  ---
+  duration_ms: 144.161333
+  type: 'test'
+  ...
+# Subtest: premium profile changes require verified grants while saved expired customization survives
+ok 5 - premium profile changes require verified grants while saved expired customization survives
+  ---
+  duration_ms: 31.556125
+  type: 'test'
+  ...
+# Subtest: concurrent friend requests commit one pair and inbox item; decisions are actor-bound and replay-safe
+ok 6 - concurrent friend requests commit one pair and inbox item; decisions are actor-bound and replay-safe
+  ---
+  duration_ms: 94.818083
+  type: 'test'
+  ...
+# Subtest: comments enforce author-wide cooldown, public safety and ownership; reports deduplicate
+ok 7 - comments enforce author-wide cooldown, public safety and ownership; reports deduplicate
+  ---
+  duration_ms: 66.324125
+  type: 'test'
+  ...
+# Subtest: block atomically hides profiles and removes pair content, invites, inbox and queued pushes
+ok 8 - block atomically hides profiles and removes pair content, invites, inbox and queued pushes
+  ---
+  duration_ms: 109.147083
+  type: 'test'
+  ...
+# Subtest: room invites check friendship, membership and waiting state; accept/consume recover safely
+ok 9 - room invites check friendship, membership and waiting state; accept/consume recover safely
+  ---
+  duration_ms: 108.004708
+  type: 'test'
+  ...
+# Subtest: inbox ownership, localized copy and scoped watermark preserve later unread events
+ok 10 - inbox ownership, localized copy and scoped watermark preserve later unread events
+  ---
+  duration_ms: 82.424416
+  type: 'test'
+  ...
+# Subtest: announcement authorization ignores metadata; drafts use revisions, cursor and withdrawal
+ok 11 - announcement authorization ignores metadata; drafts use revisions, cursor and withdrawal
+  ---
+  duration_ms: 60.576209
+  type: 'test'
+  ...
+# Subtest: public profile stats derive only canonical ranked history with original role rating rules
+ok 12 - public profile stats derive only canonical ranked history with original role rating rules
+  ---
+  duration_ms: 18.015083
+  type: 'test'
+  ...
+# Subtest: service transaction rolls friendship and inbox back together on infrastructure failure
+ok 13 - service transaction rolls friendship and inbox back together on infrastructure failure
+  ---
+  duration_ms: 32.677333
+  type: 'test'
+  ...
+# Subtest: target deletion row lock prevents late interaction; metadata-only signals enforce recipient RLS
+ok 14 - target deletion row lock prevents late interaction; metadata-only signals enforce recipient RLS
+  ---
+  duration_ms: 26.524125
+  type: 'test'
+  ...
+# Subtest: copied content and notification policy failures are definitive application errors
+ok 15 - copied content and notification policy failures are definitive application errors
+  ---
+  duration_ms: 23.418708
+  type: 'test'
+  ...
+# Subtest: independent invitation permissions allow opted-in strangers and revoke pending access
+ok 16 - independent invitation permissions allow opted-in strangers and revoke pending access
+  ---
+  duration_ms: 194.222209
+  type: 'test'
+  ...
+# Subtest: invitation visibility supports opted-in strangers across inbox, duplicate send and acceptance
+ok 17 - invitation visibility supports opted-in strangers across inbox, duplicate send and acceptance
+  ---
+  duration_ms: 74.21825
+  type: 'test'
+  ...
+# Subtest: invitation visibility hides disabled friends and cancels queued delivery after opt-out
+ok 18 - invitation visibility hides disabled friends and cancels queued delivery after opt-out
+  ---
+  duration_ms: 67.011417
+  type: 'test'
+  ...
+# Subtest: invitation visibility allows queued stranger push but cancels stale rooms before delivery
+ok 19 - invitation visibility allows queued stranger push but cancels stale rooms before delivery
+  ---
+  duration_ms: 110.994583
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1695.987791

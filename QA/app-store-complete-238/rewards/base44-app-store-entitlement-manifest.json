@@ -1,0 +1,130 @@
+{
+  "prepared_only": true,
+  "production_target_changed": false,
+  "candidate_directory": ".local/rewards238/prepared/base44/app-store-entitlement",
+  "app_id": "69a0e57fa939f578082f8091",
+  "function": "app-store-entitlement",
+  "baseline_deployment_id": "d3fe3582212845d29097f301c919a3fb",
+  "entrypoint": "base44/functions/app-store-entitlement/entry.ts",
+  "automations_preserved": [],
+  "reviewed_overlays": {
+    "entry.ts": "entry.ts",
+    "apple-entitlement.ts": "apple-entitlement.ts",
+    "apple-subscription-status.ts": "apple-subscription-status.ts",
+    "limitless-rollout.ts": "limitless-rollout.ts"
+  },
+  "missing_dependencies_added": [
+    "base44/functions/app-store-entitlement/apple-loyalty.ts"
+  ],
+  "baseline_files": 15,
+  "candidate_files": 16,
+  "changed_files": [
+    "base44/functions/app-store-entitlement/apple-entitlement.ts",
+    "base44/functions/app-store-entitlement/apple-loyalty.ts",
+    "base44/functions/app-store-entitlement/apple-subscription-status.ts",
+    "base44/functions/app-store-entitlement/entry.ts",
+    "base44/functions/app-store-entitlement/limitless-rollout.ts"
+  ],
+  "preserved_files": 11,
+  "all_unrelated_files_byte_identical": true,
+  "patch": "QA/app-store-complete-238/rewards/base44-app-store-entitlement.patch",
+  "patch_sha256": "bafffacd922d5fca9ade89b5ff6ff016f2e9a9086cd512c386557a98fee7688e",
+  "files": [
+    {
+      "path": "base44/functions/app-store-entitlement/apple-account-binding.ts",
+      "before_sha256": "537e390b2f887a2d170234df9c8eb0bad1ea9788b6186a7d0d171d74af4f27fa",
+      "after_sha256": "537e390b2f887a2d170234df9c8eb0bad1ea9788b6186a7d0d171d74af4f27fa",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/app-store-entitlement/apple-account-lease-guard.ts",
+      "before_sha256": "33ecec0a96aadfaf3e6269fb73560cbcb9b3acfac52896d3e7136bda1cba9e7d",
+      "after_sha256": "33ecec0a96aadfaf3e6269fb73560cbcb9b3acfac52896d3e7136bda1cba9e7d",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/app-store-entitlement/apple-account-reservation.ts",
+      "before_sha256": "35566ff83b77e7974bc5971678faf699639c4bf6490d7ec3329937c5e5f14cf0",
+      "after_sha256": "35566ff83b77e7974bc5971678faf699639c4bf6490d7ec3329937c5e5f14cf0",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/app-store-entitlement/apple-entitlement.ts",
+      "before_sha256": "cbc76d8a7500defa7170c00668f796b83831c1d0fa2af61d0ac01ab52f2e9664",
+      "after_sha256": "0c894de1633aa461d7d851c35c7d8ef66d7e8528660d51a14a0be3d9a67905c7",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/app-store-entitlement/apple-fetch-body-compatibility.ts",
+      "before_sha256": "f31ec810da06076cbe1e64e46e0eac41c119a16a4a9869890bebbbee64432577",
+      "after_sha256": "f31ec810da06076cbe1e64e46e0eac41c119a16a4a9869890bebbbee64432577",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/app-store-entitlement/apple-loyalty.ts",
+      "before_sha256": null,
+      "after_sha256": "63fa108cb661c524edfba53694528128a4d78b874c24f60a1ec6189a5386e1ec",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/app-store-entitlement/apple-notification-diagnostic.ts",
+      "before_sha256": "9957f51258ee712fb62b17513af18a2e91cbda72515772c316729329e122aae5",
+      "after_sha256": "9957f51258ee712fb62b17513af18a2e91cbda72515772c316729329e122aae5",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/app-store-entitlement/apple-request-error.ts",
+      "before_sha256": "2076182b42bad690b473aed412d9b78efdeb9cd851bd370abc0914c1dd5276b6",
+      "after_sha256": "2076182b42bad690b473aed412d9b78efdeb9cd851bd370abc0914c1dd5276b6",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/app-store-entitlement/apple-subscription-status.ts",
+      "before_sha256": "3dcd0223033f0524e14c75c4745ced9f19910aede55a3ef4639cf1e46ace5366",
+      "after_sha256": "380754a2f13d91276e48d722834980d048d43654fd9cca41f0f98ab93ed06583",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/app-store-entitlement/apple-verification-error.ts",
+      "before_sha256": "0bf8b8584c5264fb71ba653906d22df5aa470ca640632a833b5bc2056f8b13a8",
+      "after_sha256": "0bf8b8584c5264fb71ba653906d22df5aa470ca640632a833b5bc2056f8b13a8",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/app-store-entitlement/base44-context.ts",
+      "before_sha256": "16dfd39666facf2415fe509783fe820128b5ac101bfdb0b8a5a25f4c2bed814f",
+      "after_sha256": "16dfd39666facf2415fe509783fe820128b5ac101bfdb0b8a5a25f4c2bed814f",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/app-store-entitlement/deleted-account-identity.ts",
+      "before_sha256": "a404ccf4f67033ab471ea3210e0db0f4558fc2c3effcf3db2431a863312321b7",
+      "after_sha256": "a404ccf4f67033ab471ea3210e0db0f4558fc2c3effcf3db2431a863312321b7",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/app-store-entitlement/entry.ts",
+      "before_sha256": "be234bfaa9cdc728ac4aadedbf19f1f5d0319664ca51536ada31557ff0c981cb",
+      "after_sha256": "478c21fb7e1a96b31a9fe422435edc50b6bffcf45b07fa65106c7a4307cd3905",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/app-store-entitlement/limitless-rollout.ts",
+      "before_sha256": "4b554789725e48c10c56d2ecd9294d2f1f95949c7d556d5a1ff95fc606a20b02",
+      "after_sha256": "ae92e2b0e33b4ac064465b889fb1d0732f4e70c60ad5f6430ee3c9e5cc288b8d",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/app-store-entitlement/membership-guard.ts",
+      "before_sha256": "606c793aab3b72dc65117259f2dd722e49a0fabb02a8b355246f0ff7ff18eb7d",
+      "after_sha256": "606c793aab3b72dc65117259f2dd722e49a0fabb02a8b355246f0ff7ff18eb7d",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/app-store-entitlement/membership-signal.ts",
+      "before_sha256": "bd9dc2f3b388197df326e7ffab587e13ce8995fbc4ab23761ef1d065757912c4",
+      "after_sha256": "bd9dc2f3b388197df326e7ffab587e13ce8995fbc4ab23761ef1d065757912c4",
+      "changed": false
+    }
+  ]
+}

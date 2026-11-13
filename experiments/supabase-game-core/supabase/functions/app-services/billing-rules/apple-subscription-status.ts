@@ -16,7 +16,7 @@ export class AppleSubscriptionStatusError extends Error {
 export async function readCanonicalAppleSubscriptionStatus(input: {
   transaction: JWSTransactionDecodedPayload;
   expectedBundleID: string;
-  expectedProductID: string;
+  expectedProductIDs: readonly string[];
   expectedEnvironment: string;
   expectedAppAppleID: number;
   getStatuses: (transactionID: string) => Promise<StatusResponse>;
@@ -29,6 +29,12 @@ export async function readCanonicalAppleSubscriptionStatus(input: {
   ) {
     throw new AppleSubscriptionStatusError(
       "Apple transaction ID is missing.",
+      422,
+    );
+  }
+  if (!input.expectedProductIDs.includes(input.transaction.productId || "")) {
+    throw new AppleSubscriptionStatusError(
+      "Apple transaction product is not a supported subscription.",
       422,
     );
   }
@@ -64,7 +70,9 @@ export async function readCanonicalAppleSubscriptionStatus(input: {
   if (
     transaction.originalTransactionId !==
       input.transaction.originalTransactionId ||
-    transaction.productId !== input.expectedProductID ||
+    // A crossgrade retains the original chain and binding; only these known
+    // products may replace the historical product in Apple's current status.
+    !input.expectedProductIDs.includes(transaction.productId || "") ||
     transaction.bundleId !== input.expectedBundleID ||
     transaction.environment !== input.expectedEnvironment ||
     (renewal && (

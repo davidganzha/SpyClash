@@ -1,0 +1,9 @@
+{
+  "profile.ts": "4bed823712835153d9f59509fdbb8b044c8d0bf25bac31611de7d9255d10c2e6",
+  "community.ts": "c453a908c3d5b36dc9ce825bd09925fbee867b49b0011dd90aa1e062325faef5",
+  "inbox.ts": "49593ea0633820c886a24ba6b2d109fb3a7c1860033cdad6ed3c96824c534cb9",
+  "worker.ts": "03386b81a031253d0595a57956f08504855432892fa7d8c2581411e4650f8550",
+  "policies/community.ts": "a82d4dc2d668a8f2d746ab17a1dcbcb0b7034faee7ec18e59650452900cba166",
+  "policies/achievements.ts": "99220f2728d27054aedd9ec46c51acf96e772fbc32386c8b1c75645f8dfbd67b",
+  "policies/invitation-permissions.ts": "8f5065e22aa3a9b6309cc2b8638139b703218a4edb5305d4878e9cbe515430a9"
+}

@@ -6,8 +6,10 @@ import {nativeGameCenterAccount,resolveNativeGameCenterAccount} from './native-g
 import {accountGate} from './account-gate.ts';
 import {usesLegacyBilling,legacyBillingConfigured,prepareLegacyBilling,dispatchLegacyBilling} from './legacy-billing.ts';
 import {mergeAppleLoyaltySnapshot} from './billing-rules/apple-loyalty.ts';
+import {nativeRewardStatus,rewardedGenerationEnabled} from './generation-reward-ledger.ts';
+import {WEEKLY_PRODUCT,MONTHLY_PRODUCT,isAppleSubscriptionProduct,monthlyAppleCheckoutEnabled} from './billing-rules/apple-products.ts';
 
-export const WEEKLY_PRODUCT = 'com.spyclash.ios.limitless.weekly';
+export {WEEKLY_PRODUCT,MONTHLY_PRODUCT};
 const acceptedEvidence = new WeakSet<object>();
 type Config = Record<string,string|undefined>;
 type Preparation = {actor:AppActor,body:Record<string,any>,config:Config};
@@ -57,15 +59,17 @@ export async function dispatchMembership(ctx: AppContext, body: Record<string,an
   const action = ({check_subscription:'check',prepare_purchase:'prepare'} as Record<string,string>)[body.action] || body.action;
   if (action === 'check') return await checkMembership(ctx);
   if (action === 'prepare') {
-    if ((body.requested_product_id || WEEKLY_PRODUCT) !== WEEKLY_PRODUCT) throw new AppServiceError('unsupported_product','Only the current weekly subscription is enabled.',422);
+    const productID = body.requested_product_id === undefined ? WEEKLY_PRODUCT : body.requested_product_id;
+    if (!isAppleSubscriptionProduct(productID)) throw new AppServiceError('unsupported_product','Unsupported App Store subscription product.',422);
     if (!membershipCapabilities(ctx.config).apple_purchase_enabled) throw new AppServiceError('apple_purchase_unconfigured','New App Store purchases are not configured for this account.',503);
+    if (productID === MONTHLY_PRODUCT && !monthlyAppleCheckoutEnabled(ctx.config)) throw new AppServiceError('apple_monthly_purchase_unconfigured','Monthly App Store purchases are not enabled.',503);
     const membership = await checkMembership(ctx);
     if (membership.active) throw new AppServiceError('membership_already_active','This account already has access.',409);
     await ctx.tx`select pg_advisory_xact_lock(hashtextextended(${ctx.actor.id+':apple-account'},0))`;
     await ctx.tx`insert into app_private.apple_accounts(user_id,app_account_token) values(${ctx.actor.id},${crypto.randomUUID()}) on conflict(user_id) do nothing`;
     const [account] = await ctx.tx`select * from app_private.apple_accounts where user_id=${ctx.actor.id} for update`;
     if (account.state !== 'active') throw new AppServiceError('account_deleted','This billing identity is unavailable.',409);
-    return {product_id:WEEKLY_PRODUCT,app_account_token:account.app_account_token};
+    return {product_id:productID,app_account_token:account.app_account_token};
   }
   if (action !== 'sync_transaction') throw new AppServiceError('invalid_action','Unknown membership action.');
   const evidence = ctx.evidence;
@@ -90,8 +94,8 @@ async function applyVerifiedMembership(ctx:AppContext,verified:any,checkedAt:num
   const active = ['active','trialing','grace_period'].includes(record.status) && Date.parse(record.expires_at)>ctx.now.getTime();
   await ctx.tx`insert into app_private.entitlements(source_key,user_id,active,expires_at,data,provider,product_id,provider_event_at,updated_at)
     values(${record.source_key},${ctx.actor.id},${active},${record.expires_at},${ctx.tx.json(record)},'apple',${record.product_id},${record.provider_event_at},${ctx.now})
-    on conflict(source_key) do update set active=excluded.active,expires_at=excluded.expires_at,data=excluded.data,provider_event_at=excluded.provider_event_at,updated_at=excluded.updated_at`;
-  return {success:true,server_status_verified:true,submitted_product_id:WEEKLY_PRODUCT,entitlement:publicAppleEntitlement(record)};
+    on conflict(source_key) do update set active=excluded.active,expires_at=excluded.expires_at,data=excluded.data,product_id=excluded.product_id,provider_event_at=excluded.provider_event_at,updated_at=excluded.updated_at`;
+  return {success:true,server_status_verified:true,submitted_product_id:verified.submittedProductID || transaction.productId,entitlement:publicAppleEntitlement(record)};
 }
 
 export async function checkMembership(ctx: AppContext) {
@@ -105,9 +109,12 @@ export async function checkMembership(ctx: AppContext) {
   const native = ctx.config.APP_BILLING_PROVIDER === NATIVE_GAME_CENTER_BILLING;
   const [usage] = native ? await ctx.tx`select count(*)::integer as total from game_center_private.generation_requests where user_id=${ctx.actor.id} and usage_date=(${ctx.now}::timestamptz at time zone 'UTC')::date and charged` : [];
   const used = native ? Number(usage?.total || 0) : null;
+  const rewards = native && rewardedGenerationEnabled(ctx.config) ? await nativeRewardStatus(ctx.tx,ctx.actor.id,ctx.config) : undefined;
+  const dailyLimit = rewards?.enabled ? rewards.daily_limit : 10;
+  const remaining = rewards?.enabled ? (rewards.free_remaining || 0) + rewards.bonus_credits : Math.max(0,dailyLimit-(used || 0));
   return {active,tier:active?'limitless':'free',status:active?'active':'inactive',protocol:'limitless',providers,
-    benefits:active?unlimited:{ai_generations_daily_limit:10,premium_avatars:false,full_history:false,advanced_statistics:false,history_limit:5},
-    expires_at:expiry,ai_generations_today:used,ai_remaining:active || used === null ? null : Math.max(0,10-used),apple_purchase_enabled:membershipCapabilities(ctx.config).apple_purchase_enabled};
+    benefits:active?unlimited:{ai_generations_daily_limit:dailyLimit,premium_avatars:false,full_history:false,advanced_statistics:false,history_limit:5},
+    expires_at:expiry,ai_generations_today:used,ai_remaining:active || used === null ? null : remaining,apple_purchase_enabled:membershipCapabilities(ctx.config).apple_purchase_enabled};
 }
 
 /** Called inside the account deletion transaction. Billing ownership is retained

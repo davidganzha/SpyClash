@@ -1,0 +1,801 @@
+--- baseline/app-services/billing-rules/apple-loyalty.ts
++++ candidate/app-services/billing-rules/apple-loyalty.ts
+@@ -0,0 +1,128 @@
++/** A complete, server-verified view of paid transactions in one owned chain.
++ * No amounts, receipts or account tokens are exposed by profile projections. */
++export type AppleLoyaltySnapshot = {
++  original_transaction_id: string;
++  environment: 'production' | 'sandbox';
++  transaction_ids: string[];
++  verified_at: string;
++};
++
++type Transaction = {
++  transactionId?: string; originalTransactionId?: string; appAccountToken?: string;
++  bundleId?: string; productId?: string; environment?: string; type?: string;
++  inAppOwnershipType?: string; price?: number; offerDiscountType?: string;
++  purchaseDate?: number; signedDate?: number; revocationDate?: number;
++  revocationReason?: number; revocationPercentage?: number; revocationType?: string;
++};
++type HistoryPage = {
++  bundleId?: string; environment?: string; appAppleId?: number;
++  hasMore?: boolean; revision?: string; signedTransactions?: string[];
++};
++const validID = (value: unknown): value is string =>
++  typeof value === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(value);
++const positive = (value: unknown): value is number =>
++  typeof value === 'number' && Number.isFinite(value) && value > 0;
++
++/** Caller must first verify the current subscription and its account binding.
++ * Failed/incomplete reads throw; callers retain the previous complete snapshot.
++ * History includes revoked records so a later refund can remove a paid period. */
++export async function readAppleLoyaltyHistory(input: {
++  transactionID: string;
++  originalTransactionID: string;
++  appAccountToken: string;
++  expectedBundleID: string;
++  expectedProducts: readonly string[];
++  expectedEnvironment: string;
++  expectedAppAppleID: number;
++  getHistory: (transactionID: string, revision: string | null) => Promise<HistoryPage>;
++  verifyTransaction: (jws: string) => Promise<Transaction>;
++  now?: () => number;
++  deadlineMilliseconds?: number;
++}): Promise<AppleLoyaltySnapshot> {
++  const now = (input.now || Date.now)();
++  const deadline = input.deadlineMilliseconds ?? Date.now() + 8000;
++  const requireTime = () => {
++    if (!Number.isFinite(deadline) || Date.now() >= deadline) throw new Error('Apple Loyalty history timed out.');
++  };
++  const token = input.appAccountToken.toLowerCase();
++  if (!validID(input.transactionID) || !validID(input.originalTransactionID) || !token
++      || !['Production', 'Sandbox'].includes(input.expectedEnvironment)
++      || !positive(now)) throw new Error('Invalid verified Loyalty binding.');
++  const records = new Map<string, { signedAt: number; eligible: boolean }>();
++  const revisions = new Set<string>();
++  let revision: string | null = null;
++  for (let pageNumber = 0; pageNumber < 100; pageNumber++) {
++    requireTime();
++    const page = await input.getHistory(input.transactionID, revision);
++    requireTime();
++    if (page.bundleId !== input.expectedBundleID || page.environment !== input.expectedEnvironment
++        || (input.expectedEnvironment === 'Production' && page.appAppleId !== input.expectedAppAppleID)
++        || typeof page.hasMore !== 'boolean' || !Array.isArray(page.signedTransactions)
++        || page.signedTransactions.length > 20) throw new Error('Invalid Apple Loyalty history response.');
++    for (const signed of page.signedTransactions) {
++      requireTime();
++      if (typeof signed !== 'string' || !signed || signed.length > 250_000)
++        throw new Error('Invalid signed Loyalty transaction.');
++      const transaction = await input.verifyTransaction(signed);
++      requireTime();
++      if (transaction.bundleId !== input.expectedBundleID || transaction.environment !== input.expectedEnvironment)
++        throw new Error('Apple Loyalty transaction identity mismatch.');
++      // Apple's history is app-wide. A different chain is never evidence for this binding.
++      if (transaction.originalTransactionId !== input.originalTransactionID) continue;
++      const suppliedToken = transaction.appAccountToken?.toLowerCase();
++      if (suppliedToken && suppliedToken !== token) throw new Error('Apple Loyalty account binding mismatch.');
++      const id = transaction.transactionId;
++      if (!validID(id) || !positive(transaction.signedDate)) throw new Error('Invalid Apple Loyalty transaction identity.');
++      const eligible = input.expectedEnvironment === 'Production'
++        && input.expectedProducts.includes(transaction.productId || '')
++        && transaction.type === 'Auto-Renewable Subscription'
++        && transaction.inAppOwnershipType === 'PURCHASED'
++        && positive(transaction.price) && transaction.offerDiscountType !== 'FREE_TRIAL'
++        && positive(transaction.purchaseDate) && transaction.purchaseDate <= now
++        && transaction.revocationDate == null && transaction.revocationReason == null
++        && transaction.revocationType == null && transaction.revocationPercentage == null;
++      const prior = records.get(id);
++      // Updated transactions can recur during pagination; newest signed state wins.
++      // For equal timestamps, a revocation/ineligible representation wins safely.
++      if (!prior || transaction.signedDate > prior.signedAt
++          || (transaction.signedDate === prior.signedAt && !eligible))
++        records.set(id, { signedAt: transaction.signedDate, eligible });
++    }
++    if (!page.hasMore) {
++      // The verified current transaction must still be visible in a complete
++      // unfiltered history. A missing chain is an incomplete observation, not
++      // evidence that all previously earned paid periods disappeared.
++      if (!records.has(input.transactionID)) throw new Error('Apple Loyalty history omitted the verified transaction.');
++      return {
++      original_transaction_id: input.originalTransactionID,
++      environment: input.expectedEnvironment === 'Production' ? 'production' : 'sandbox',
++      transaction_ids: [...records].filter(([, record]) => record.eligible).map(([id]) => id).sort(),
++      verified_at: new Date(now).toISOString(),
++      };
++    }
++    if (typeof page.revision !== 'string' || !page.revision || page.revision.length > 4096 || revisions.has(page.revision))
++      throw new Error('Incomplete Apple Loyalty history.');
++    revisions.add(page.revision);
++    revision = page.revision;
++  }
++  throw new Error('Apple Loyalty history exceeded the bounded page limit.');
++}
++
++/** Only call with private server evidence, never with a client request object. */
++export function mergeAppleLoyaltySnapshot<T extends Record<string, any>>(
++  current: T, prior: Record<string, any> | undefined, snapshot?: AppleLoyaltySnapshot,
++): T & { loyalty_transaction_ids?: string[]; loyalty_verified_at?: string } {
++  const sameChain = prior?.original_transaction_id === current.original_transaction_id
++    && prior?.environment === current.environment;
++  const previousIDs = sameChain && Array.isArray(prior?.loyalty_transaction_ids)
++    ? prior.loyalty_transaction_ids.filter(validID) : undefined;
++  const previousTime = sameChain ? Date.parse(prior?.loyalty_verified_at || '') : NaN;
++  const nextTime = Date.parse(snapshot?.verified_at || '');
++  const valid = snapshot && snapshot.original_transaction_id === current.original_transaction_id
++    && snapshot.environment === current.environment && Number.isFinite(nextTime)
++    && (!Number.isFinite(previousTime) || nextTime >= previousTime)
++    && Array.isArray(snapshot.transaction_ids) && snapshot.transaction_ids.length <= 2000
++    && snapshot.transaction_ids.every(validID);
++  if (valid) return {...current, loyalty_transaction_ids: [...new Set(snapshot.transaction_ids)], loyalty_verified_at: snapshot.verified_at};
++  return previousIDs ? {...current, loyalty_transaction_ids: previousIDs, loyalty_verified_at: prior!.loyalty_verified_at} : current;
++}
+--- baseline/app-services/billing-rules/apple-ocsp-date.ts
++++ candidate/app-services/billing-rules/apple-ocsp-date.ts
+@@ -0,0 +1,28 @@
++const installed = new WeakSet<object>();
++
++/** Apple SDK 3.1.0 receives GeneralizedTime with a trailing Z from jsrsasign,
++ * but its parser only rewrites the form without Z. Invalid Date makes the
++ * subsequent freshness comparisons false. Parse both forms explicitly as UTC
++ * and reject invalid calendar fields instead of allowing Date normalization.
++ */
++export function parseAppleOCSPDate(value: string): Date {
++  const match = typeof value === 'string' ? /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})Z?$/.exec(value) : null;
++  if (!match) throw new RangeError('Invalid Apple OCSP timestamp.');
++  const [year, month, day, hour, minute, second] = match.slice(1).map(Number);
++  const date = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
++  if (year < 1970 || date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1
++      || date.getUTCDate() !== day || date.getUTCHours() !== hour
++      || date.getUTCMinutes() !== minute || date.getUTCSeconds() !== second)
++    throw new RangeError('Invalid Apple OCSP timestamp.');
++  return date;
++}
++
++export function ensureAppleOCSPDateParsing(verifier: object): void {
++  if (installed.has(verifier)) return;
++  if (typeof (verifier as {parseX509Date?: unknown}).parseX509Date !== 'function')
++    throw new Error('Unsupported Apple verifier date parser.');
++  // Deliberately scoped to this pinned verifier instance. The SDK retains its
++  // OCSP signature, signer authorization, certificate ID, status and skew checks.
++  Object.defineProperty(verifier, 'parseX509Date', {value:parseAppleOCSPDate});
++  installed.add(verifier);
++}
+--- baseline/app-services/billing-rules/apple-products.ts
++++ candidate/app-services/billing-rules/apple-products.ts
+@@ -0,0 +1,13 @@
++// Fixed server-owned products. Rollout gates apply to new checkout only; signed
++// existing weekly/monthly chains remain verifiable when a gate is disabled.
++export const WEEKLY_PRODUCT = 'com.spyclash.ios.limitless.weekly';
++export const MONTHLY_PRODUCT = 'com.spyclash.ios.limitless.monthly';
++export const APPLE_SUBSCRIPTION_PRODUCTS = [WEEKLY_PRODUCT, MONTHLY_PRODUCT] as const;
++
++export function isAppleSubscriptionProduct(value: unknown): value is typeof APPLE_SUBSCRIPTION_PRODUCTS[number] {
++  return APPLE_SUBSCRIPTION_PRODUCTS.some(product => product === value);
++}
++
++export function monthlyAppleCheckoutEnabled(config: Record<string,string|undefined>) {
++  return config.SPYCLASH_LIMITLESS_APPLE_MONTHLY_PURCHASE_ENABLED === 'true';
++}
+--- baseline/app-services/billing-rules/apple-subscription-status.ts
++++ candidate/app-services/billing-rules/apple-subscription-status.ts
+@@ -16,7 +16,7 @@
+ export async function readCanonicalAppleSubscriptionStatus(input: {
+   transaction: JWSTransactionDecodedPayload;
+   expectedBundleID: string;
+-  expectedProductID: string;
++  expectedProductIDs: readonly string[];
+   expectedEnvironment: string;
+   expectedAppAppleID: number;
+   getStatuses: (transactionID: string) => Promise<StatusResponse>;
+@@ -29,6 +29,12 @@
+   ) {
+     throw new AppleSubscriptionStatusError(
+       "Apple transaction ID is missing.",
++      422,
++    );
++  }
++  if (!input.expectedProductIDs.includes(input.transaction.productId || "")) {
++    throw new AppleSubscriptionStatusError(
++      "Apple transaction product is not a supported subscription.",
+       422,
+     );
+   }
+@@ -64,7 +70,9 @@
+   if (
+     transaction.originalTransactionId !==
+       input.transaction.originalTransactionId ||
+-    transaction.productId !== input.expectedProductID ||
++    // A crossgrade retains the original chain and binding; only these known
++    // products may replace the historical product in Apple's current status.
++    !input.expectedProductIDs.includes(transaction.productId || "") ||
+     transaction.bundleId !== input.expectedBundleID ||
+     transaction.environment !== input.expectedEnvironment ||
+     (renewal && (
+--- baseline/app-services/billing-rules/apple-verification-failure.ts
++++ candidate/app-services/billing-rules/apple-verification-failure.ts
+@@ -0,0 +1,28 @@
++const verificationStatuses = [
++  'OK', 'VERIFICATION_FAILURE', 'RETRYABLE_VERIFICATION_FAILURE',
++  'INVALID_APP_IDENTIFIER', 'INVALID_ENVIRONMENT', 'INVALID_CHAIN_LENGTH',
++  'INVALID_CERTIFICATE', 'FAILURE',
++] as const;
++
++/** Closed diagnostics only: nested SDK messages can contain signed payloads.
++ * A missing server primitive is recoverable; it says nothing about the purchase.
++ */
++export function appleVerificationFailure(error: unknown) {
++  const failure = error && typeof error === 'object'
++    ? error as {status?: unknown; cause?: unknown} : undefined;
++  const cause = failure?.cause ?? error;
++  const message = cause instanceof Error ? cause.message : '';
++  const code = cause && typeof cause === 'object' && 'code' in cause
++    ? cause.code : undefined;
++  const unsupportedCrypto = code === 'ERR_NOT_IMPLEMENTED'
++    || /not implemented.*(?:crypto\.|X509Certificate)/i.test(message);
++  const missingBodyReader = /\.buffer is not a function/.test(message);
++  const status = typeof failure?.status === 'number' && Number.isInteger(failure.status)
++    ? verificationStatuses[failure.status] ?? 'UNKNOWN' : 'UNKNOWN';
++  return {
++    status,
++    reason: unsupportedCrypto ? 'SERVER_CRYPTO_UNAVAILABLE'
++      : missingBodyReader ? 'SERVER_BODY_READER_UNAVAILABLE' : 'VERIFICATION_REJECTED',
++    runtimeFailure: unsupportedCrypto || missingBodyReader,
++  };
++}
+--- baseline/app-services/billing-rules/apple-x509-compatibility.ts
++++ candidate/app-services/billing-rules/apple-x509-compatibility.ts
+@@ -0,0 +1,129 @@
++import { Buffer } from 'node:buffer';
++import { createRequire } from 'node:module';
++import type { KeyObject, X509Certificate } from 'node:crypto';
++import { X509 } from 'npm:jsrsasign@11.1.3';
++
++// Apple SDK 3.1.0 and jsonwebtoken use this same mutable CommonJS export.
++// Install before importing the SDK: jsonwebtoken captures its key factories.
++const nodeCrypto = createRequire(import.meta.url)('crypto') as typeof import('node:crypto');
++const installed = Symbol.for('spyclash.apple-node-crypto-compatibility.v1');
++const probePublicKey = 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEKYz8fDnrfTMqZ7+Se8AnT58dqnZpDgbiLup7OZ9TRcKE2Bc4JO2fdeaZ5QNHkNSGk244clCyYKlMOAtHX0qlOQ==';
++const canonicalCurves: Record<string, string> = {
++  'P-256': 'prime256v1', p256: 'prime256v1',
++  'P-384': 'secp384r1', p384: 'secp384r1',
++  'P-521': 'secp521r1', p521: 'secp521r1',
++};
++
++function derBytes(input: ConstructorParameters<typeof X509Certificate>[0]): Buffer {
++  const encoded = typeof input === 'string' ? Buffer.from(input)
++    : ArrayBuffer.isView(input) ? Buffer.from(input.buffer, input.byteOffset, input.byteLength)
++    : Buffer.from(input as ArrayBuffer);
++  const text = encoded.toString('utf8').trimStart();
++  const pem = text.startsWith('-----BEGIN CERTIFICATE-----')
++    ? text.match(/^-----BEGIN CERTIFICATE-----([\s\S]*?)-----END CERTIFICATE-----/) : null;
++  return pem ? Buffer.from(pem[1].replace(/\s/g, ''), 'base64') : Buffer.from(encoded);
++}
++
++function needsCertificateCompatibility(certificate: X509Certificate): boolean {
++  for (const operation of [
++    () => certificate.toString(), () => certificate.raw,
++    () => certificate.infoAccess, () => certificate.verify(certificate.publicKey),
++  ]) {
++    try { operation(); }
++    catch (error) {
++      // A malformed certificate/configuration must not be treated as a missing
++      // runtime feature. Construction already used the native certificate parser.
++      if (error instanceof Error && /not implemented.*X509Certificate/i.test(error.message)) return true;
++      throw error;
++    }
++  }
++  return false;
++}
++
++/** Restore Node API behavior missing in Supabase edge-runtime 1.70.5/Deno 2.1.4.
++ * Native parsing, keys, dates, issuer/subject and CA constraints stay in use.
++ * Apple's full verifier still checks the chain, extensions, OCSP and JWS. */
++export function ensureAppleX509Compatibility(rootCertificate: Uint8Array): void {
++  const runtime = nodeCrypto as typeof nodeCrypto & { [installed]?: boolean };
++  if (runtime[installed]) return;
++  const NativeCertificate = runtime.X509Certificate;
++  const nativeCreatePublicKey = runtime.createPublicKey;
++  const nativeCreatePrivateKey = runtime.createPrivateKey;
++  const root = new NativeCertificate(Buffer.from(rootCertificate));
++
++  if (needsCertificateCompatibility(root)) {
++    class CompatibleCertificate extends NativeCertificate {
++      #der: Buffer;
++      #parsed: InstanceType<typeof X509>;
++      constructor(input: ConstructorParameters<typeof NativeCertificate>[0]) {
++        super(input);
++        this.#der = derBytes(input);
++        this.#parsed = new X509();
++        this.#parsed.readCertHex(this.#der.toString('hex'));
++        // Node's type declarations expose these runtime accessors as readonly
++        // fields. Define own accessors without changing the native prototype.
++        Object.defineProperties(this, {
++          raw: { get: () => Buffer.from(this.#der) },
++          infoAccess: { get: () => this.#readInfoAccess() },
++        });
++      }
++      override toString(): string {
++        return '-----BEGIN CERTIFICATE-----\n' + this.#der.toString('base64').match(/.{1,64}/g)!.join('\n')
++          + '\n-----END CERTIFICATE-----\n';
++      }
++      #readInfoAccess(): string | undefined {
++        const access = this.#parsed.getExtAIAInfo();
++        const lines: string[] = [];
++        for (const [label, urls] of [['OCSP', access?.ocsp], ['CA Issuers', access?.caissuer]] as const) {
++          for (const url of urls || []) {
++            // Node quotes control characters in AIA values. Reject them here so
++            // they cannot create another field in the SDK's line-based parser.
++            if (typeof url !== 'string' || /[\u0000-\u001f\u007f]/.test(url)) throw new Error('Invalid certificate authority information access.');
++            lines.push(`${label} - URI:${url}`);
++          }
++        }
++        return lines.length ? lines.join('\n') : undefined;
++      }
++      override verify(publicKey: KeyObject): boolean {
++        const signatureAlgorithm = this.#parsed.getSignatureAlgorithmField();
++        const issuerKeyType = publicKey.asymmetricKeyType;
++        // Native X509 returns false when a candidate issuer has the wrong key
++        // type. jsrsasign throws for an ECDSA certificate with an RSA key, which
++        // would abort Apple's trusted-root search before a later matching root.
++        if (signatureAlgorithm.endsWith('withECDSA') && issuerKeyType !== 'ec') return false;
++        if (/withRSA(?:andMGF1)?$/.test(signatureAlgorithm)
++            && issuerKeyType !== 'rsa' && issuerKeyType !== 'rsa-pss') return false;
++        // Use the SDK's pinned ASN.1/signature library for the missing synchronous
++        // X509 operation. This verifies the certificate signature, never bypasses it.
++        return this.#parsed.verifySignature(String(publicKey.export({ type: 'spki', format: 'pem' })));
++      }
++    }
++    runtime.X509Certificate = CompatibleCertificate;
++  }
++
++  const probe = nativeCreatePublicKey({ key: Buffer.from(probePublicKey, 'base64'), type: 'spki', format: 'der' });
++  if (canonicalCurves[probe.asymmetricKeyDetails?.namedCurve || '']) {
++    const normalize = <T extends KeyObject>(key: T): T => {
++      const details = key.asymmetricKeyDetails;
++      const canonical = details?.namedCurve && canonicalCurves[details.namedCurve];
++      if (key.asymmetricKeyType === 'ec' && canonical) {
++        // Cross-check the alias against the native public key's actual curve.
++        // Private key material is never exported. Mismatches remain unmodified
++        // and are rejected by jsonwebtoken's normal algorithm/curve checks.
++        const publicKey = key.type === 'private' ? nativeCreatePublicKey(key) : key;
++        const curve = publicKey.export({ format: 'jwk' }).crv;
++        if (curve && canonicalCurves[curve] === canonical) {
++          Object.defineProperty(key, 'asymmetricKeyDetails', {
++            value: { ...details, namedCurve: canonical }, configurable: true,
++          });
++        }
++      }
++      return key;
++    };
++    runtime.createPublicKey = ((...args: Parameters<typeof nativeCreatePublicKey>) =>
++      normalize(nativeCreatePublicKey(...args))) as typeof nativeCreatePublicKey;
++    runtime.createPrivateKey = ((...args: Parameters<typeof nativeCreatePrivateKey>) =>
++      normalize(nativeCreatePrivateKey(...args))) as typeof nativeCreatePrivateKey;
++  }
++  Object.defineProperty(runtime, installed, { value: true });
++}
+--- baseline/app-services/generation-reward-ledger.ts
++++ candidate/app-services/generation-reward-ledger.ts
+@@ -0,0 +1,83 @@
++import {AppServiceError} from './contracts.ts';
++import {unityRewardUnit} from './unity-ssv.ts';
++import {nativeGameCenterHasMembership} from './native-game-center.ts';
++
++export type RewardConfig=Record<string,string|undefined>;
++export const REWARDED_AI_DAILY_LIMIT=3;
++export const rewardedGenerationEnabled=(config:RewardConfig)=>config.SPYCLASH_REWARDED_GENERATION_ENABLED==='true';
++/** Pass only the authenticated, server-owned account ID. This test capability
++ * never enables the generation quota or changes membership benefits. */
++export function isGenerationRewardTester(config:RewardConfig,userID:string):boolean {
++  return Boolean(userID)&&Boolean(config.SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS?.split(',').some(id=>id.trim()===userID));
++}
++export function rewardedAdUnit(config:RewardConfig):string|null {
++  const provider=config.SPYCLASH_REWARDED_AD_PROVIDER||'admob';
++  if(provider==='unity')return unityRewardUnit(config);
++  if(provider!=='admob')return null;
++  const unit=config.ADMOB_REWARDED_AD_UNIT_ID?.trim()||'';
++  // Google's demo units cannot deliver SSV to our own backend. Never pretend
++  // their local SDK callback has earned a server credit.
++  return /^ca-app-pub-\d{16}\/\d{10}$/.test(unit)&&!unit.startsWith('ca-app-pub-3940256099942544/')?unit:null;
++}
++/** This persisted account decision is consulted for every generation, including
++ * requests from downgraded clients. Caller holds the account/quota lock. */
++export async function rewardedGenerationEnabledForUser(tx:any,userID:string,config:RewardConfig):Promise<boolean>{
++  if(!rewardedGenerationEnabled(config))return false;
++  const [row]=await tx`select user_id from game_center_private.generation_reward_enrollments where user_id=${userID}`;
++  return Boolean(row);
++}
++export async function enrollRewardGeneration(tx:any,userID:string,body:Record<string,any>,config:RewardConfig){
++  if(!rewardedGenerationEnabled(config)||body.supported_reward_provider!=='unity'||!Number.isSafeInteger(body.client_build)
++    ||body.client_build<228||body.client_build>2147483647||!rewardedAdUnit(config)?.startsWith('unity:'))return;
++  await tx`insert into game_center_private.generation_reward_enrollments(user_id,provider,client_build)
++    values(${userID},'unity',${body.client_build}) on conflict(user_id) do nothing`;
++}
++export async function lockGenerationQuota(tx:any,userID:string){
++  await tx`select pg_advisory_xact_lock(hashtextextended(${userID+':native-ai-quota'},0))`;
++}
++export async function nativeRewardStatus(tx:any,userID:string,config:RewardConfig){
++  const unlimited=await nativeGameCenterHasMembership(tx,userID);
++  const [{today,resets_at}]=await tx`select (clock_timestamp() at time zone 'UTC')::date::text as today,
++    (((clock_timestamp() at time zone 'UTC')::date+1)::timestamp at time zone 'UTC') as resets_at`;
++  const enabled=await rewardedGenerationEnabledForUser(tx,userID,config);
++  if(!enabled){
++    const tester=isGenerationRewardTester(config,userID);
++    const [{credits}]=tester?await tx`select count(*)::int as credits from game_center_private.generation_reward_attempts
++      where user_id=${userID} and state='earned' and consumed_request_id is null`:[{credits:0}];
++    return {enabled:false,unlimited,daily_limit:REWARDED_AI_DAILY_LIMIT,free_remaining:null,bonus_credits:credits,
++      resets_at:new Date(resets_at).toISOString(),ad_available:false,...(tester?{test_ad_available:Boolean(rewardedAdUnit(config))}:{})};
++  }
++  const [{used}]=await tx`select count(*)::int as used from game_center_private.generation_requests
++    where user_id=${userID} and usage_date=${today} and charged and charge_source in ('legacy','free')`;
++  const [{credits}]=await tx`select count(*)::int as credits from game_center_private.generation_reward_attempts
++    where user_id=${userID} and state='earned' and consumed_request_id is null`;
++  return {enabled:true,unlimited,daily_limit:REWARDED_AI_DAILY_LIMIT,free_remaining:unlimited?null:Math.max(0,REWARDED_AI_DAILY_LIMIT-used),
++    bonus_credits:credits,resets_at:new Date(resets_at).toISOString(),ad_available:!unlimited&&Boolean(rewardedAdUnit(config))};
++}
++/** Caller holds account and quota lock, then the generation request lock. The
++ * request row is committed in the same transaction as its bonus reservation. */
++export async function reserveRewardGeneration(tx:any,userID:string,requestID:string,prior:any,config:RewardConfig){
++  const status=await nativeRewardStatus(tx,userID,config);
++  if(prior?.charged)return {source:prior.charge_source as string,status};
++  if(status.unlimited)return {source:'unlimited',status};
++  if((status.free_remaining||0)>0)return {source:'free',status};
++  const [credit]=await tx`select attempt_id from game_center_private.generation_reward_attempts
++    where user_id=${userID} and state='earned' and consumed_request_id is null order by created_at,attempt_id limit 1 for update`;
++  if(!credit)throw new AppServiceError('ai_limit_reached','Your 3 free generations are used. Watch an optional ad for one more, or return after the daily reset.',429,false);
++  await tx`update game_center_private.generation_reward_attempts set consumed_request_id=${requestID}
++    where user_id=${userID} and attempt_id=${credit.attempt_id}`;
++  return {source:'bonus',status};
++}
++/** Exactly once: only the owner of a charged request may refund its credit.
++ * No callback can recreate deleted rows. Caller holds the request lock. */
++export async function releaseRewardGeneration(tx:any,userID:string,requestID:string,row:any){
++  if(!row?.charged||row.charge_source==='legacy')return;
++  if(row.charge_source==='bonus')await tx`update game_center_private.generation_reward_attempts set consumed_request_id=null
++    where user_id=${userID} and consumed_request_id=${requestID}`;
++  await tx`update game_center_private.generation_requests set charged=false where user_id=${userID} and request_id=${requestID} and charged`;
++}
++export function generationRewardMetadata(status:Awaited<ReturnType<typeof nativeRewardStatus>>){
++  return {ai_limit:status.unlimited?null:status.daily_limit,ai_remaining:status.unlimited?null:(status.free_remaining||0)+status.bonus_credits,
++    ai_free_remaining:status.free_remaining,ai_bonus_credits:status.bonus_credits,ai_resets_at:status.resets_at,ai_unlimited:status.unlimited,
++    ai_generations_today:status.unlimited?null:status.daily_limit-(status.free_remaining||0)};
++}
+--- baseline/app-services/legacy-billing.ts
++++ candidate/app-services/legacy-billing.ts
+@@ -1,17 +1,19 @@
+ import {AppServiceError, requireUUID, type AppActor, type AppContext} from './contracts.ts';
+ import {canonical, digest} from './integration-crypto.ts';
+ import {assertIsolatedSupabase, canonicalBase44Configuration, verifyLegacyCredential, boundedLegacyJSON, CANONICAL_BASE44_APP_ID, CANONICAL_BASE44_ORIGIN} from './legacy-provider.ts';
++import type {AppleLoyaltySnapshot} from './billing-rules/apple-loyalty.ts';
++import {WEEKLY_PRODUCT,MONTHLY_PRODUCT,APPLE_SUBSCRIPTION_PRODUCTS,isAppleSubscriptionProduct,monthlyAppleCheckoutEnabled} from './billing-rules/apple-products.ts';
+ 
+ type Config = Record<string,string|undefined>;
+ const evidenceSet = new WeakSet<object>();
+-const WEEKLY = 'com.spyclash.ios.limitless.weekly';
++const WEEKLY = WEEKLY_PRODUCT;
+ // Fixed canonical route: the original name currently serves an obsolete
+ // Stripe-only contract. Never accept an endpoint from client input or fall back
+ // to that response when the verified membership route is unavailable.
+ const MEMBERSHIP_FUNCTION = 'checkSubscriptionV2';
+-// Checkout stays weekly. Restore may reconcile either existing product, but
++// Monthly checkout has a separate gate. Restore may reconcile either product, but
+ // Base44 must verify its signature, canonical status and immutable owner first.
+-const RESTORABLE_PRODUCTS = new Set([WEEKLY, 'com.spyclash.ios.limitless.monthly']);
++const RESTORABLE_PRODUCTS: ReadonlySet<string> = new Set(APPLE_SUBSCRIPTION_PRODUCTS);
+ const actions = new Set(['check','prepare','sync_transaction']);
+ export function usesLegacyBilling(config:Config) { return config.APP_BILLING_PROVIDER === 'base44'; }
+ export function legacyBillingConfigured(config:Config) {
+@@ -28,8 +30,9 @@
+   if (action === 'check') return {action};
+   requireUUID(body.request_id,'request_id');
+   if (action === 'prepare') {
+-    if ((body.requested_product_id || WEEKLY) !== WEEKLY) throw new AppServiceError('unsupported_product','Only the current weekly subscription is enabled.',422);
+-    return {action,requested_product_id:WEEKLY};
++    const productID = body.requested_product_id === undefined ? WEEKLY : body.requested_product_id;
++    if (!isAppleSubscriptionProduct(productID)) throw new AppServiceError('unsupported_product','Unsupported App Store subscription product.',422);
++    return {action,requested_product_id:productID};
+   }
+   if (typeof body.signed_transaction !== 'string' || body.signed_transaction.length < 20 || body.signed_transaction.length > 250_000) throw new AppServiceError('invalid_transaction','A signed Apple transaction is required.');
+   return {action,signed_transaction:body.signed_transaction};
+@@ -50,6 +53,36 @@
+   return value;
+ }
+ 
++function verifiedLoyaltySnapshot(value:any, now:Date): AppleLoyaltySnapshot | undefined {
++  const validID = (id:unknown): id is string => typeof id === 'string' && /^[0-9]{1,128}$/.test(id);
++  const checked = typeof value?.verified_at === 'string' ? Date.parse(value.verified_at) : NaN;
++  if (!value || value.environment !== 'production' || !validID(value.original_transaction_id)
++    || !Number.isFinite(checked) || checked < 0 || checked > now.getTime()+300_000
++    || !Array.isArray(value.transaction_ids) || value.transaction_ids.length > 2000
++    || !value.transaction_ids.every(validID)) return undefined;
++  return {original_transaction_id:value.original_transaction_id,environment:'production',
++    transaction_ids:[...new Set<string>(value.transaction_ids)],verified_at:new Date(checked).toISOString()};
++}
++
++/** Input is server-only Base44 evidence. Never pass the client request here.
++ * New complete histories replace a chain, so refunds can remove paid periods;
++ * ordinary membership checks, outages and delayed restores retain prior data. */
++export function mergeLegacyLoyaltyChains(previous:unknown, incoming:unknown, now:Date) {
++  const chains:Record<string,AppleLoyaltySnapshot> = {};
++  if (previous && typeof previous === 'object' && !Array.isArray(previous)) {
++    for (const [key,value] of Object.entries(previous)) {
++      const snapshot = verifiedLoyaltySnapshot(value,now);
++      if (snapshot?.original_transaction_id === key) chains[key] = snapshot;
++    }
++  }
++  const next = verifiedLoyaltySnapshot(incoming,now);
++  if (next && (!chains[next.original_transaction_id]
++    || Date.parse(next.verified_at) >= Date.parse(chains[next.original_transaction_id].verified_at))) {
++    chains[next.original_transaction_id] = next;
++  }
++  return chains;
++}
++
+ /** Existing Base44 is the commerce authority. Its credential and verified user
+  * ID are distinct from the Supabase actor; neither email nor client JSON links
+  * accounts. No Apple key, Stripe key, or client JWS trust is introduced here. */
+@@ -57,6 +90,8 @@
+   if (!legacyBillingConfigured(input.config)) throw new AppServiceError('legacy_billing_unconfigured','The existing billing bridge is not enabled.',503);
+   const command = request(input.body);
+   if (command.action === 'prepare' && input.config.APP_LEGACY_PURCHASES_ENABLED !== 'true') throw new AppServiceError('apple_purchase_unconfigured','Purchases have not been enabled for this candidate.',503);
++  if (command.action === 'prepare' && command.requested_product_id === MONTHLY_PRODUCT && !monthlyAppleCheckoutEnabled(input.config))
++    throw new AppServiceError('apple_monthly_purchase_unconfigured','Monthly App Store purchases are not enabled.',503);
+   const fetcher = dependencies.fetch || fetch;
+   const verified = await verifyLegacyCredential(input.config,input.body.base44_access_token,fetcher);
+   const hash = await digest(canonical({service:'membership',...command}));
+@@ -93,7 +128,7 @@
+   else {
+     result = await invoke('app-store-entitlement',command);
+     if (command.action === 'prepare') {
+-      if (result?.product_id !== WEEKLY) throw new AppServiceError('legacy_billing_response_invalid','The existing product does not match the weekly subscription.',502);
++      if (result?.product_id !== command.requested_product_id) throw new AppServiceError('legacy_billing_response_invalid','The prepared product does not match the requested subscription.',502);
+       requireUUID(result.app_account_token,'app_account_token');
+     } else {
+       if (result?.success !== true || result?.server_status_verified !== true
+@@ -121,12 +156,20 @@
+     const expiry = new Date(Math.min(evidence.snapshotCheckedAt+300_000,snapshot.expires_at ? Date.parse(snapshot.expires_at) : Infinity));
+     const active = snapshot.active === true && expiry > ctx.now;
+     const checkedAt = new Date(evidence.snapshotCheckedAt);
+-    const data = {status:active?'active':'inactive',providers:snapshot.providers,protocol:snapshot.protocol,source_expires_at:snapshot.expires_at,verified_at:checkedAt.toISOString()};
++    const sourceKey = 'base44:'+evidence.legacyID;
++    // Serialize empty-row inserts as well as subsequent mirror refreshes. This
++    // prevents a simultaneous aggregate check from erasing a verified chain.
++    await ctx.tx`select pg_advisory_xact_lock(hashtextextended(${sourceKey},0))`;
++    const [owner] = await ctx.tx`select user_id,data from app_private.entitlements where source_key=${sourceKey} for update`;
++    if (owner && owner.user_id !== ctx.actor.id) throw new AppServiceError('legacy_owner_mismatch','This membership belongs to a different account.',409);
++    const loyaltyChains = mergeLegacyLoyaltyChains(owner?.data?.loyalty_chains,
++      command.action === 'sync_transaction' && evidence.result?.entitlement?.environment === 'production'
++        ? evidence.result?.loyalty : undefined,ctx.now);
++    const data = {status:active?'active':'inactive',providers:snapshot.providers,protocol:snapshot.protocol,source_expires_at:snapshot.expires_at,verified_at:checkedAt.toISOString(),
++      ...(Object.keys(loyaltyChains).length ? {loyalty_chains:loyaltyChains} : {})};
+     // A membership read aggregates Apple, Stripe and grants; it must not relabel
+     // a previously verified monthly transaction as the current weekly offer.
+     const productID = command.action === 'sync_transaction' ? evidence.result.entitlement.product_id : '';
+-    const [owner] = await ctx.tx`select user_id from app_private.entitlements where source_key=${'base44:'+evidence.legacyID}`;
+-    if (owner && owner.user_id !== ctx.actor.id) throw new AppServiceError('legacy_owner_mismatch','This membership belongs to a different account.',409);
+     await ctx.tx`insert into app_private.entitlements(source_key,user_id,active,expires_at,data,provider,product_id,provider_event_at,updated_at)
+       values(${'base44:'+evidence.legacyID},${ctx.actor.id},${active},${expiry},${ctx.tx.json(data)},'base44',${productID},${checkedAt},${ctx.now})
+       on conflict(source_key) do update set active=excluded.active,expires_at=excluded.expires_at,data=excluded.data,
+--- baseline/app-services/membership.ts
++++ candidate/app-services/membership.ts
+@@ -5,8 +5,11 @@
+ import {nativeGameCenterAccount,resolveNativeGameCenterAccount} from './native-game-center.ts';
+ import {accountGate} from './account-gate.ts';
+ import {usesLegacyBilling,legacyBillingConfigured,prepareLegacyBilling,dispatchLegacyBilling} from './legacy-billing.ts';
++import {mergeAppleLoyaltySnapshot} from './billing-rules/apple-loyalty.ts';
++import {nativeRewardStatus,rewardedGenerationEnabled} from './generation-reward-ledger.ts';
++import {WEEKLY_PRODUCT,MONTHLY_PRODUCT,isAppleSubscriptionProduct,monthlyAppleCheckoutEnabled} from './billing-rules/apple-products.ts';
+ 
+-export const WEEKLY_PRODUCT = 'com.spyclash.ios.limitless.weekly';
++export {WEEKLY_PRODUCT,MONTHLY_PRODUCT};
+ const acceptedEvidence = new WeakSet<object>();
+ type Config = Record<string,string|undefined>;
+ type Preparation = {actor:AppActor,body:Record<string,any>,config:Config};
+@@ -56,15 +59,17 @@
+   const action = ({check_subscription:'check',prepare_purchase:'prepare'} as Record<string,string>)[body.action] || body.action;
+   if (action === 'check') return await checkMembership(ctx);
+   if (action === 'prepare') {
+-    if ((body.requested_product_id || WEEKLY_PRODUCT) !== WEEKLY_PRODUCT) throw new AppServiceError('unsupported_product','Only the current weekly subscription is enabled.',422);
++    const productID = body.requested_product_id === undefined ? WEEKLY_PRODUCT : body.requested_product_id;
++    if (!isAppleSubscriptionProduct(productID)) throw new AppServiceError('unsupported_product','Unsupported App Store subscription product.',422);
+     if (!membershipCapabilities(ctx.config).apple_purchase_enabled) throw new AppServiceError('apple_purchase_unconfigured','New App Store purchases are not configured for this account.',503);
++    if (productID === MONTHLY_PRODUCT && !monthlyAppleCheckoutEnabled(ctx.config)) throw new AppServiceError('apple_monthly_purchase_unconfigured','Monthly App Store purchases are not enabled.',503);
+     const membership = await checkMembership(ctx);
+     if (membership.active) throw new AppServiceError('membership_already_active','This account already has access.',409);
+     await ctx.tx`select pg_advisory_xact_lock(hashtextextended(${ctx.actor.id+':apple-account'},0))`;
+     await ctx.tx`insert into app_private.apple_accounts(user_id,app_account_token) values(${ctx.actor.id},${crypto.randomUUID()}) on conflict(user_id) do nothing`;
+     const [account] = await ctx.tx`select * from app_private.apple_accounts where user_id=${ctx.actor.id} for update`;
+     if (account.state !== 'active') throw new AppServiceError('account_deleted','This billing identity is unavailable.',409);
+-    return {product_id:WEEKLY_PRODUCT,app_account_token:account.app_account_token};
++    return {product_id:productID,app_account_token:account.app_account_token};
+   }
+   if (action !== 'sync_transaction') throw new AppServiceError('invalid_action','Unknown membership action.');
+   const evidence = ctx.evidence;
+@@ -84,12 +89,13 @@
+   await ctx.tx`select pg_advisory_xact_lock(hashtextextended(${incoming.source_key+':entitlement'},0))`;
+   const [prior] = await ctx.tx`select user_id,data from app_private.entitlements where source_key=${incoming.source_key} for update`;
+   if (prior && prior.user_id !== ctx.actor.id) throw new AppServiceError('purchase_owner_mismatch','This subscription belongs to another account.',409);
+-  const record = prior && !shouldApplyProviderEvent(prior.data,incoming) ? prior.data : incoming;
++  const record = prior && !shouldApplyProviderEvent(prior.data,incoming) ? prior.data
++    : mergeAppleLoyaltySnapshot(incoming,prior?.data,verified.loyalty);
+   const active = ['active','trialing','grace_period'].includes(record.status) && Date.parse(record.expires_at)>ctx.now.getTime();
+   await ctx.tx`insert into app_private.entitlements(source_key,user_id,active,expires_at,data,provider,product_id,provider_event_at,updated_at)
+     values(${record.source_key},${ctx.actor.id},${active},${record.expires_at},${ctx.tx.json(record)},'apple',${record.product_id},${record.provider_event_at},${ctx.now})
+-    on conflict(source_key) do update set active=excluded.active,expires_at=excluded.expires_at,data=excluded.data,provider_event_at=excluded.provider_event_at,updated_at=excluded.updated_at`;
+-  return {success:true,server_status_verified:true,submitted_product_id:WEEKLY_PRODUCT,entitlement:publicAppleEntitlement(record)};
++    on conflict(source_key) do update set active=excluded.active,expires_at=excluded.expires_at,data=excluded.data,product_id=excluded.product_id,provider_event_at=excluded.provider_event_at,updated_at=excluded.updated_at`;
++  return {success:true,server_status_verified:true,submitted_product_id:verified.submittedProductID || transaction.productId,entitlement:publicAppleEntitlement(record)};
+ }
+ 
+ export async function checkMembership(ctx: AppContext) {
+@@ -103,16 +109,19 @@
+   const native = ctx.config.APP_BILLING_PROVIDER === NATIVE_GAME_CENTER_BILLING;
+   const [usage] = native ? await ctx.tx`select count(*)::integer as total from game_center_private.generation_requests where user_id=${ctx.actor.id} and usage_date=(${ctx.now}::timestamptz at time zone 'UTC')::date and charged` : [];
+   const used = native ? Number(usage?.total || 0) : null;
++  const rewards = native && rewardedGenerationEnabled(ctx.config) ? await nativeRewardStatus(ctx.tx,ctx.actor.id,ctx.config) : undefined;
++  const dailyLimit = rewards?.enabled ? rewards.daily_limit : 10;
++  const remaining = rewards?.enabled ? (rewards.free_remaining || 0) + rewards.bonus_credits : Math.max(0,dailyLimit-(used || 0));
+   return {active,tier:active?'limitless':'free',status:active?'active':'inactive',protocol:'limitless',providers,
+-    benefits:active?unlimited:{ai_generations_daily_limit:10,premium_avatars:false,full_history:false,advanced_statistics:false,history_limit:5},
+-    expires_at:expiry,ai_generations_today:used,ai_remaining:active || used === null ? null : Math.max(0,10-used),apple_purchase_enabled:membershipCapabilities(ctx.config).apple_purchase_enabled};
++    benefits:active?unlimited:{ai_generations_daily_limit:dailyLimit,premium_avatars:false,full_history:false,advanced_statistics:false,history_limit:5},
++    expires_at:expiry,ai_generations_today:used,ai_remaining:active || used === null ? null : remaining,apple_purchase_enabled:membershipCapabilities(ctx.config).apple_purchase_enabled};
+ }
+ 
+ /** Called inside the account deletion transaction. Billing ownership is retained
+  * as a tombstone so a later account cannot claim the same purchase. */
+ export async function cleanupBillingPush(ctx: AppContext) {
+   await ctx.tx`update app_private.apple_accounts set state='deleted' where user_id=${ctx.actor.id}`;
+-  await ctx.tx`update app_private.entitlements set active=false,data=data-'user_email' where user_id=${ctx.actor.id}`;
++  await ctx.tx`update app_private.entitlements set active=false,data=data-'user_email'-'loyalty_transaction_ids'-'loyalty_verified_at'-'loyalty_chains' where user_id=${ctx.actor.id}`;
+   await ctx.tx`delete from app_private.membership_grants where user_id=${ctx.actor.id}`;
+   await ctx.tx`delete from app_private.push_registrations where user_id=${ctx.actor.id}`;
+   await ctx.tx`update app_private.legacy_links set state='deleted' where user_id=${ctx.actor.id}`;
+@@ -130,6 +139,7 @@
+   if (native.state !== 'ready') throw new AppServiceError('account_unavailable','This account is unavailable.',403);
+   const config = nativeGameCenterConfiguration(input.config);
+   const consumes = input.body.service === 'membership' && ['check','check_subscription','prepare','prepare_purchase'].includes(input.body.action)
++    || input.body.service === 'generation_rewards'
+     || input.body.service === 'legacy' && ['generate','generate_word_pack'].includes(input.body.action)
+     || input.body.service === 'profile' && ['update','update_profile'].includes(input.body.action)
+       && ['avatar','spy_card_theme','spy_card_accent','spy_card_badge'].some(field=>input.body[field] !== undefined)
+--- baseline/app-services/native-apple.ts
++++ candidate/app-services/native-apple.ts
+@@ -1,11 +1,14 @@
+ import {AppServiceError} from './contracts.ts';
+ import {readCanonicalAppleSubscriptionStatus} from './billing-rules/apple-subscription-status.ts';
++import {readAppleLoyaltyHistory, type AppleLoyaltySnapshot} from './billing-rules/apple-loyalty.ts';
++import {appleVerificationFailure} from './billing-rules/apple-verification-failure.ts';
++import {ensureAppleOCSPDateParsing} from './billing-rules/apple-ocsp-date.ts';
++import {APPLE_SUBSCRIPTION_PRODUCTS,isAppleSubscriptionProduct} from './billing-rules/apple-products.ts';
+ 
+ export const MAIN_APPLE_BUNDLE = 'com.spyclash.ios';
+ export const MAIN_APPLE_APP_ID = 6793534085;
+ export const TEST_APPLE_BUNDLE = 'com.spyclash.ios.supabasetest';
+ export const NATIVE_GAME_CENTER_BILLING = 'native-game-center';
+-const WEEKLY_PRODUCT = 'com.spyclash.ios.limitless.weekly';
+ type Config = Record<string,string|undefined>;
+ type Target = {bundle:string,environment:'Sandbox'|'Production',appAppleID?:number};
+ 
+@@ -35,26 +38,48 @@
+     && config.APP_IAP_PRIVATE_KEY_P8 && config.APP_IAP_ROOT_CERTIFICATES_JSON);
+ }
+ async function appleTools(config:Config,target:Target) {
+-  const {AppStoreServerAPIClient,Environment,SignedDataVerifier,VerificationStatus} = await import('npm:@apple/app-store-server-library@3.1.0');
+   const {Buffer} = await import('node:buffer');
+   const roots = JSON.parse(config.APP_IAP_ROOT_CERTIFICATES_JSON!);
+   if (!Array.isArray(roots) || !roots.length || roots.some(r=>typeof r !== 'string'))
+     throw new AppServiceError('apple_roots_unconfigured','Apple verification roots are not configured.',503);
++  const certificates = roots.map(r=>Buffer.from(r,'base64'));
++  const {ensureAppleX509Compatibility} = await import('./billing-rules/apple-x509-compatibility.ts');
++  ensureAppleX509Compatibility(certificates[0]);
++  const {AppStoreServerAPIClient,Environment,SignedDataVerifier,VerificationStatus,GetTransactionHistoryVersion} = await import('npm:@apple/app-store-server-library@3.1.0');
+   const environment = target.environment === 'Production' ? Environment.PRODUCTION : Environment.SANDBOX;
++  const client = new AppStoreServerAPIClient(config.APP_IAP_PRIVATE_KEY_P8!,config.APP_IAP_KEY_ID!,config.APP_IAP_ISSUER_ID!,target.bundle,environment);
++  const verifier = new SignedDataVerifier(certificates,true,environment,target.bundle,target.appAppleID);
++  ensureAppleOCSPDateParsing(verifier);
+   return {
+     invalidEnvironment:VerificationStatus.INVALID_ENVIRONMENT,
+     retryableFailure:VerificationStatus.RETRYABLE_VERIFICATION_FAILURE,
+-    verifier:new SignedDataVerifier(roots.map(r=>Buffer.from(r,'base64')),true,environment,target.bundle,target.appAppleID),
+-    client:new AppStoreServerAPIClient(config.APP_IAP_PRIVATE_KEY_P8!,config.APP_IAP_KEY_ID!,config.APP_IAP_ISSUER_ID!,target.bundle,environment),
++    verifier,
++    client,
++    getHistory:(id:string,revision:string|null)=>client.getTransactionHistory(id,revision,{},GetTransactionHistoryVersion.V2),
+   };
+ }
+ async function canonical(transaction:any,target:Target,tools:Awaited<ReturnType<typeof appleTools>>) {
+-  if (transaction.productId !== WEEKLY_PRODUCT || transaction.bundleId !== target.bundle || transaction.environment !== target.environment)
++  if (!isAppleSubscriptionProduct(transaction.productId) || transaction.bundleId !== target.bundle || transaction.environment !== target.environment)
+     throw new AppServiceError('transaction_identity_mismatch','The transaction belongs to a different app or product.',422);
+-  return await readCanonicalAppleSubscriptionStatus({transaction,expectedBundleID:target.bundle,expectedProductID:WEEKLY_PRODUCT,
++  const verified = await readCanonicalAppleSubscriptionStatus({transaction,expectedBundleID:target.bundle,expectedProductIDs:APPLE_SUBSCRIPTION_PRODUCTS,
+     expectedEnvironment:target.environment,expectedAppAppleID:target.appAppleID || 0,
+     getStatuses:id=>tools.client.getAllSubscriptionStatuses(id),
+     verifyTransaction:jws=>tools.verifier.verifyAndDecodeTransaction(jws),verifyRenewal:jws=>tools.verifier.verifyAndDecodeRenewalInfo(jws)});
++  let loyalty: AppleLoyaltySnapshot | undefined;
++  let historyTimeout: ReturnType<typeof setTimeout> | undefined;
++  try {
++    loyalty = await Promise.race([readAppleLoyaltyHistory({
++      transactionID:verified.transaction.transactionId!,originalTransactionID:verified.transaction.originalTransactionId!,
++      appAccountToken:verified.transaction.appAccountToken,expectedBundleID:target.bundle,expectedProducts:APPLE_SUBSCRIPTION_PRODUCTS,
++      expectedEnvironment:target.environment,expectedAppAppleID:target.appAppleID || 0,
++      getHistory:tools.getHistory,verifyTransaction:jws=>tools.verifier.verifyAndDecodeTransaction(jws),
++    }),new Promise<never>((_,reject)=>{historyTimeout=setTimeout(()=>reject(new Error('Apple Loyalty history timed out.')),8000);})]);
++    if (verified.status === 5) loyalty.transaction_ids = loyalty.transaction_ids.filter(id=>id!==verified.transaction.transactionId);
++  } catch {
++    // Awards are optional evidence: an Apple history outage must never block a
++    // verified purchase/restore or replace a prior complete Loyalty snapshot.
++  } finally { if (historyTimeout !== undefined) clearTimeout(historyTimeout); }
++  return {...verified,submittedProductID:transaction.productId,loyalty};
+ }
+ export async function verifyApple(signed:string,config:Config,dependencies?:{tools?:typeof appleTools}) {
+   if (!appleVerificationConfigured(config)) throw new AppServiceError('apple_verification_unconfigured','App Store verification is not configured.',503);
+@@ -65,7 +90,9 @@
+     let transaction;
+     try { transaction = await tools.verifier.verifyAndDecodeTransaction(signed); } catch (error:any) {
+       if (error?.status === tools.invalidEnvironment) continue;
+-      if (error?.status === tools.retryableFailure)
++      const failure = appleVerificationFailure(error);
++      console.warn('apple_transaction_verification_failed', {environment:target.environment,...failure});
++      if (error?.status === tools.retryableFailure || failure.runtimeFailure)
+         throw new AppServiceError('apple_verification_unavailable','Apple verification is temporarily unavailable. Retry the saved transaction.',503,true);
+       throw new AppServiceError('invalid_apple_transaction','The App Store transaction could not be verified for this app.',422);
+     }
+--- baseline/app-services/unity-ssv.ts
++++ candidate/app-services/unity-ssv.ts
+@@ -0,0 +1,54 @@
++import { createHmac, timingSafeEqual } from "node:crypto";
++
++/** Unity's provider protocol uses HMAC-MD5 (not a client assertion).
++ * https://docs.unity.com/en-us/grow/ads/mediation/s2s-redeem-callbacks
++ * The support-issued secret exists only on the server. */
++export type UnityRewardConfig = Record<string, string | undefined>;
++export class UnityVerificationError extends Error {
++  constructor(readonly code: string, readonly status = 400) { super(code); }
++}
++export function unityRewardUnit(config: UnityRewardConfig): string | null {
++  const game = config.UNITY_ADS_GAME_ID?.trim() || "";
++  const placement = config.UNITY_ADS_REWARDED_PLACEMENT_ID?.trim() || "";
++  const secret = config.UNITY_ADS_S2S_SECRET || "";
++  return /^[1-9][0-9]{0,15}$/.test(game) && game !== "14850" &&
++      /^[A-Za-z0-9_-]{1,80}$/.test(placement) && secret.length >= 16
++    ? `unity:${game}:${placement}` : null;
++}
++export function unityAttemptFields(unit: string, token: string) {
++  const match = /^unity:([1-9][0-9]{0,15}):([A-Za-z0-9_-]{1,80})$/.exec(unit);
++  return match ? { provider: "unity", unity_game_id: match[1], ad_unit_id: match[2], server_id: token }
++    : { provider: "admob", ad_unit_id: unit };
++}
++export function isUnityCallback(url: string): boolean {
++  const params = new URL(url).searchParams;
++  return params.get("provider") === "unity" || params.has("hmac") || params.has("sid");
++}
++export function verifyUnityCallback(url: string, config: UnityRewardConfig) {
++  const configured = unityRewardUnit(config);
++  if (!configured) throw new UnityVerificationError("unity_reward_unconfigured", 503);
++  const fail = (): never => { throw new UnityVerificationError("invalid_reward_signature"); };
++  const query = new URL(url).search;
++  if (!query || query.length > 4096) return fail();
++  const params = new URLSearchParams(query);
++  const values = new Map<string, string>();
++  for (const [name, value] of params) {
++    // Closed contract prevents ambiguous comma/equal concatenation and duplicate keys.
++    if (!/^[a-z_]+$/.test(name) || values.has(name) || /[,=\u0000-\u0020]/.test(value)) return fail();
++    values.set(name, value);
++  }
++  const allowed = ["provider", "game_id", "placement_id", "sid", "oid", "hmac"];
++  if (values.size !== allowed.length || allowed.some(key => !values.get(key))) return fail();
++  if (values.get("provider") !== "unity" ||
++      `unity:${values.get("game_id")}:${values.get("placement_id")}` !== configured) return fail();
++  const sid = values.get("sid")!, oid = values.get("oid")!, signature = values.get("hmac")!;
++  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(legacy|native)\.[0-9a-f]{64}$/.test(sid) ||
++      !/^[A-Za-z0-9_-]{1,180}$/.test(oid) || !/^[0-9a-fA-F]{32}$/.test(signature)) return fail();
++  const canonical = [...values.keys()].filter(key => key !== "hmac").sort()
++    .map(key => `${key}=${values.get(key)}`).join(",");
++  const expected = createHmac("md5", config.UNITY_ADS_S2S_SECRET!).update(canonical).digest();
++  const supplied = Uint8Array.from(signature.match(/../g)!, pair => Number.parseInt(pair, 16));
++  if (!timingSafeEqual(expected, supplied)) return fail();
++  return { transactionID: `unity:${values.get("game_id")}:${oid}`, customData: sid,
++    adUnit: configured, rewardAmount: 1, rewardItem: "generation" };
++}

@@ -1,0 +1,23 @@
+{
+  "version": "1.0.4",
+  "build": 238,
+  "bundle_id": "com.spyclash.ios",
+  "scheme": "SpyClash-Supabase-Public",
+  "configuration": "SupabasePublicRelease",
+  "source_base": "cad3156f",
+  "ipa_path": "/Users/davidganzha/Documents/SpyClash/output/AppStore-238-20261113/SpyClash-1.0.4-238.ipa",
+  "ipa_bytes": 19085603,
+  "ipa_sha256": "aed443ff64d1580c1183c417a442498a7fa8fe77fac02b62a9f08cb59a4e50f4",
+  "archive_path": "/private/tmp/SpyClash-AppStore-238/SpyClash-1.0.4-238.xcarchive",
+  "signed_archive_gate": "passed",
+  "exported_ipa_gate": "passed",
+  "apple_validation": "passed, no errors",
+  "uploaded": false,
+  "production_rollout_performed": false,
+  "separate_accidental_base44_clone_created_then_deleted": true,
+  "new_checkout_product": "com.spyclash.ios.limitless.monthly",
+  "legacy_weekly_restore_preserved": true,
+  "unity_test_mode": false,
+  "runtime_acceptance": "Normal signed SupabasePublicRelease Simulator startup and relaunch reached authentication screen; actual monthly purchase and real Unity callback remain unverified.",
+  "simulator_installed_bundle_sha256": "dbad3d3273a9fdb2bbaa82a03f868eafb2a608ed72098cd1520abb1798900677"
+}

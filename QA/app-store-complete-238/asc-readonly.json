@@ -1,0 +1,69 @@
+{
+  "observed_at_utc": "2026-11-13T01:30:18.922137+00:00",
+  "read_only": true,
+  "apple_mutations": false,
+  "app_id": "6793534085",
+  "bundle_id": "com.spyclash.ios",
+  "current_public": {
+    "version": "1.0.3",
+    "build": "200",
+    "state": "READY_FOR_DISTRIBUTION"
+  },
+  "latest_uploaded": {
+    "version": "1.0.4",
+    "build": "232",
+    "state": "VALID",
+    "audience": "APP_STORE_ELIGIBLE"
+  },
+  "target_app_store_version_exists": false,
+  "target_app_store_version": "1.0.4",
+  "monthly": {
+    "id": "6825982027",
+    "product_id": "com.spyclash.ios.limitless.monthly",
+    "period": "ONE_MONTH",
+    "state": "MISSING_METADATA",
+    "configured_usa_price": "2.99",
+    "exact_usa_3_00_available": false,
+    "usa_price_points_checked": 800,
+    "review_notes_present": false,
+    "review_screenshot_present": false,
+    "locales": [
+      "en-US",
+      "es-ES",
+      "ru"
+    ],
+    "version_parent": "ad15b177-6482-4129-9c47-3ebfafb0a633",
+    "version_parent_state": "PREPARE_FOR_SUBMISSION",
+    "available_territories_total": 175,
+    "available_in_new_territories": true,
+    "full_territory_listing": "Related endpoint returned403; count comes from relationship paging metadata."
+  },
+  "weekly": {
+    "id": "6793548263",
+    "product_id": "com.spyclash.ios.limitless.weekly",
+    "period": "ONE_WEEK",
+    "state": "APPROVED",
+    "configured_usa_price": "2.99"
+  },
+  "existing_app_metadata": {
+    "locales": [
+      "en-US"
+    ],
+    "description_mentions_weekly": true,
+    "privacy_policy_url": "https://spyclash.com/privacypolicy",
+    "screenshot_set": "APP_IPHONE_67",
+    "complete_screenshots": 5,
+    "screenshot_dimensions": [
+      1320,
+      2868
+    ],
+    "incomplete_review_submissions": 0
+  },
+  "remaining_local_preparation": [
+    "Monthly review screenshot and review notes; Ukrainian localization if included in the release metadata package.",
+    "Prepare1.0.4 metadata with monthly renewal wording and current feature/review instructions.",
+    "Current public privacy policy still states no native advertising SDKs; reconcile prepared website/ASC declarations with actual release data handling."
+  ],
+  "privacy_label_draft_state": "Not established through supported ASC API; existing privacy-policy URL is verified, actual saved privacy-label answers require their own readback.",
+  "private_snapshot_directory": ".local/release238-readonly"
+}

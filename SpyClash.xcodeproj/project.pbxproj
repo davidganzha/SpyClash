@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		00066B865935E3918F5D3F71 /* Rajdhani-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 57701A39195710C4AEBFB6CA /* Rajdhani-Bold.ttf */; };
 		006CA900E7957F08B0E578D7 /* StoreKitProductCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA17B78E221F34E47BEC5A8D /* StoreKitProductCatalogTests.swift */; };
+		00C80A519D2E2C4B80D11A2B /* OnlineIntroPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC3BA9CE94127497DE05CB5D /* OnlineIntroPresentation.swift */; };
 		00DEEC4CB50A98880D2695DA /* SpyClashMatchLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7478AB896B134807D6FA315E /* SpyClashMatchLiveActivity.swift */; };
 		012969742D6AC07602593F6D /* GameCenterAuthentication.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5931997BCC3E996880F08A6 /* GameCenterAuthentication.swift */; };
 		018E4F91C131B0FDEF7D7F22 /* AcquisitionSurveyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA0319F312DAE72483CFD6B /* AcquisitionSurveyStore.swift */; };
@@ -51,6 +52,7 @@
 		133448F13C27E0FBF766665D /* FanModeViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DDCB23A8525645FFB728E92 /* FanModeViews.swift */; };
 		138D4E2D9BDF375CF36C08F5 /* OnboardingPermissionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E6103AB3131936FE120B988 /* OnboardingPermissionTests.swift */; };
 		13D77822DD0A8C0C325DD829 /* Rajdhani-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 57701A39195710C4AEBFB6CA /* Rajdhani-Bold.ttf */; };
+		186D9D59A18E714E0B9C4184 /* OnlineGameStartTransition.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4E860862659AA90219386A1 /* OnlineGameStartTransition.swift */; };
 		18F1BF781D449AE1CB9E76B0 /* HapticManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BBA628FB7C9372162E4C619 /* HapticManager.swift */; };
 		1B815281AA002B53CF21EF9A /* LocalWordPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE85736438E55EBC81677CE4 /* LocalWordPool.swift */; };
 		1B9D552196DE38FAAE5ABF8E /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75823698B8005677C73DFC1B /* AppState.swift */; };
@@ -69,6 +71,7 @@
 		2296623A2D3D1D8A43A1A4DC /* SpyClashMatchLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 154D6A5D3C20539A72285920 /* SpyClashMatchLiveActivityController.swift */; };
 		22AB3D6EEE75701901A3D313 /* QRSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA6E7B15464DD14D3E49671B /* QRSheets.swift */; };
 		230419432726BAB7D67CCCA2 /* OnlineGameExperience.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02196190F4444A14882CA7C3 /* OnlineGameExperience.swift */; };
+		23480E36E5F76B3C7C25C6A1 /* OnlineGameStartTransition.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4E860862659AA90219386A1 /* OnlineGameStartTransition.swift */; };
 		2373B07730DC8DD6FF2910EF /* WebAuthenticationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 086A09C277F7D2F0BACA368C /* WebAuthenticationCoordinator.swift */; };
 		238248853569BF6933CFD375 /* UnityAdsTestPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F57A639BA3D4499CEE0081C3 /* UnityAdsTestPresenter.swift */; };
 		23E53AE7786B677E55A39CE9 /* OnlineRoundState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D67CB7923E19DDEA905468EC /* OnlineRoundState.swift */; };
@@ -225,6 +228,7 @@
 		7E2EDBD178BC1EB05FEAAAF8 /* SupabaseGameAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CC25664F127715AEB988EA8 /* SupabaseGameAdapter.swift */; };
 		7F36602A9ED9FDA2896F8B1F /* SupabaseAppSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2EBD2681F0E66455DFA96C2 /* SupabaseAppSession.swift */; };
 		7F3F676C52F8827203D1B104 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = 8EFBB6DF80CE1233AAE13E57 /* SocketIO */; };
+		7FACB277E50A335BA5255580 /* OnlineIntroTransitionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05771A06AAAC09C1EFFC05D8 /* OnlineIntroTransitionUITests.swift */; };
 		80B3D9D3359BD5966CF6D242 /* LobbyPlayerCardSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3F04D961B33C5465B9CC241 /* LobbyPlayerCardSelection.swift */; };
 		80BE194C17892ED6657C3BF2 /* SpyClashSupabaseStagingWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = BF298687D20ABD495A966CBD /* SpyClashSupabaseStagingWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		818E68519D21690B103A290C /* WordPackEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667D3929047FBC751174E868 /* WordPackEditorSheet.swift */; };
@@ -254,6 +258,7 @@
 		8F5527BE8F4788FE7E8E06CF /* SupabaseMutationJournalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AFFF43EECD45A2588F995CE /* SupabaseMutationJournalTests.swift */; };
 		8F8A8B76CDC6CAE463D062D9 /* GenerationRewards.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42212E4E823C9D641F8616EE /* GenerationRewards.swift */; };
 		902E32C11866089BF88D65CE /* GameInvitationCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67988F1441EC617CDC37B9CC /* GameInvitationCenter.swift */; };
+		90D86FABF9E207A397D2C072 /* OnlineIntroPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC3BA9CE94127497DE05CB5D /* OnlineIntroPresentation.swift */; };
 		9103D1B0A85B9BE196D5BDC3 /* GenerationAllowanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0EE0374CBCB5188F7302E97 /* GenerationAllowanceView.swift */; };
 		922E6C04543D5F9501330ED7 /* LobbyPlayerCardSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3F04D961B33C5465B9CC241 /* LobbyPlayerCardSelection.swift */; };
 		9291C4383F23F3480E66E42E /* LocalCinematicGameplayViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D83FC09C66C9373238F2E95 /* LocalCinematicGameplayViews.swift */; };
@@ -261,6 +266,8 @@
 		92B7FE790DAD7865A222C702 /* LocalNetworkPermissionLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAA8E2AA8AC5B9AF8FDE042F /* LocalNetworkPermissionLifecycleTests.swift */; };
 		9493CF3845943B1F03EC50A3 /* LegacySessionUpgradeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9A2DBB40FABD6C9062F4EEB /* LegacySessionUpgradeTests.swift */; };
 		94A889B7CFE0ACF273873A1A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75823698B8005677C73DFC1B /* AppState.swift */; };
+		96552A6BA367C44EDD94588B /* OnlineIntroPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC3BA9CE94127497DE05CB5D /* OnlineIntroPresentation.swift */; };
+		977F392FCCC087B9D44A9DDA /* OnlineGameStartTransition.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4E860862659AA90219386A1 /* OnlineGameStartTransition.swift */; };
 		987FE47753CDF734ED40E274 /* LabConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03A02561E0935B7FDA0396C6 /* LabConfiguration.swift */; };
 		988D69E9655F73F2D12A9F18 /* DetectiveVoteCancellationOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 719D1CED512E653A43A0FBDC /* DetectiveVoteCancellationOverlay.swift */; };
 		98DA09BA0F4F02C29F67E3EA /* PushNotificationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8B7F0D77CCD84E2E31D982D /* PushNotificationCoordinator.swift */; };
@@ -338,6 +345,7 @@
 		C7805D5D8A84524BA794C364 /* AppleSessionCompletionSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B4836BDF480BCA80CB3EDC0 /* AppleSessionCompletionSession.swift */; };
 		C812B5F60A454D00CA2A7835 /* SpyClashMatchLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 154D6A5D3C20539A72285920 /* SpyClashMatchLiveActivityController.swift */; };
 		C8CFAC00837A449DCC011D54 /* MembershipStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 450DC5444292040544994868 /* MembershipStore.swift */; };
+		C9648E33550797460523D492 /* OnlineIntroPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94197F616AB8D9835CBDD92E /* OnlineIntroPresentationTests.swift */; };
 		C99DF2DBC80E845BFD69AB65 /* CommunityDirectoryLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED044A4EF5952B43BF45E37A /* CommunityDirectoryLoader.swift */; };
 		C9C2BEED75E13E2D3AC15DE2 /* SupabaseAppRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = C805DED7EE9787139BCA120C /* SupabaseAppRuntime.swift */; };
 		C9CBAA1C1F9A922900DD9F36 /* AppState+Membership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C35AB10E88428C6F3D53699 /* AppState+Membership.swift */; };
@@ -510,6 +518,7 @@
 		0396C303769401DA236C1527 /* StoreKitProductCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitProductCatalog.swift; sourceTree = "<group>"; };
 		03A02561E0935B7FDA0396C6 /* LabConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabConfiguration.swift; sourceTree = "<group>"; };
 		03D02C8AECE9BEF51CAD5C7E /* LobbyPlayerCardSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LobbyPlayerCardSelectionTests.swift; sourceTree = "<group>"; };
+		05771A06AAAC09C1EFFC05D8 /* OnlineIntroTransitionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineIntroTransitionUITests.swift; sourceTree = "<group>"; };
 		05EC9F49E8EAD9FFF41E783E /* SpyOrbSceneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyOrbSceneView.swift; sourceTree = "<group>"; };
 		0615AC062761EBDE879255B3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		086A09C277F7D2F0BACA368C /* WebAuthenticationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebAuthenticationCoordinator.swift; sourceTree = "<group>"; };
@@ -614,6 +623,7 @@
 		9053338F106838BBB476DCE4 /* Rajdhani-OFL-1.1.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Rajdhani-OFL-1.1.txt"; sourceTree = "<group>"; };
 		9065A7D0489C60903CBB7D5B /* SpyBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyBackground.swift; sourceTree = "<group>"; };
 		9247DA8D3D9DC6DE5F651601 /* DismissedRoomExitCleanupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DismissedRoomExitCleanupTests.swift; sourceTree = "<group>"; };
+		94197F616AB8D9835CBDD92E /* OnlineIntroPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineIntroPresentationTests.swift; sourceTree = "<group>"; };
 		94E654895C25BAF7BCEB8EAC /* UnityAdsTestView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnityAdsTestView.swift; sourceTree = "<group>"; };
 		97913D6348B4319F467C8E65 /* InterfaceSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterfaceSettingsView.swift; sourceTree = "<group>"; };
 		986727DF9EBF18917FE1CD73 /* LobbyPlayerCardOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LobbyPlayerCardOverlay.swift; sourceTree = "<group>"; };
@@ -654,6 +664,7 @@
 		C9A2DBB40FABD6C9062F4EEB /* LegacySessionUpgradeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacySessionUpgradeTests.swift; sourceTree = "<group>"; };
 		CAA8E2AA8AC5B9AF8FDE042F /* LocalNetworkPermissionLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNetworkPermissionLifecycleTests.swift; sourceTree = "<group>"; };
 		CBEA537D0BEEC5A171ABD419 /* NotificationsInboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsInboxView.swift; sourceTree = "<group>"; };
+		CC3BA9CE94127497DE05CB5D /* OnlineIntroPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineIntroPresentation.swift; sourceTree = "<group>"; };
 		CE1AF213121DB5A761660563 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		CE22C49E3B0E6870ED01BF77 /* SpyAchievementsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyAchievementsView.swift; sourceTree = "<group>"; };
 		CE85736438E55EBC81677CE4 /* LocalWordPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalWordPool.swift; sourceTree = "<group>"; };
@@ -692,6 +703,7 @@
 		F02C42B98A9366662DA343CD /* NotificationInboxTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationInboxTests.swift; sourceTree = "<group>"; };
 		F34CB7D3E96AC6FB27315519 /* SupabaseGameRecoveryBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseGameRecoveryBanner.swift; sourceTree = "<group>"; };
 		F4B70AB1F4B7C7D339E01E1F /* PricingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PricingView.swift; sourceTree = "<group>"; };
+		F4E860862659AA90219386A1 /* OnlineGameStartTransition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineGameStartTransition.swift; sourceTree = "<group>"; };
 		F57A639BA3D4499CEE0081C3 /* UnityAdsTestPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnityAdsTestPresenter.swift; sourceTree = "<group>"; };
 		FA6E7B15464DD14D3E49671B /* QRSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRSheets.swift; sourceTree = "<group>"; };
 		FD9E0E8940B7305B84993F49 /* AcquisitionSurveyIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcquisitionSurveyIntegrationTests.swift; sourceTree = "<group>"; };
@@ -767,6 +779,7 @@
 			isa = PBXGroup;
 			children = (
 				0F52BB625EC301B1A25663D1 /* AuthenticationEntryUITests.swift */,
+				05771A06AAAC09C1EFFC05D8 /* OnlineIntroTransitionUITests.swift */,
 				A9352398D366E68916DEF273 /* SettingsUITests.swift */,
 				9EE782106300DFB616AF9B1F /* WordPackCardsUITests.swift */,
 			);
@@ -841,6 +854,7 @@
 				CBEA537D0BEEC5A171ABD419 /* NotificationsInboxView.swift */,
 				E5974161C5FAC304DACA7C96 /* OnboardingView.swift */,
 				02196190F4444A14882CA7C3 /* OnlineGameExperience.swift */,
+				F4E860862659AA90219386A1 /* OnlineGameStartTransition.swift */,
 				BA73BD6B334F5A9F54F3E659 /* PlayerSpyCard3DView.swift */,
 				F4B70AB1F4B7C7D339E01E1F /* PricingView.swift */,
 				6B25DFE515749E670224D319 /* ProfileView.swift */,
@@ -960,6 +974,7 @@
 				F02C42B98A9366662DA343CD /* NotificationInboxTests.swift */,
 				0E6103AB3131936FE120B988 /* OnboardingPermissionTests.swift */,
 				2BCA75CB0E2A17773B402C74 /* OnboardingTests.swift */,
+				94197F616AB8D9835CBDD92E /* OnlineIntroPresentationTests.swift */,
 				673C14A27AC3CD3669188134 /* OnlineRoundStateTests.swift */,
 				8C9BF7C89321D9588B7D95E1 /* QRScannerTests.swift */,
 				CFF9A57CA1115E3D240363FC /* RewardedGenerationAdConfigurationTests.swift */,
@@ -1038,6 +1053,7 @@
 				026F4AEBE8A76B12EE72FAC6 /* Membership.swift */,
 				2EA85E77102835211355B7C6 /* NotificationInboxModels.swift */,
 				D6575BABB395718344476FA1 /* OnboardingModels.swift */,
+				CC3BA9CE94127497DE05CB5D /* OnlineIntroPresentation.swift */,
 				D67CB7923E19DDEA905468EC /* OnlineRoundState.swift */,
 				E174D5AC38FFB4D09F35DE12 /* SpyAchievements.swift */,
 				86974FE98CF9350796FC28D3 /* SpyModels.swift */,
@@ -1488,6 +1504,8 @@
 				71F0B399ED132C5E2479A197 /* OnboardingPermissionCoordinator.swift in Sources */,
 				77359414A9706D147E990C1A /* OnboardingView.swift in Sources */,
 				D8F50288021132D21DEBBEB0 /* OnlineGameExperience.swift in Sources */,
+				186D9D59A18E714E0B9C4184 /* OnlineGameStartTransition.swift in Sources */,
+				90D86FABF9E207A397D2C072 /* OnlineIntroPresentation.swift in Sources */,
 				23E53AE7786B677E55A39CE9 /* OnlineRoundState.swift in Sources */,
 				252144EBDF693EEC31D537CD /* PlayerSpyCard3DView.swift in Sources */,
 				04D8ED820848C96E8F10D561 /* PricingView.swift in Sources */,
@@ -1629,6 +1647,8 @@
 				F8ACF630FD7CF3AA355F0BEE /* OnboardingPermissionCoordinator.swift in Sources */,
 				E8E45235D0ACEB2F5D06029B /* OnboardingView.swift in Sources */,
 				230419432726BAB7D67CCCA2 /* OnlineGameExperience.swift in Sources */,
+				23480E36E5F76B3C7C25C6A1 /* OnlineGameStartTransition.swift in Sources */,
+				96552A6BA367C44EDD94588B /* OnlineIntroPresentation.swift in Sources */,
 				4F3F760B50FDF28F0B715AB5 /* OnlineRoundState.swift in Sources */,
 				4A813CE60E868B73C569589E /* PlayerSpyCard3DView.swift in Sources */,
 				7B6D3EB62FE74629B61B73AE /* PricingView.swift in Sources */,
@@ -1704,6 +1724,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				1FC11846E514A4C0D6AD1263 /* AuthenticationEntryUITests.swift in Sources */,
+				7FACB277E50A335BA5255580 /* OnlineIntroTransitionUITests.swift in Sources */,
 				995DA7B9B7C449B4EB0B4EE5 /* SettingsUITests.swift in Sources */,
 				2FD859D49783D84FC9942DAC /* WordPackCardsUITests.swift in Sources */,
 			);
@@ -1774,6 +1795,8 @@
 				B35F1FD1E62796C51B94E381 /* OnboardingPermissionCoordinator.swift in Sources */,
 				65F450F402C4E78A16B51F29 /* OnboardingView.swift in Sources */,
 				FA0FA1FCB020694DA72B1F89 /* OnlineGameExperience.swift in Sources */,
+				977F392FCCC087B9D44A9DDA /* OnlineGameStartTransition.swift in Sources */,
+				00C80A519D2E2C4B80D11A2B /* OnlineIntroPresentation.swift in Sources */,
 				92B1BBB8E171289053871912 /* OnlineRoundState.swift in Sources */,
 				E64A3733A226E57B8742236C /* PlayerSpyCard3DView.swift in Sources */,
 				1C1FE7256CAA742AAD62B7CB /* PricingView.swift in Sources */,
@@ -1852,6 +1875,7 @@
 				C59197AFE6D361EBD8D48B44 /* NotificationInboxTests.swift in Sources */,
 				138D4E2D9BDF375CF36C08F5 /* OnboardingPermissionTests.swift in Sources */,
 				A39D9B411FD1CC3B3D4DDE08 /* OnboardingTests.swift in Sources */,
+				C9648E33550797460523D492 /* OnlineIntroPresentationTests.swift in Sources */,
 				39840D09E8474E87D45E1555 /* OnlineRoundStateTests.swift in Sources */,
 				0AD0D0575DA19A67B46A8E69 /* QRScannerTests.swift in Sources */,
 				6A4BC6B25BB1F62752B03E31 /* RewardedGenerationAdConfigurationTests.swift in Sources */,
@@ -2439,7 +2463,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 237;
+				CURRENT_PROJECT_VERSION = 238;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -2698,7 +2722,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 237;
+				CURRENT_PROJECT_VERSION = 238;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -2805,7 +2829,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 237;
+				CURRENT_PROJECT_VERSION = 238;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -2958,7 +2982,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 237;
+				CURRENT_PROJECT_VERSION = 238;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -3094,7 +3118,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 237;
+				CURRENT_PROJECT_VERSION = 238;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

@@ -1,0 +1,7 @@
+--- a/base44/functions/deleteAccount/entry.ts
++++ b/base44/functions/deleteAccount/entry.ts
+@@ -808,0 +809,4 @@
++      await deleteAllMatching(
++        base44.asServiceRole.entities.GenerationRewardEnrollment,
++        { user_id: user.id },
++      );

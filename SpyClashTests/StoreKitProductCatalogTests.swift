@@ -17,8 +17,8 @@ final class StoreKitProductCatalogTests: XCTestCase {
     }
 
 
-    func testSelectedOfferCatalogLoadsWeeklyAndRejectsPreparedMonthlyProduct() async {
-        XCTAssertEqual(StoreKitManager.limitlessProductID, StoreKitSubscriptionProduct.weekly.rawValue)
+    func testSelectedOfferCatalogLoadsMonthlyAndNeverFallsBackToWeekly() async {
+        XCTAssertEqual(StoreKitManager.limitlessProductID, StoreKitSubscriptionProduct.monthly.rawValue)
         let weekly = item()
         let monthly = item(id: StoreKitSubscriptionProduct.monthly.rawValue, unit: .month)
         let catalog = StoreKitProductCatalog(
@@ -30,7 +30,7 @@ final class StoreKitProductCatalogTests: XCTestCase {
         XCTAssertEqual(catalog.product, "verified-product")
         XCTAssertNil(catalog.issue)
 
-        for candidate in [monthly, item(unit: .month)] {
+        for candidate in [weekly, item(id: StoreKitSubscriptionProduct.monthly.rawValue, unit: .week)] {
             let invalid = StoreKitProductCatalog(
                 productID: StoreKitManager.limitlessProductID,
                 fetch: { [candidate] },

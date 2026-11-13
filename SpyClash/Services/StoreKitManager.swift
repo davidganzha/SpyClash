@@ -172,9 +172,9 @@ struct AppStoreTransactionReconciliation {
 @MainActor
 @Observable
 final class StoreKitManager {
-    // This TestFlight release retains the existing weekly offer. Monthly stays
-    // supported for verified restores and future separately approved activation.
-    static let limitlessProductID = StoreKitSubscriptionProduct.weekly.rawValue
+    // New checkout uses monthly. Existing weekly transactions retain their
+    // original product and remain supported by verification and restore.
+    static let limitlessProductID = StoreKitSubscriptionProduct.monthly.rawValue
     static let legacyWeeklyProductID = StoreKitSubscriptionProduct.weekly.rawValue
     var product: Product? { productCatalog.product }
     var isLoadingProduct: Bool { productCatalog.isLoading }

@@ -1,0 +1,100 @@
+{
+  "prepared_only": true,
+  "production_target_changed": false,
+  "candidate_directory": ".local/rewards238/prepared/supabase/rewarded-generation-ssv",
+  "project_id": "bbkfsgnordtdiblgdzkg",
+  "function": "rewarded-generation-ssv",
+  "baseline_version": 3,
+  "verify_jwt": false,
+  "entrypoint": "rewarded-generation-ssv/index.ts",
+  "reviewed_overlays": [
+    "app-services/generation-reward-ledger.ts",
+    "app-services/generation-rewards.ts",
+    "app-services/unity-ssv.ts",
+    "rewarded-generation-ssv/handler.ts",
+    "rewarded-generation-ssv/index.ts"
+  ],
+  "surgical_overlays": [],
+  "missing_dependencies_added": [],
+  "baseline_files": 10,
+  "candidate_files": 11,
+  "changed_files": [
+    "app-services/generation-reward-ledger.ts",
+    "app-services/generation-rewards.ts",
+    "app-services/unity-ssv.ts",
+    "rewarded-generation-ssv/handler.ts",
+    "rewarded-generation-ssv/index.ts"
+  ],
+  "preserved_files": 6,
+  "all_unrelated_files_byte_identical": true,
+  "patch": "QA/app-store-complete-238/rewards/supabase-rewarded-generation-ssv.patch",
+  "patch_sha256": "da6ba9be4264346083923400bcaf31821ef24fb9e7dd3bbff40f3505f9904c68",
+  "files": [
+    {
+      "path": "app-services/account-gate.ts",
+      "before_sha256": "c8f3c162b768965caee4279761ce5ee16d6181d20264af2c32e64acf883b6b20",
+      "after_sha256": "c8f3c162b768965caee4279761ce5ee16d6181d20264af2c32e64acf883b6b20",
+      "changed": false
+    },
+    {
+      "path": "app-services/admob-ssv.ts",
+      "before_sha256": "3363c7a2428ef786fff41f45ab4bbdb23be72623f75be9799182cc291b45e315",
+      "after_sha256": "3363c7a2428ef786fff41f45ab4bbdb23be72623f75be9799182cc291b45e315",
+      "changed": false
+    },
+    {
+      "path": "app-services/contracts.ts",
+      "before_sha256": "b794347818f730710a6b0b9622bf6583781d9f24c332e905372b98191476d0a3",
+      "after_sha256": "b794347818f730710a6b0b9622bf6583781d9f24c332e905372b98191476d0a3",
+      "changed": false
+    },
+    {
+      "path": "app-services/generation-reward-ledger.ts",
+      "before_sha256": "bf07a8a429d76c14f61b6b47f4894796fa0fe87509517493c66cb22b2a555f98",
+      "after_sha256": "6e9992aecbfec67500ed5bc5b8046703ce3e4890e595dcbf969630230d64b023",
+      "changed": true
+    },
+    {
+      "path": "app-services/generation-rewards.ts",
+      "before_sha256": "e6b241d3002d187c814c9f966ddefca52883652edc3448681d839433ed7ec60f",
+      "after_sha256": "3109decc8e88033a36ebe99b3704ce09123c8dfed9320d48f6e2be7862611a1c",
+      "changed": true
+    },
+    {
+      "path": "app-services/legacy-provider.ts",
+      "before_sha256": "41ea1277efb74f98e15c8adac83ff91c82bc427a802aba2e829e314c1447ca03",
+      "after_sha256": "41ea1277efb74f98e15c8adac83ff91c82bc427a802aba2e829e314c1447ca03",
+      "changed": false
+    },
+    {
+      "path": "app-services/native-game-center.ts",
+      "before_sha256": "a7506648fac186abab3dbf1cd0bbbf6c66a7b93215de2b589e9a69218eb1c442",
+      "after_sha256": "a7506648fac186abab3dbf1cd0bbbf6c66a7b93215de2b589e9a69218eb1c442",
+      "changed": false
+    },
+    {
+      "path": "app-services/unity-ssv.ts",
+      "before_sha256": null,
+      "after_sha256": "76447820be5805604e232be2a5cdac3ef83b8b327990562eea862ad52dab5c3a",
+      "changed": true
+    },
+    {
+      "path": "rewarded-generation-ssv/deno.json",
+      "before_sha256": "b58d126c6df09aa1a7c0d0e8beb76d6db5307263b2b1edee18d08aa256b01ee8",
+      "after_sha256": "b58d126c6df09aa1a7c0d0e8beb76d6db5307263b2b1edee18d08aa256b01ee8",
+      "changed": false
+    },
+    {
+      "path": "rewarded-generation-ssv/handler.ts",
+      "before_sha256": "6ec8e0e963c4d3b6bbd401df3cac3268fa18e229f7bdda40c15908c8a88adee4",
+      "after_sha256": "b95e49eaf7a17f43b547c413dc4fe5b0c9b6338d18682a4bf7423319cfeb40ea",
+      "changed": true
+    },
+    {
+      "path": "rewarded-generation-ssv/index.ts",
+      "before_sha256": "5ab0c0ca91a8861d9f10fb223cb7331a9efcdfdcc6b70e8489766ca41db00aac",
+      "after_sha256": "cb463f74b854821e6363777d16b57d2b6d546ada65c214713949b80d5edb25fa",
+      "changed": true
+    }
+  ]
+}

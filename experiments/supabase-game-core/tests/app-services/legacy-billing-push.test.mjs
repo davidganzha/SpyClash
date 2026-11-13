@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {homedir} from 'node:os';
 import postgres from 'postgres';
-import {prepareMembershipExternal,dispatchMembership,WEEKLY_PRODUCT} from '../../supabase/functions/app-services/membership.ts';
+import {prepareMembershipExternal,dispatchMembership,WEEKLY_PRODUCT,MONTHLY_PRODUCT} from '../../supabase/functions/app-services/membership.ts';
 import {dispatchPush,enqueueAppPush,allowedPushBundle} from '../../supabase/functions/app-services/push.ts';
 import {drainPushOutbox,reconcileCommittedEvents} from '../../supabase/functions/app-services/worker.ts';
 import {sendLegacyPush,MAIN_PUSH_BUNDLE} from '../../supabase/functions/app-services/legacy-push.ts';
@@ -26,7 +26,7 @@ test('existing weekly billing owns the purchase token; durable retry never alloc
   const fetcher=provider(a,(_url,body)=>{calls++;assert.equal(body.action,'prepare');assert.equal(body.requested_product_id,WEEKLY_PRODUCT);return Response.json({product_id:WEEKLY_PRODUCT,app_account_token:token});});
   const body={action:'prepare',requested_product_id:WEEKLY_PRODUCT,request_id:crypto.randomUUID(),base44_access_token:credential};
   assert.equal((await call(a,body,fetcher)).app_account_token,token);assert.equal((await call(a,body,fetcher)).app_account_token,token);assert.equal(calls,1);
-  await assert.rejects(call(a,{...body,requested_product_id:'com.spyclash.ios.limitless.monthly'},fetcher),e=>e.code==='unsupported_product');
+  await assert.rejects(call(a,{...body,requested_product_id:MONTHLY_PRODUCT},fetcher),e=>e.code==='apple_monthly_purchase_unconfigured');
   const [stored]=await db`select response from app_private.legacy_operations where user_id=${a.id}`;assert.ok(!JSON.stringify(stored).includes(credential));
 });
 test('verified linked membership is mirrored with bounded TTL and revocation; wrong owner makes no billing call',async()=>{
@@ -46,7 +46,7 @@ test('unverified Apple result cannot grant, and replayed old snapshot never exte
   await db`delete from app_private.entitlements where user_id=${a.id}`;
   await call(a,body,fetcher);const [mirror]=await db`select active from app_private.entitlements where user_id=${a.id}`;assert.equal(mirror.active,false);
 });
-test('restore accepts verified existing weekly and monthly products without changing the weekly checkout',async()=>{
+test('restore accepts verified existing weekly and monthly products while monthly checkout is disabled',async()=>{
   const monthly='com.spyclash.ios.limitless.monthly';
   for(const [submitted,canonical] of [[WEEKLY_PRODUCT,WEEKLY_PRODUCT],[monthly,monthly],[WEEKLY_PRODUCT,monthly],[monthly,WEEKLY_PRODUCT]]) {
     const a=await actor(),body={action:'sync_transaction',signed_transaction:'provider-verified-existing-transaction',request_id:crypto.randomUUID(),base44_access_token:credential};
@@ -58,8 +58,32 @@ test('restore accepts verified existing weekly and monthly products without chan
     await call(a,{action:'check',base44_access_token:credential},fetcher);
     [mirror]=await db`select product_id from app_private.entitlements where user_id=${a.id}`;
     assert.equal(mirror.product_id,canonical,'An aggregate membership read cannot relabel a restored product');
-    await assert.rejects(call(a,{action:'prepare',requested_product_id:monthly,request_id:crypto.randomUUID(),base44_access_token:credential},fetcher),e=>e.code==='unsupported_product');
+    await assert.rejects(call(a,{action:'prepare',requested_product_id:monthly,request_id:crypto.randomUUID(),base44_access_token:credential},fetcher),e=>e.code==='apple_monthly_purchase_unconfigured');
   }
+});
+test('monthly legacy checkout requires both gates and the exact prepared product, while older clients retain weekly',async()=>{
+  const a=await actor(),token=crypto.randomUUID();let requests=0,preparedProduct=MONTHLY_PRODUCT;
+  const fetcher=provider(a,(_url,body)=>{requests++;assert.equal(body.action,'prepare');return Response.json({product_id:preparedProduct,app_account_token:token});});
+  const body={action:'prepare',requested_product_id:MONTHLY_PRODUCT,request_id:crypto.randomUUID(),base44_access_token:credential};
+  for(const flag of [undefined,'false','TRUE','1']) {
+    await assert.rejects(call(a,body,fetcher,{...billing,SPYCLASH_LIMITLESS_APPLE_MONTHLY_PURCHASE_ENABLED:flag}),
+      e=>e.code==='apple_monthly_purchase_unconfigured'&&e.status===503);
+  }
+  const enabled={...billing,SPYCLASH_LIMITLESS_APPLE_MONTHLY_PURCHASE_ENABLED:'true'};
+  await assert.rejects(call(a,body,fetcher,{...enabled,APP_LEGACY_PURCHASES_ENABLED:'false'}),e=>e.code==='apple_purchase_unconfigured');
+  assert.equal(requests,0);
+  for(const requested_product_id of ['',null,'unknown',{},[MONTHLY_PRODUCT]]) {
+    await assert.rejects(call(a,{...body,requested_product_id},fetcher,enabled),e=>e.code==='unsupported_product');
+  }
+  assert.equal(requests,0);
+  const prepared=await call(a,body,fetcher,enabled);
+  assert.equal(prepared.product_id,MONTHLY_PRODUCT);assert.equal(prepared.app_account_token,token);
+  assert.deepEqual(await call(a,body,fetcher,enabled),prepared);assert.equal(requests,1);
+  await assert.rejects(call(a,{...body,requested_product_id:WEEKLY_PRODUCT},fetcher,enabled),e=>e.code==='request_id_reused');
+  preparedProduct=WEEKLY_PRODUCT;
+  await assert.rejects(call(a,{...body,request_id:crypto.randomUUID()},fetcher,enabled),e=>e.code==='legacy_billing_response_invalid');
+  const older=await call(a,{action:'prepare',request_id:crypto.randomUUID(),base44_access_token:credential},fetcher,enabled);
+  assert.equal(older.product_id,WEEKLY_PRODUCT);assert.equal(older.app_account_token,token);
 });
 test('restore never accepts an unknown canonical or submitted product even with a verification flag',async()=>{
   for(const [submitted,canonical] of [[WEEKLY_PRODUCT,'unrelated.product'],['unrelated.product',WEEKLY_PRODUCT]]) {

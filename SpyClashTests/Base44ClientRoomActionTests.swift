@@ -1526,10 +1526,10 @@ final class Base44ClientRoomActionTests: XCTestCase {
         let body = try XCTUnwrap(recorder.requestBodies().first)
         XCTAssertEqual(body["action"] as? String, "join_room")
         XCTAssertEqual(body["room_id"] as? String, waitingRoom.id)
-        XCTAssertEqual(body["client_capabilities"] as? [String], ["multi_spy_v1"])
+        XCTAssertEqual(body["client_capabilities"] as? [String], ["multi_spy_v1", "fan_mode_v1", "fan_mode_v2", "fan_mode_v3"])
         let player = try XCTUnwrap(body["player"] as? [String: Any])
         XCTAssertEqual(player["email"] as? String, user.email)
-        XCTAssertEqual(player["client_capabilities"] as? [String], ["multi_spy_v1"])
+        XCTAssertEqual(player["client_capabilities"] as? [String], ["multi_spy_v1", "fan_mode_v1", "fan_mode_v2", "fan_mode_v3"])
     }
 
     func testResumeNonWaitingRoomDoesNotMutateMembership() async throws {
@@ -2113,7 +2113,7 @@ final class Base44ClientRoomActionTests: XCTestCase {
         XCTAssertEqual(body["access_token"] as? String, "test-token")
         XCTAssertEqual(body["mutation_id"] as? String, "mutation-7")
         XCTAssertEqual(body["expected_revision"] as? Int, 6)
-        XCTAssertEqual(body["client_capabilities"] as? [String], ["multi_spy_v1"])
+        XCTAssertEqual(body["client_capabilities"] as? [String], ["multi_spy_v1", "fan_mode_v1", "fan_mode_v2", "fan_mode_v3"])
         let encodedState = try XCTUnwrap(body["state"] as? [String: Any])
         XCTAssertEqual(encodedState["game_mode"] as? String, "questions")
         XCTAssertEqual(encodedState["lobby_source_pack_id"] as? String, "pack-1")
@@ -2158,9 +2158,9 @@ final class Base44ClientRoomActionTests: XCTestCase {
         let bodies = try recorder.requestBodies()
         XCTAssertEqual(bodies.compactMap { $0["action"] as? String }, ["create_room", "join_room"])
         for body in bodies {
-            XCTAssertEqual(body["client_capabilities"] as? [String], ["multi_spy_v1"])
+            XCTAssertEqual(body["client_capabilities"] as? [String], ["multi_spy_v1", "fan_mode_v1", "fan_mode_v2", "fan_mode_v3"])
             let player = try XCTUnwrap(body["player"] as? [String: Any])
-            XCTAssertEqual(player["client_capabilities"] as? [String], ["multi_spy_v1"])
+            XCTAssertEqual(player["client_capabilities"] as? [String], ["multi_spy_v1", "fan_mode_v1", "fan_mode_v2", "fan_mode_v3"])
         }
     }
 
@@ -2193,7 +2193,7 @@ final class Base44ClientRoomActionTests: XCTestCase {
         let body = try XCTUnwrap(recorder.requestBodies().first)
         XCTAssertEqual(body["action"] as? String, "arm_roulette")
         XCTAssertEqual(body["expected_lobby_revision"] as? Int, 12)
-        XCTAssertEqual(body["client_capabilities"] as? [String], ["multi_spy_v1"])
+        XCTAssertEqual(body["client_capabilities"] as? [String], ["multi_spy_v1", "fan_mode_v1", "fan_mode_v2", "fan_mode_v3"])
         let planBody = try XCTUnwrap(body["plan"] as? [String: Any])
         XCTAssertNil(planBody["spy_email"], "The backend, not iOS, must assign spy identities.")
     }

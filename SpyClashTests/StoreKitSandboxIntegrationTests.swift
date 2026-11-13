@@ -74,6 +74,29 @@ final class StoreKitSandboxIntegrationTests: XCTestCase {
         try await assertNoUnfinishedTransactions()
     }
 
+    func testLegacyWeeklyPurchaseStillRestoresWithoutPreparingMonthlyCheckout() async throws {
+        let harness = try await StoreKitIntegrationHarness()
+        defer { harness.close() }
+        XCTAssertEqual(StoreKitManager.limitlessProductID, StoreKitSubscriptionProduct.monthly.rawValue)
+        let products = try await Product.products(for: [StoreKitManager.legacyWeeklyProductID])
+        let weekly = try XCTUnwrap(products.first)
+        let result = try await weekly.purchase(options: [.appAccountToken(harness.backend.accountToken)])
+        guard case .success(.verified(let transaction)) = result else {
+            return XCTFail("The local legacy weekly fixture must be verified before restore.")
+        }
+        XCTAssertEqual(transaction.environment, .xcode)
+        XCTAssertEqual(transaction.productID, StoreKitManager.legacyWeeklyProductID)
+
+        await harness.manager.restore()
+
+        XCTAssertEqual(harness.manager.state, .restored, harness.manager.errorMessage ?? "")
+        XCTAssertTrue(harness.membership.hasAccess)
+        XCTAssertEqual(harness.backend.prepareCount, 0, "Restoring weekly must not prepare or buy monthly.")
+        XCTAssertEqual(harness.backend.deliveredProductIDs, [StoreKitManager.legacyWeeklyProductID])
+        XCTAssertEqual(harness.store.allTransactions().count, 1)
+        try await assertNoUnfinishedTransactions()
+    }
+
     func testAccessUnverifiedStartsNoPaymentAndRetryCanCompleteRealPurchase() async throws {
         let harness = try await StoreKitIntegrationHarness()
         defer { harness.close() }
@@ -314,6 +337,11 @@ private final class StoreKitIntegrationHarness {
         "subscriptions":[{"adHocOffers":[],"codeOffers":[],"displayPrice":"2.99","familyShareable":false,
           "groupNumber":1,"internalID":"6790603600","introductoryOffer":null,
           "localizations":[{"description":"Local test only","displayName":"LIMITLESS Fixture","locale":"en_US"}],
+          "productID":"com.spyclash.ios.limitless.monthly","recurringSubscriptionPeriod":"P1M",
+          "referenceName":"Local Monthly","subscriptionGroupID":"22234605","type":"RecurringSubscription","winbackOffers":[]},
+          {"adHocOffers":[],"codeOffers":[],"displayPrice":"2.99","familyShareable":false,
+          "groupNumber":1,"internalID":"6790603601","introductoryOffer":null,
+          "localizations":[{"description":"Legacy local test only","displayName":"LIMITLESS Weekly Fixture","locale":"en_US"}],
           "productID":"com.spyclash.ios.limitless.weekly","recurringSubscriptionPeriod":"P1W",
           "referenceName":"Local Weekly","subscriptionGroupID":"22234605","type":"RecurringSubscription","winbackOffers":[]}]}],
       "version":{"major":4,"minor":0}

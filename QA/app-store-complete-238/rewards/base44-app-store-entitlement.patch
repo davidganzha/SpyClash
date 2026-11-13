@@ -1,0 +1,285 @@
+--- a/base44/functions/app-store-entitlement/apple-entitlement.ts
++++ b/base44/functions/app-store-entitlement/apple-entitlement.ts
+@@ -1,0 +2 @@
++  limitlessAppleMonthlyPurchaseEnabled,
+@@ -10,0 +12,6 @@
++export const MONTHLY_SUBSCRIPTION_PRODUCT_ID =
++  `${SPYCLASH_IOS_BUNDLE_ID}.limitless.monthly`;
++export const SUPPORTED_SUBSCRIPTION_PRODUCT_IDS = [
++  LEGACY_SUBSCRIPTION_PRODUCT_ID,
++  MONTHLY_SUBSCRIPTION_PRODUCT_ID,
++] as const;
+@@ -11,0 +19,31 @@
++
++export function isSupportedAppleSubscriptionProduct(
++  productID: unknown,
++): productID is typeof SUPPORTED_SUBSCRIPTION_PRODUCT_IDS[number] {
++  return SUPPORTED_SUBSCRIPTION_PRODUCT_IDS.some((id) => id === productID);
++}
++
++export function applePurchaseProductSelection(
++  requestedProductID: unknown,
++  monthlyPurchasesEnabled = limitlessAppleMonthlyPurchaseEnabled(),
++): { productID: string } | { status: 422 | 503; message: string } {
++  // Older clients omit the selector and must keep their original contract.
++  const productID = requestedProductID === undefined
++    ? LEGACY_SUBSCRIPTION_PRODUCT_ID
++    : requestedProductID;
++  if (!isSupportedAppleSubscriptionProduct(productID)) {
++    return {
++      status: 422,
++      message: "Unsupported App Store subscription product.",
++    };
++  }
++  if (
++    productID === MONTHLY_SUBSCRIPTION_PRODUCT_ID && !monthlyPurchasesEnabled
++  ) {
++    return {
++      status: 503,
++      message: "Monthly subscriptions are not available yet.",
++    };
++  }
++  return { productID };
++}
+--- /dev/null
++++ b/base44/functions/app-store-entitlement/apple-loyalty.ts
+@@ -0,0 +1,128 @@
++/** A complete, server-verified view of paid transactions in one owned chain.
++ * No amounts, receipts or account tokens are exposed by profile projections. */
++export type AppleLoyaltySnapshot = {
++  original_transaction_id: string;
++  environment: 'production' | 'sandbox';
++  transaction_ids: string[];
++  verified_at: string;
++};
++
++type Transaction = {
++  transactionId?: string; originalTransactionId?: string; appAccountToken?: string;
++  bundleId?: string; productId?: string; environment?: string; type?: string;
++  inAppOwnershipType?: string; price?: number; offerDiscountType?: string;
++  purchaseDate?: number; signedDate?: number; revocationDate?: number;
++  revocationReason?: number; revocationPercentage?: number; revocationType?: string;
++};
++type HistoryPage = {
++  bundleId?: string; environment?: string; appAppleId?: number;
++  hasMore?: boolean; revision?: string; signedTransactions?: string[];
++};
++const validID = (value: unknown): value is string =>
++  typeof value === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(value);
++const positive = (value: unknown): value is number =>
++  typeof value === 'number' && Number.isFinite(value) && value > 0;
++
++/** Caller must first verify the current subscription and its account binding.
++ * Failed/incomplete reads throw; callers retain the previous complete snapshot.
++ * History includes revoked records so a later refund can remove a paid period. */
++export async function readAppleLoyaltyHistory(input: {
++  transactionID: string;
++  originalTransactionID: string;
++  appAccountToken: string;
++  expectedBundleID: string;
++  expectedProducts: readonly string[];
++  expectedEnvironment: string;
++  expectedAppAppleID: number;
++  getHistory: (transactionID: string, revision: string | null) => Promise<HistoryPage>;
++  verifyTransaction: (jws: string) => Promise<Transaction>;
++  now?: () => number;
++  deadlineMilliseconds?: number;
++}): Promise<AppleLoyaltySnapshot> {
++  const now = (input.now || Date.now)();
++  const deadline = input.deadlineMilliseconds ?? Date.now() + 8000;
++  const requireTime = () => {
++    if (!Number.isFinite(deadline) || Date.now() >= deadline) throw new Error('Apple Loyalty history timed out.');
++  };
++  const token = input.appAccountToken.toLowerCase();
++  if (!validID(input.transactionID) || !validID(input.originalTransactionID) || !token
++      || !['Production', 'Sandbox'].includes(input.expectedEnvironment)
++      || !positive(now)) throw new Error('Invalid verified Loyalty binding.');
++  const records = new Map<string, { signedAt: number; eligible: boolean }>();
++  const revisions = new Set<string>();
++  let revision: string | null = null;
++  for (let pageNumber = 0; pageNumber < 100; pageNumber++) {
++    requireTime();
++    const page = await input.getHistory(input.transactionID, revision);
++    requireTime();
++    if (page.bundleId !== input.expectedBundleID || page.environment !== input.expectedEnvironment
++        || (input.expectedEnvironment === 'Production' && page.appAppleId !== input.expectedAppAppleID)
++        || typeof page.hasMore !== 'boolean' || !Array.isArray(page.signedTransactions)
++        || page.signedTransactions.length > 20) throw new Error('Invalid Apple Loyalty history response.');
++    for (const signed of page.signedTransactions) {
++      requireTime();
++      if (typeof signed !== 'string' || !signed || signed.length > 250_000)
++        throw new Error('Invalid signed Loyalty transaction.');
++      const transaction = await input.verifyTransaction(signed);
++      requireTime();
++      if (transaction.bundleId !== input.expectedBundleID || transaction.environment !== input.expectedEnvironment)
++        throw new Error('Apple Loyalty transaction identity mismatch.');
++      // Apple's history is app-wide. A different chain is never evidence for this binding.
++      if (transaction.originalTransactionId !== input.originalTransactionID) continue;
++      const suppliedToken = transaction.appAccountToken?.toLowerCase();
++      if (suppliedToken && suppliedToken !== token) throw new Error('Apple Loyalty account binding mismatch.');
++      const id = transaction.transactionId;
++      if (!validID(id) || !positive(transaction.signedDate)) throw new Error('Invalid Apple Loyalty transaction identity.');
++      const eligible = input.expectedEnvironment === 'Production'
++        && input.expectedProducts.includes(transaction.productId || '')
++        && transaction.type === 'Auto-Renewable Subscription'
++        && transaction.inAppOwnershipType === 'PURCHASED'
++        && positive(transaction.price) && transaction.offerDiscountType !== 'FREE_TRIAL'
++        && positive(transaction.purchaseDate) && transaction.purchaseDate <= now
++        && transaction.revocationDate == null && transaction.revocationReason == null
++        && transaction.revocationType == null && transaction.revocationPercentage == null;
++      const prior = records.get(id);
++      // Updated transactions can recur during pagination; newest signed state wins.
++      // For equal timestamps, a revocation/ineligible representation wins safely.
++      if (!prior || transaction.signedDate > prior.signedAt
++          || (transaction.signedDate === prior.signedAt && !eligible))
++        records.set(id, { signedAt: transaction.signedDate, eligible });
++    }
++    if (!page.hasMore) {
++      // The verified current transaction must still be visible in a complete
++      // unfiltered history. A missing chain is an incomplete observation, not
++      // evidence that all previously earned paid periods disappeared.
++      if (!records.has(input.transactionID)) throw new Error('Apple Loyalty history omitted the verified transaction.');
++      return {
++      original_transaction_id: input.originalTransactionID,
++      environment: input.expectedEnvironment === 'Production' ? 'production' : 'sandbox',
++      transaction_ids: [...records].filter(([, record]) => record.eligible).map(([id]) => id).sort(),
++      verified_at: new Date(now).toISOString(),
++      };
++    }
++    if (typeof page.revision !== 'string' || !page.revision || page.revision.length > 4096 || revisions.has(page.revision))
++      throw new Error('Incomplete Apple Loyalty history.');
++    revisions.add(page.revision);
++    revision = page.revision;
++  }
++  throw new Error('Apple Loyalty history exceeded the bounded page limit.');
++}
++
++/** Only call with private server evidence, never with a client request object. */
++export function mergeAppleLoyaltySnapshot<T extends Record<string, any>>(
++  current: T, prior: Record<string, any> | undefined, snapshot?: AppleLoyaltySnapshot,
++): T & { loyalty_transaction_ids?: string[]; loyalty_verified_at?: string } {
++  const sameChain = prior?.original_transaction_id === current.original_transaction_id
++    && prior?.environment === current.environment;
++  const previousIDs = sameChain && Array.isArray(prior?.loyalty_transaction_ids)
++    ? prior.loyalty_transaction_ids.filter(validID) : undefined;
++  const previousTime = sameChain ? Date.parse(prior?.loyalty_verified_at || '') : NaN;
++  const nextTime = Date.parse(snapshot?.verified_at || '');
++  const valid = snapshot && snapshot.original_transaction_id === current.original_transaction_id
++    && snapshot.environment === current.environment && Number.isFinite(nextTime)
++    && (!Number.isFinite(previousTime) || nextTime >= previousTime)
++    && Array.isArray(snapshot.transaction_ids) && snapshot.transaction_ids.length <= 2000
++    && snapshot.transaction_ids.every(validID);
++  if (valid) return {...current, loyalty_transaction_ids: [...new Set(snapshot.transaction_ids)], loyalty_verified_at: snapshot.verified_at};
++  return previousIDs ? {...current, loyalty_transaction_ids: previousIDs, loyalty_verified_at: prior!.loyalty_verified_at} : current;
++}
+--- a/base44/functions/app-store-entitlement/apple-subscription-status.ts
++++ b/base44/functions/app-store-entitlement/apple-subscription-status.ts
+@@ -19 +19 @@
+-  expectedProductID: string;
++  expectedProductIDs: readonly string[];
+@@ -31,0 +32,6 @@
++      422,
++    );
++  }
++  if (!input.expectedProductIDs.includes(input.transaction.productId || "")) {
++    throw new AppleSubscriptionStatusError(
++      "Apple transaction product is not a supported subscription.",
+@@ -67 +73,4 @@
+-    transaction.productId !== input.expectedProductID ||
++    // A subscription may move between supported products while keeping its
++    // original transaction chain. Verify its current product and renewal,
++    // rather than requiring the historical submitted product to remain active.
++    !input.expectedProductIDs.includes(transaction.productId || "") ||
+--- a/base44/functions/app-store-entitlement/entry.ts
++++ b/base44/functions/app-store-entitlement/entry.ts
+@@ -4,0 +5 @@
++  GetTransactionHistoryVersion,
+@@ -14,0 +16 @@
++  applePurchaseProductSelection,
+@@ -15,0 +18 @@
++  isSupportedAppleSubscriptionProduct,
+@@ -21,0 +25 @@
++  SUPPORTED_SUBSCRIPTION_PRODUCT_IDS,
+@@ -54,0 +59 @@
++import { readAppleLoyaltyHistory } from "./apple-loyalty.ts";
+@@ -307 +312 @@
+-      expectedProductID: PRODUCT_ID,
++      expectedProductIDs: SUPPORTED_SUBSCRIPTION_PRODUCT_IDS,
+@@ -842,3 +847,3 @@
+-  if (transaction.productId !== PRODUCT_ID) {
+-    throw new RequestError(
+-      "Apple transaction product does not match the legacy subscription.",
++  if (!isSupportedAppleSubscriptionProduct(transaction.productId)) {
++    throw new RequestError(
++      "Apple transaction product does not match a supported subscription.",
+@@ -859 +864 @@
+-async function handlePrepare(base44: any) {
++async function handlePrepare(base44: any, body: Record<string, unknown>) {
+@@ -863,0 +869,4 @@
++  }
++  const selection = applePurchaseProductSelection(body.requested_product_id);
++  if ("status" in selection) {
++    throw new RequestError(selection.message, selection.status);
+@@ -896 +905 @@
+-    product_id: PRODUCT_ID,
++    product_id: selection.productID,
+@@ -971,0 +981,34 @@
++    // Loyalty is optional metadata after verified ownership and delivery. A
++    // history outage must never turn a valid purchase/restore into a failure.
++    let loyalty;
++    let loyaltyTimeout: ReturnType<typeof setTimeout> | undefined;
++    try {
++      const client = appStoreAPIClient(verified.environment);
++      loyalty = await Promise.race([
++        readAppleLoyaltyHistory({
++          transactionID: String(canonical.transaction.transactionId || ""),
++          originalTransactionID: entitlement.original_transaction_id,
++          appAccountToken: transactionToken,
++          expectedBundleID: BUNDLE_ID,
++          expectedProducts: SUPPORTED_SUBSCRIPTION_PRODUCT_IDS,
++          expectedEnvironment: verified.environment,
++          expectedAppAppleID: SPYCLASH_APPLE_APP_ID,
++          getHistory: (id, revision) => client.getTransactionHistory(
++            id, revision, {}, GetTransactionHistoryVersion.V2,
++          ),
++          verifyTransaction: (jws) => verified.verifier.verifyAndDecodeTransaction(jws),
++        }),
++        new Promise<never>((_, reject) => {
++          loyaltyTimeout = setTimeout(() => reject(new Error("Loyalty history timeout")), 8_000);
++        }),
++      ]);
++      if (canonical.status === 5) {
++        loyalty.transaction_ids = loyalty.transaction_ids.filter(
++          (id) => id !== canonical.transaction.transactionId,
++        );
++      }
++    } catch {
++      console.warn("Optional Apple Loyalty history is temporarily unavailable.");
++    } finally {
++      if (loyaltyTimeout !== undefined) clearTimeout(loyaltyTimeout);
++    }
+@@ -1002,0 +1046 @@
++      submitted_product_id: verified.transaction.productId,
+@@ -1003,0 +1048 @@
++      ...(loyalty ? { loyalty } : {}),
+@@ -1025 +1070 @@
+-    // Summary/app-data notifications do not change legacy subscription state.
++    // Summary/app-data notifications do not change subscription state.
+@@ -1038 +1083 @@
+-    transaction.productId !== PRODUCT_ID ||
++    !isSupportedAppleSubscriptionProduct(transaction.productId) ||
+@@ -1161 +1206 @@
+-        return await handlePrepare(base44);
++        return await handlePrepare(base44, body);
+--- a/base44/functions/app-store-entitlement/limitless-rollout.ts
++++ b/base44/functions/app-store-entitlement/limitless-rollout.ts
+@@ -23,0 +24,9 @@
++
++// Monthly checkout is a separate rollout. Existing subscriptions remain
++// verifiable and restorable regardless of this new-purchase setting.
++export function limitlessAppleMonthlyPurchaseEnabled(): boolean {
++  return limitlessApplePurchaseEnabled() &&
++    rolloutEnabled(
++      setting("SPYCLASH_LIMITLESS_APPLE_MONTHLY_PURCHASE_ENABLED"),
++    );
++}

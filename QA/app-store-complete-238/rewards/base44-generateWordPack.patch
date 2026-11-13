@@ -1,0 +1,127 @@
+--- a/base44/functions/generateWordPack/entry.ts
++++ b/base44/functions/generateWordPack/entry.ts
+@@ -81 +81 @@
+-import { rewardedGenerationEnabled, availableRewardCredits, reserveGenerationReward, settleGenerationReward, type RewardRecord } from "./generation-rewards.ts";
++import { rewardedGenerationEnabled, rewardedGenerationEnabledForUser, availableRewardCredits, reserveGenerationReward, settleGenerationReward, type RewardRecord } from "./generation-rewards.ts";
+@@ -423,2 +423 @@
+-    const rewardedEnabled = rewardedGenerationEnabled();
+-    if (rewardedEnabled && !requestID) return Response.json({ error: "A stable generation request is required.", code: "invalid_request_id" }, { status: 400 });
++    const rewardedRolloutEnabled = rewardedGenerationEnabled();
+@@ -453 +452 @@
+-    if (!CASADA_PROTOCOL_ENABLED || rewardedEnabled) {
++    if (!CASADA_PROTOCOL_ENABLED || rewardedRolloutEnabled) {
+@@ -472 +471 @@
+-    if (!CASADA_PROTOCOL_ENABLED || rewardedEnabled) {
++    if (!CASADA_PROTOCOL_ENABLED || rewardedRolloutEnabled) {
+@@ -490,19 +488,0 @@
+-    const membership = applyCasadaGenerationAccess(
+-      applyAdminGenerationGrant(
+-        resolveGenerationMembership(entitlements),
+-        adminGrants,
+-      ),
+-      CASADA_PROTOCOL_ENABLED && !rewardedEnabled,
+-    );
+-    if (rewardedEnabled && membership.tier === "free") membership.benefits = { ...membership.benefits, ai_generations_daily_limit: 3 };
+-    if (!membership.active && (entitlementReadError || adminGrantReadError)) {
+-      return Response.json({
+-        error: "Membership could not be verified. Try again shortly.",
+-        code: "membership_unavailable",
+-        active: false,
+-        tier: null,
+-        status: "unknown",
+-        benefits: null,
+-        retryable: true,
+-      }, { status: 503 });
+-    }
+@@ -513,0 +494,21 @@
++        const rewardedEnabled = await rewardedGenerationEnabledForUser(base44.asServiceRole.entities.GenerationRewardEnrollment, user.id);
++        if (rewardedEnabled && !requestID) return Response.json({ error: "A stable generation request is required.", code: "invalid_request_id" }, { status: 400 });
++        const membership = applyCasadaGenerationAccess(
++          applyAdminGenerationGrant(
++            resolveGenerationMembership(entitlements),
++            adminGrants,
++          ),
++          CASADA_PROTOCOL_ENABLED && !rewardedEnabled,
++        );
++        if (rewardedEnabled && membership.tier === "free") membership.benefits = { ...membership.benefits, ai_generations_daily_limit: 3 };
++        if (!membership.active && (entitlementReadError || adminGrantReadError)) {
++          return Response.json({
++            error: "Membership could not be verified. Try again shortly.",
++            code: "membership_unavailable",
++            active: false,
++            tier: null,
++            status: "unknown",
++            benefits: null,
++            retryable: true,
++          }, { status: 503 });
++        }
+--- a/base44/functions/generateWordPack/generation-rewards.ts
++++ b/base44/functions/generateWordPack/generation-rewards.ts
+@@ -10,0 +11,12 @@
++/** The caller supplies auth.me().id, never a request-body ID or email. This
++ * capability only offers a supervised ad test; generation quotas stay off. */
++export function isGenerationRewardTester(userID: string): boolean {
++  try {
++    return Boolean(userID) && Boolean(
++      Deno.env.get("SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS")?.split(",")
++        .some((id) => id.trim() === userID),
++    );
++  } catch {
++    return false;
++  }
++}
+@@ -13,0 +26,10 @@
++    const provider = Deno.env.get("SPYCLASH_REWARDED_AD_PROVIDER") || "admob";
++    if (provider === "unity") {
++      const game = Deno.env.get("UNITY_ADS_GAME_ID")?.trim() || "";
++      const placement = Deno.env.get("UNITY_ADS_REWARDED_PLACEMENT_ID")?.trim() || "";
++      const secret = Deno.env.get("UNITY_ADS_S2S_SECRET") || "";
++      return /^[1-9][0-9]{0,15}$/.test(game) && game !== "14850" &&
++          /^[A-Za-z0-9_-]{1,80}$/.test(placement) && secret.length >= 16
++        ? `unity:${game}:${placement}` : null;
++    }
++    if (provider !== "admob") return null;
+@@ -20,0 +43,23 @@
++}
++/** Enrollment is server-persisted and never inferred from a generation request.
++ * Supported clients may opt into the restrictive new policy, but omitting their
++ * capability later cannot restore legacy access. Caller holds the user lease. */
++export async function rewardedGenerationEnabledForUser(store: any, userID: string): Promise<boolean> {
++  if (!rewardedGenerationEnabled()) return false;
++  const rows = await store.filter({ user_id: userID }, "created_date", 2, 0);
++  if (rows.length > 1) throw new GenerationRewardError("reward_enrollment_unavailable", "Generation access could not be verified.", 503);
++  return rows.length === 1;
++}
++export async function enrollRewardGeneration(input: {
++  store: any; guard: RewardWriteGuard; userID: string; supportedProvider: unknown; clientBuild: unknown;
++}): Promise<void> {
++  if (!rewardedGenerationEnabled() || input.supportedProvider !== "unity" ||
++      !Number.isSafeInteger(input.clientBuild) || Number(input.clientBuild) < 228 || Number(input.clientBuild) > 2147483647 ||
++      !configuredRewardAdUnit()?.startsWith("unity:")) return;
++  if (await rewardedGenerationEnabledForUser(input.store, input.userID)) return;
++  try {
++    await input.guard.boundary(() => input.store.create({user_id: input.userID, provider: "unity", client_build: input.clientBuild, enrolled_at: new Date().toISOString()}));
++  } catch { /* Reconcile lost acknowledgement, never silently grant legacy access. */ }
++  if (!await rewardedGenerationEnabledForUser(input.store, input.userID)) {
++    throw new GenerationRewardError("reward_enrollment_unavailable", "Generation access could not be confirmed.", 503);
++  }
+@@ -111,0 +157 @@
++    testUser?: boolean;
+@@ -126 +172,3 @@
+-      bonus_credits: 0,
++      bonus_credits: input.testUser
++        ? await availableRewardCredits(input.rewardStore, input.userID)
++        : 0,
+@@ -128,0 +177 @@
++      ...(input.testUser ? { test_ad_available: Boolean(input.adUnit) } : {}),
+@@ -207 +256 @@
+-/** The callback must already have passed Google's signature verifier. */
++/** The callback must already have passed its provider signature verifier. */
+@@ -229 +278 @@
+-      c.adUnit !== row.ad_unit_id.split("/").at(-1)) ||
++      (!row.ad_unit_id.startsWith("ca-app-pub-") || c.adUnit !== row.ad_unit_id.split("/").at(-1))) ||
+@@ -231,0 +281,4 @@
++  if (row.ad_unit_id.startsWith("unity:") && row.transaction_id) {
++    if (row.transaction_id !== c.transactionID) throw invalid();
++    return { success: true, duplicate: true };
++  }

@@ -643,8 +643,7 @@ struct OnlineGameIntroScene: View {
 
     let room: GameRoom
     let language: AppLanguage
-
-    @SpyReduceMotion private var reduceMotion
+    var presentationStartedAt: Date? = nil
 
     var body: some View {
         SpyGameIntroScene(
@@ -654,7 +653,7 @@ struct OnlineGameIntroScene: View {
             spyCount: room.lobbySpyCountValue,
             fanEnabled: room.fanSettings.isEnabled,
             language: language,
-            startedAt: OnlineExperienceClock.date(from: room.introStartedAt) ?? .distantFuture,
+            startedAt: presentationStartedAt ?? OnlineExperienceClock.date(from: room.introStartedAt) ?? .now,
             duration: Self.totalDuration,
             holdsFinalFrame: true,
             fixedProgress: debugFixedProgress,
@@ -662,285 +661,15 @@ struct OnlineGameIntroScene: View {
         )
     }
 
-    private func introStage(size: CGSize, progress: Double) -> some View {
-        let deckPoint = CGPoint(x: size.width / 2, y: size.height * 0.65)
-        let warningProgress = SpyExperienceMotion.segment(progress, from: 0.72, to: 0.84)
-        let warningExit = SpyExperienceMotion.segment(progress, from: 0.90, to: 0.96)
-        let warningOpacity = warningProgress * (1 - warningExit)
-        let dimmedOpacity = 1 - warningProgress * 0.88
-        let outro = SpyExperienceMotion.segment(progress, from: 0.94, to: 1)
-        let deckReveal = SpyExperienceMotion.spring(
-            SpyExperienceMotion.segment(progress, from: 0.16, to: 0.34)
-        )
-
-        return ZStack {
-            SpyCinematicBackdrop(intensity: CGFloat(0.72 + warningProgress * 0.34))
-                .opacity(dimmedOpacity + warningProgress * 0.28)
-
-            VStack(spacing: 7) {
-                SpyWordmark(fontSize: 22)
-                Text(copy.gameStarting)
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .tracking(2.4)
-                    .foregroundStyle(SpyTheme.dim)
-            }
-            .position(x: size.width / 2, y: max(68, size.height * 0.10))
-            .opacity(SpyExperienceMotion.segment(progress, from: 0, to: 0.14))
-            .blur(radius: warningProgress * 5)
-            .offset(y: -warningProgress * 10)
-
-            ForEach(Array(room.playersList.enumerated()), id: \.element.id) { index, player in
-                let target = playerPosition(index: index, count: room.playersList.count, size: size)
-                let appearance = reduceMotion
-                    ? 1
-                    : SpyExperienceMotion.easeOut(
-                        SpyExperienceMotion.segment(
-                            progress,
-                            from: 0.11 + Double(index) * 0.018,
-                            to: 0.29 + Double(index) * 0.018
-                        )
-                    )
-                let window = dealWindow(index: index, count: room.playersList.count)
-                let rawDeal = reduceMotion ? 1 : SpyExperienceMotion.segment(progress, from: window.start, to: window.end)
-                let deal = reduceMotion ? 1 : SpyExperienceMotion.spring(rawDeal)
-                let cardPoint = SpyExperienceMotion.arcPoint(
-                    from: deckPoint,
-                    to: CGPoint(x: target.x, y: target.y + 72),
-                    progress: min(max(deal, 0), 1),
-                    lift: 56 + abs(target.x - deckPoint.x) * 0.18
-                )
-                let landingPulse = SpyExperienceMotion.pulse(rawDeal, center: 0.88, width: 0.18)
-
-                IntroOperativeIdentity(
-                    player: player,
-                    isReady: rawDeal > 0.82,
-                    illumination: CGFloat(min(max(deal, 0), 1))
-                )
-                    .scaleEffect(0.82 + 0.18 * appearance + landingPulse * 0.035)
-                    .opacity(appearance * dimmedOpacity)
-                    .position(target)
-                    .blur(radius: warningProgress * 3)
-
-                CutCornerShape(cut: 10)
-                    .stroke(SpyTheme.red.opacity(0.62), lineWidth: 1)
-                    .frame(width: 66 + landingPulse * 24, height: 66 + landingPulse * 24)
-                    .position(x: target.x, y: target.y + 12)
-                    .opacity(landingPulse * dimmedOpacity)
-                    .accessibilityHidden(true)
-
-                IntroRoleCardBack()
-                    .frame(width: min(42, size.width * 0.108))
-                    .rotation3DEffect(
-                        .degrees((Double(index % 3) - 1) * 12 * (1 - rawDeal)),
-                        axis: (x: 0.22, y: 1, z: 0),
-                        perspective: 0.72
-                    )
-                    .rotationEffect(.degrees((Double(index % 3) - 1) * 10 * (1 - rawDeal) + sin(rawDeal * .pi) * 7))
-                    .scaleEffect(0.78 + min(max(deal, 0), 1) * 0.22)
-                    .position(cardPoint)
-                    .shadow(color: SpyTheme.red.opacity(0.28 * sin(rawDeal * .pi)), radius: 16)
-                    .opacity((rawDeal > 0 ? 1 : 0) * dimmedOpacity)
-                    .accessibilityHidden(true)
-            }
-
-            IntroCardDeck()
-                .position(deckPoint)
-                .scaleEffect(0.72 + 0.28 * deckReveal)
-                .rotation3DEffect(.degrees((1 - deckReveal) * 26), axis: (x: 1, y: 0, z: 0), perspective: 0.68)
-                .opacity(deckReveal * (1 - SpyExperienceMotion.segment(progress, from: 0.68, to: 0.78)) * dimmedOpacity)
-                .shadow(color: SpyTheme.red.opacity(0.22), radius: 24, y: 14)
-
-            Circle()
-                .stroke(
-                    LinearGradient(
-                        colors: [.clear, SpyTheme.red.opacity(0.92), .clear],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1.4
-                )
-                .frame(width: 120, height: 120)
-                .scaleEffect(0.35 + warningProgress * 2.8)
-                .opacity((1 - warningProgress) * warningProgress * 2.2)
-                .position(x: size.width / 2, y: size.height * 0.49)
-                .accessibilityHidden(true)
-
-            VStack(spacing: 0) {
-                Text(copy.spyTeam(spyCount: room.lobbySpyCountValue))
-                    .foregroundStyle(SpyTheme.red)
-                Text(copy.amongYou)
-                    .foregroundStyle(.white)
-            }
-            .font(SpyTheme.brandFont(size: min(48, size.width * 0.125)))
-            .tracking(2.5)
-            .multilineTextAlignment(.center)
-            .shadow(color: SpyTheme.red.opacity(0.28), radius: 30)
-            .scaleEffect(0.72 + 0.28 * SpyExperienceMotion.spring(warningProgress))
-            .blur(radius: (1 - warningProgress) * 14 + warningExit * 6)
-            .opacity(warningOpacity)
-            .position(x: size.width / 2, y: size.height * 0.49)
-
-            Color.black
-                .opacity(outro)
-                .allowsHitTesting(false)
-        }
-    }
-
-    private func dealWindow(index: Int, count: Int) -> (start: Double, end: Double) {
-        let intervals = max(count - 1, 1)
-        let spacing = min(0.058, 0.22 / Double(intervals))
-        let start = 0.29 + Double(index) * spacing
-        return (start, start + 0.24)
-    }
-
-    private func playerPosition(index: Int, count: Int, size: CGSize) -> CGPoint {
-        guard count > 0 else { return CGPoint(x: size.width / 2, y: size.height * 0.26) }
-        let columns = min(count, size.width < 360 ? 3 : 4)
-        let row = index / columns
-        let rows = Int(ceil(Double(count) / Double(columns)))
-        let column = index % columns
-        let rowCount = row == rows - 1 ? count - row * columns : columns
-        let horizontalInset: CGFloat = 50
-        let usableWidth = max(size.width - horizontalInset * 2, 0)
-        let x = rowCount == 1
-            ? size.width / 2
-            : horizontalInset + usableWidth * CGFloat(column) / CGFloat(rowCount - 1)
-        let y = size.height * 0.22 + CGFloat(row) * 104
-        return CGPoint(x: x, y: y)
-    }
-
-    private func resolvedProgress(at date: Date) -> Double {
-        if let debugFixedProgress { return debugFixedProgress }
-        if reduceMotion { return 0.82 }
-        guard let startedAt = OnlineExperienceClock.date(from: room.introStartedAt) else { return 0 }
-        return min(max(date.timeIntervalSince(startedAt) / Self.totalDuration, 0), 1)
-    }
-
-    @MainActor
-    private func playIntroHaptics() async {
-        guard !reduceMotion,
-              debugFixedProgress == nil,
-              let startedAt = OnlineExperienceClock.date(from: room.introStartedAt) else { return }
-
-        let count = max(room.playersList.count, 1)
-        for index in room.playersList.indices {
-            let window = dealWindow(index: index, count: count)
-            let targetDate = startedAt.addingTimeInterval(Self.totalDuration * (window.start + 0.18))
-            let delay = targetDate.timeIntervalSinceNow
-            if delay > 0 {
-                try? await Task.sleep(for: .seconds(delay))
-            }
-            guard !Task.isCancelled else { return }
-            HapticManager.shared.fire(.navigation)
-        }
-
-        let warningDate = startedAt.addingTimeInterval(Self.totalDuration * 0.74)
-        let warningDelay = warningDate.timeIntervalSinceNow
-        if warningDelay > 0 {
-            try? await Task.sleep(for: .seconds(warningDelay))
-        }
-        guard !Task.isCancelled else { return }
-        HapticManager.shared.fire(.reveal)
-    }
-
     private var debugFixedProgress: Double? {
 #if DEBUG
         let prefix = "--spyclash-online-intro-progress="
         guard let argument = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix(prefix) }),
-              let value = Double(argument.dropFirst(prefix.count)) else { return nil }
+              let value = Double(argument.dropFirst(prefix.count)), value.isFinite else { return nil }
         return min(max(value, 0), 1)
 #else
         return nil
 #endif
-    }
-
-    private var copy: SpyGameExperienceCopy { SpyGameExperienceCopy(language: language) }
-}
-
-private struct IntroOperativeIdentity: View {
-    let player: Player
-    let isReady: Bool
-    let illumination: CGFloat
-
-    var body: some View {
-        VStack(spacing: 7) {
-            ZStack(alignment: .bottomTrailing) {
-                CutCornerShape(cut: 9)
-                    .fill(SpyTheme.control)
-                    .frame(width: 52, height: 52)
-                    .overlay {
-                        CutCornerShape(cut: 9)
-                            .stroke(isReady ? SpyTheme.green.opacity(0.74) : SpyTheme.red.opacity(0.46), lineWidth: 1.2)
-                    }
-
-                Text(player.avatar.isEmpty ? String(player.name.prefix(1)).uppercased() : player.avatar)
-                    .font(.system(size: 25))
-                    .frame(width: 52, height: 52)
-                    .saturation(0.24 + illumination * 0.76)
-                    .opacity(0.46 + illumination * 0.54)
-
-                if isReady {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 7, weight: .black))
-                        .foregroundStyle(.black)
-                        .frame(width: 15, height: 15)
-                        .background(SpyTheme.green, in: CutCornerShape(cut: 4))
-                        .offset(x: 4, y: 4)
-                }
-            }
-
-            Text(player.name.uppercased())
-                .font(SpyTheme.brandFont(size: 11))
-                .tracking(0.8)
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.62)
-                .frame(width: 88)
-
-            Capsule()
-                .fill(isReady ? SpyTheme.green.opacity(0.72) : SpyTheme.red.opacity(0.24))
-                .frame(width: isReady ? 24 : 10, height: 1)
-        }
-    }
-}
-
-private struct IntroRoleCardBack: View {
-    var body: some View {
-        GeometryReader { proxy in
-            ZStack {
-                SpyTheme.card
-
-                SpyCardSurfacePattern(theme: .field, accent: SpyTheme.red)
-                    .opacity(0.44)
-
-                VStack(spacing: 3) {
-                    MissionCardBrandMark(compact: true)
-                        .scaleEffect(min(proxy.size.width / 82, 0.66))
-                    SpyWordmark(fontSize: 5.5)
-                }
-            }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .clipped()
-        }
-        .aspectRatio(0.75, contentMode: .fit)
-        .clipShape(CutCornerShape(cut: 6))
-        .overlay {
-            CutCornerShape(cut: 6)
-                .stroke(SpyTheme.red.opacity(0.62), lineWidth: 0.8)
-        }
-    }
-}
-
-private struct IntroCardDeck: View {
-    var body: some View {
-        ZStack {
-            ForEach(0..<4, id: \.self) { index in
-                IntroRoleCardBack()
-                    .frame(width: 76)
-                    .offset(x: CGFloat(index) * 2.4 - 4, y: CGFloat(index) * -2.8 + 5)
-                    .rotationEffect(.degrees(Double(index) * 1.55 - 2.3))
-            }
-        }
     }
 }
 
@@ -977,6 +706,7 @@ struct OnlineRoleRevealScene: View {
         currentUserEmail: String?,
         isRevealed: Bool,
         isConfirming: Bool = false,
+        isPrepared: Bool = false,
         onReveal: @escaping () -> Void,
         onConfirm: @escaping () -> Void,
         onLeave: @escaping () -> Void
@@ -989,6 +719,7 @@ struct OnlineRoleRevealScene: View {
         self.currentUserEmail = currentUserEmail
         self.isRevealed = isRevealed
         self.isConfirming = isConfirming
+        _hasEntered = State(initialValue: isPrepared)
         self.onReveal = onReveal
         self.onConfirm = onConfirm
         self.onLeave = onLeave
@@ -1120,6 +851,7 @@ struct OnlineRoleRevealScene: View {
             }
         }
         .task {
+            guard !hasEntered else { return }
             if reduceMotion {
                 hasEntered = true
                 return
@@ -1293,6 +1025,12 @@ struct OnlineActiveGameScene: View {
     private struct PlayerBallot: Identifiable {
         let id: String
     }
+    private struct HeaderConfirmation: Identifiable {
+        enum Action { case leave, lobby }
+        let action: Action
+        let scope: String
+        var id: String { "\(scope)|\(action)" }
+    }
     let room: GameRoom
     let language: AppLanguage
     let role: MissionRoleCardContent
@@ -1322,7 +1060,7 @@ struct OnlineActiveGameScene: View {
     let onToggleLobbyReturn: () -> Void
     let onLeave: () -> Void
 
-    @State private var isConfirmingLeave = false
+    @State private var headerConfirmation: HeaderConfirmation?
     @State private var playerBallot: PlayerBallot?
     @State private var handledCountdownEventID: String?
     @State private var handledAssociationSpinEventID: String?
@@ -1397,12 +1135,6 @@ struct OnlineActiveGameScene: View {
                     VStack(spacing: 0) {
                         gameBrandHeader
 
-                        if lobbyReturn.isAvailable {
-                            lobbyReturnControl(
-                                accessibilityID: "onlineExperience.returnToLobbyVote"
-                            )
-                        }
-
                         ZStack(alignment: .top) {
                             VStack(spacing: 0) {
                                 timerHeader(at: timeline.date, compact: compactFanVote)
@@ -1430,14 +1162,15 @@ struct OnlineActiveGameScene: View {
                                     .layoutPriority(3)
                                     .zIndex(10)
                             }
+                            .accessibilityHidden(room.isGamePaused)
+                            .allowsHitTesting(!room.isGamePaused)
 
+                            if room.isGamePaused {
+                                pausedOverlay
+                                    .transition(.opacity)
+                                    .zIndex(20)
+                            }
                         }
-                    }
-
-                    if room.isGamePaused {
-                        pausedOverlay
-                            .transition(.opacity)
-                            .zIndex(20)
                     }
                 }
             }
@@ -1461,13 +1194,27 @@ struct OnlineActiveGameScene: View {
         .onChange(of: canSubmitBallot) { _, canSubmit in
             if !canSubmit { playerBallot = nil }
         }
-        .confirmationDialog(
-            isHost ? copy.closeGame : copy.leaveGame,
-            isPresented: $isConfirmingLeave,
-            titleVisibility: .visible
-        ) {
-            Button(isHost ? copy.closeGame : copy.leaveGame, role: .destructive, action: leave)
-            Button(copy.cancel, role: .cancel) {}
+        .sheet(item: $headerConfirmation) { confirmation in
+            GameHeaderConfirmationSheet(
+                title: confirmation.action == .lobby ? copy.confirmLobbyTitle : copy.confirmLeaveTitle(isHost: isHost),
+                message: confirmation.action == .lobby ? copy.confirmLobbyMessage : copy.confirmLeaveMessage(isHost: isHost),
+                confirmTitle: confirmation.action == .lobby ? copy.returnToLobby : (isHost ? copy.closeGame : copy.leaveGame),
+                cancelTitle: copy.cancel,
+                symbol: confirmation.action == .lobby ? .lobby : .exit,
+                accent: confirmation.action == .lobby ? SpyTheme.amber : SpyTheme.red,
+                onConfirm: { confirmHeaderAction(confirmation) },
+                onCancel: { headerConfirmation = nil }
+            )
+            .presentationDetents([.height(360), .large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(Color.black)
+        }
+        .onChange(of: headerActionScope) { _, _ in headerConfirmation = nil }
+        .onChange(of: lobbyReturn) { _, presentation in
+            if headerConfirmation?.action == .lobby,
+               !presentation.isAvailable || presentation.isPending {
+                headerConfirmation = nil
+            }
         }
         .task(id: countdownTaskID) {
             await advanceCountdownIfNeeded()
@@ -1515,13 +1262,26 @@ struct OnlineActiveGameScene: View {
     }
 
     private var gameBrandHeader: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             SpyWordmark(fontSize: 24)
+            Spacer(minLength: 8)
 
-            Spacer(minLength: 10)
+            if isHost, lobbyReturn.isAvailable {
+                headerControl(
+                    symbol: .lobby,
+                    accessibilityLabel: lobbyReturn.hasFailed ? copy.retryReturnToLobby : copy.returnToLobby,
+                    accessibilityID: "onlineExperience.returnToLobbyVote",
+                    isPending: lobbyReturn.isPending,
+                    accent: lobbyReturn.hasFailed ? SpyTheme.amber : Color.white.opacity(0.88),
+                    action: requestLobbyReturn
+                )
+                .accessibilityValue(copy.returnToLobbyAccessibilityValue(
+                    pending: lobbyReturn.isPending, failed: lobbyReturn.hasFailed
+                ))
+            }
 
             headerControl(
-                systemImage: "rectangle.portrait.and.arrow.right",
+                symbol: .exit,
                 accessibilityLabel: isHost ? copy.closeGame : copy.leaveGame,
                 accessibilityID: "onlineExperience.leave",
                 action: requestLeave
@@ -1529,111 +1289,49 @@ struct OnlineActiveGameScene: View {
 
             if isHost {
                 headerControl(
-                    systemImage: room.isGamePaused ? "play.fill" : "pause.fill",
+                    symbol: room.isGamePaused ? .resume : .pause,
                     accessibilityLabel: room.isGamePaused ? copy.resume : copy.pause,
                     accessibilityID: "onlineExperience.pauseResume",
                     action: togglePause
                 )
             }
         }
-        .padding(.horizontal, 22)
+        .padding(.horizontal, 16)
         .frame(height: 64)
         .background(Color.black.opacity(0.82))
         .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(SpyTheme.stroke)
-                .frame(height: 1)
+            Rectangle().fill(SpyTheme.stroke).frame(height: 1)
         }
-    }
-
-    private func lobbyReturnControl(accessibilityID: String) -> some View {
-        let accent = lobbyReturn.hasFailed
-            ? SpyTheme.amber
-            : Color.white.opacity(0.72)
-
-        return HStack(spacing: 10) {
-            Button(action: toggleLobbyReturn) {
-                HStack(spacing: 8) {
-                    ZStack {
-                        if lobbyReturn.isPending {
-                            ProgressView()
-                                .controlSize(.mini)
-                                .tint(accent)
-                        } else {
-                            Image(
-                                systemName: lobbyReturn.hasFailed
-                                    ? "arrow.clockwise"
-                                    : "arrow.uturn.backward.circle"
-                            )
-                            .font(.system(size: 13, weight: .black))
-                        }
-                    }
-                    .frame(width: 16, height: 16)
-
-                    Text(copy.returnToLobby)
-                        .font(.system(size: 9, weight: .black, design: .monospaced))
-                        .tracking(0.75)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.62)
-                }
-                .foregroundStyle(accent)
-                .padding(.horizontal, 11)
-                .frame(minHeight: OnlineInteractionHitTargetPolicy.minimumSize)
-                .background(accent.opacity(0.055), in: CutCornerShape(cut: 6))
-                .overlay {
-                    CutCornerShape(cut: 6)
-                        .stroke(accent.opacity(0.32), lineWidth: 1)
-                }
-                .contentShape(CutCornerShape(cut: 6))
-            }
-            .buttonStyle(SpyWebPressStyle(pressedScale: 0.96))
-            .disabled(lobbyReturn.isPending)
-            .accessibilityIdentifier(accessibilityID)
-            .accessibilityLabel(
-                lobbyReturn.hasFailed
-                    ? copy.retryReturnToLobby
-                    : copy.returnToLobby
-            )
-            .accessibilityValue(
-                copy.returnToLobbyAccessibilityValue(
-                    pending: lobbyReturn.isPending,
-                    failed: lobbyReturn.hasFailed
-                )
-            )
-
-            Spacer(minLength: 8)
-
-
-        }
-        .padding(.horizontal, 16)
-        .frame(height: 46)
-        .background(Color.black.opacity(0.88))
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(SpyTheme.stroke)
-                .frame(height: 1)
-        }
-        .animation(.easeOut(duration: 0.16), value: lobbyReturn)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("onlineExperience.header")
     }
 
     private func headerControl(
-        systemImage: String,
+        symbol: GameHeaderGlyph.Symbol,
         accessibilityLabel: String,
         accessibilityID: String,
+        isPending: Bool = false,
+        accent: Color = Color.white.opacity(0.88),
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 14, weight: .black))
-                .foregroundStyle(Color.white.opacity(0.88))
-                .frame(width: 38, height: 38)
-                .background(SpyTheme.control, in: CutCornerShape(cut: 6))
-                .overlay {
-                    CutCornerShape(cut: 6)
-                        .stroke(SpyTheme.strokeStrong, lineWidth: 1)
+            ZStack {
+                if isPending {
+                    ProgressView().tint(accent)
+                } else {
+                    GameHeaderGlyph(symbol: symbol)
+                        .stroke(style: StrokeStyle(lineWidth: 1.8, lineCap: .square, lineJoin: .miter))
+                        .frame(width: 26, height: 26)
                 }
+            }
+            .foregroundStyle(accent)
+            .frame(width: 44, height: 44)
+            .background(SpyTheme.control, in: CutCornerShape(cut: 7))
+            .overlay(CutCornerShape(cut: 7).stroke(SpyTheme.strokeStrong, lineWidth: 1))
+            .contentShape(CutCornerShape(cut: 7))
         }
         .buttonStyle(SpyWebPressStyle(pressedScale: 0.94))
+        .disabled(isPending)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityIdentifier(accessibilityID)
     }
@@ -2224,57 +1922,21 @@ struct OnlineActiveGameScene: View {
 
     private var pausedOverlay: some View {
         ZStack {
-            SpyCinematicBackdrop(intensity: 1.12)
-
-            Color.black.opacity(0.72)
-                .ignoresSafeArea()
-
+            Color.black.opacity(0.94)
             VStack(spacing: 14) {
-                AnimatedTitle(
-                    text: copy.paused,
-                    redPrefixCount: copy.paused.count,
-                    fontSize: 44,
-                    letterSpacing: 3
-                )
-
+                Text(copy.paused)
+                    .font(.system(size: 32, weight: .bold, design: .monospaced))
+                    .foregroundStyle(SpyTheme.red)
                 Text(copy.timerStopped)
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .tracking(1.8)
-                    .foregroundStyle(Color.white.opacity(0.58))
-
-                if isHost {
-                    Button(action: togglePause) {
-                        HStack(spacing: 9) {
-                            Image(systemName: "play.fill")
-                            Text(copy.resumeGame)
-                        }
-                    }
-                    .buttonStyle(SpyCinematicButtonStyle(variant: .primary))
-                    .frame(width: 250)
-                    .padding(.top, 12)
-                    .accessibilityIdentifier("onlineExperience.pauseResume")
-                }
-
-                Button(action: requestLeave) {
-                    HStack(spacing: 9) {
-                        Image(systemName: "rectangle.portrait.and.arrow.right")
-                        Text(isHost ? copy.closeGame : copy.leaveGame)
-                    }
-                }
-                .buttonStyle(SpyCinematicButtonStyle(variant: .secondary))
-                .frame(width: 250)
-                .accessibilityIdentifier("onlineExperience.leave")
-
-                if lobbyReturn.isAvailable {
-                    lobbyReturnControl(
-                        accessibilityID: "onlineExperience.returnToLobbyVote.paused"
-                    )
-                    .frame(width: 250)
-                    .clipShape(CutCornerShape(cut: 7))
-                }
+                    .foregroundStyle(Color.white.opacity(0.64))
             }
+            .padding(20)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("onlineExperience.paused")
     }
 
     private func toggleRole() {
@@ -2310,20 +1972,36 @@ struct OnlineActiveGameScene: View {
         onSpyGuess()
     }
 
-    private func toggleLobbyReturn() {
-        guard lobbyReturn.isAvailable, !lobbyReturn.isPending else { return }
+    private var headerActionScope: String {
+        [room.id, room.matchID ?? "", room.viewerMembershipID ?? "",
+         currentUserEmail ?? "", room.hostEmail ?? "", isHost ? "host" : "guest",
+         room.normalizedStatus].joined(separator: "|")
+    }
+
+    private func requestLobbyReturn() {
+        guard isHost, lobbyReturn.isAvailable, !lobbyReturn.isPending else { return }
         HapticManager.shared.fire(.buttonPress)
-        onToggleLobbyReturn()
+        headerConfirmation = HeaderConfirmation(action: .lobby, scope: headerActionScope)
     }
 
     private func requestLeave() {
         HapticManager.shared.fire(.buttonPress)
-        isConfirmingLeave = true
+        headerConfirmation = HeaderConfirmation(action: .leave, scope: headerActionScope)
     }
 
-    private func leave() {
-        HapticManager.shared.fire(.notification(.warning))
-        onLeave()
+    private func confirmHeaderAction(_ confirmation: HeaderConfirmation) {
+        guard headerConfirmation?.id == confirmation.id,
+              confirmation.scope == headerActionScope else { return }
+        headerConfirmation = nil
+        switch confirmation.action {
+        case .lobby:
+            guard isHost, lobbyReturn.isAvailable, !lobbyReturn.isPending else { return }
+            HapticManager.shared.fire(.notification(.warning))
+            onToggleLobbyReturn()
+        case .leave:
+            HapticManager.shared.fire(.notification(.warning))
+            onLeave()
+        }
     }
 
     private func player(email: String?) -> Player? {
@@ -2659,6 +2337,107 @@ private extension MissionRoleCardContent {
     }
 }
 
+/// Original angular symbols, drawn on a shared 24-point grid.
+private struct GameHeaderGlyph: Shape {
+    enum Symbol { case lobby, exit, pause, resume }
+    let symbol: Symbol
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        func line(_ points: [(CGFloat, CGFloat)], closed: Bool = false) {
+            guard let first = points.first else { return }
+            func point(_ value: (CGFloat, CGFloat)) -> CGPoint {
+                CGPoint(x: rect.minX + value.0 * rect.width / 24,
+                        y: rect.minY + value.1 * rect.height / 24)
+            }
+            path.move(to: point(first))
+            for value in points.dropFirst() { path.addLine(to: point(value)) }
+            if closed { path.closeSubpath() }
+        }
+        switch symbol {
+        case .lobby:
+            line([(3, 10), (12, 3), (21, 10)])
+            line([(5, 10), (5, 21), (10, 21)])
+            line([(19, 10), (19, 12)])
+            line([(21, 17), (13, 17)])
+            line([(16, 14), (13, 17), (16, 20)])
+        case .exit:
+            line([(11, 3), (4, 3), (4, 21), (11, 21)])
+            line([(10, 12), (21, 12)])
+            line([(17, 8), (21, 12), (17, 16)])
+        case .pause:
+            line([(6, 4), (9, 4), (10, 5), (10, 20), (6, 20)], closed: true)
+            line([(14, 4), (17, 4), (18, 5), (18, 20), (14, 20)], closed: true)
+        case .resume:
+            line([(7, 4), (20, 12), (7, 20)], closed: true)
+        }
+        return path
+    }
+}
+
+private struct GameHeaderConfirmationSheet: View {
+    let title: String
+    let message: String
+    let confirmTitle: String
+    let cancelTitle: String
+    let symbol: GameHeaderGlyph.Symbol
+    let accent: Color
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(spacing: 12) {
+                    GameHeaderGlyph(symbol: symbol)
+                        .stroke(style: StrokeStyle(lineWidth: 2, lineCap: .square, lineJoin: .miter))
+                        .frame(width: 28, height: 28)
+                        .foregroundStyle(accent)
+                        .accessibilityHidden(true)
+                    Text(title)
+                        .font(.system(size: 20, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("onlineExperience.confirmation.title")
+                }
+                Text(message)
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.72))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("onlineExperience.confirmation.message")
+                VStack(spacing: 10) {
+                    confirmationButton(confirmTitle, accent: accent,
+                                       id: "onlineExperience.confirmation.confirm", action: onConfirm)
+                    confirmationButton(cancelTitle, accent: .white,
+                                       id: "onlineExperience.confirmation.cancel", action: onCancel)
+                }
+            }
+            .padding(24)
+        }
+        .background(Color.black)
+        .preferredColorScheme(.dark)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("onlineExperience.confirmation")
+    }
+
+    private func confirmationButton(_ title: String, accent: Color, id: String,
+                                    action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(accent)
+                .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .background(accent.opacity(0.08), in: CutCornerShape(cut: 8))
+                .overlay(CutCornerShape(cut: 8).stroke(accent.opacity(0.4), lineWidth: 1))
+                .contentShape(CutCornerShape(cut: 8))
+        }
+        .buttonStyle(SpyWebPressStyle())
+        .accessibilityIdentifier(id)
+    }
+}
+
 struct SpyGameExperienceCopy {
     let language: AppLanguage
 
@@ -2700,6 +2479,28 @@ struct SpyGameExperienceCopy {
     var leaveGame: String { text("LEAVE GAME", "SALIR DEL JUEGO", "ВЫЙТИ ИЗ ИГРЫ", "ВИЙТИ З ГРИ") }
     var closeGame: String { text("CLOSE GAME", "CERRAR JUEGO", "ЗАКРЫТЬ ИГРУ", "ЗАКРИТИ ГРУ") }
     var cancel: String { text("CANCEL", "CANCELAR", "ОТМЕНА", "СКАСУВАТИ") }
+    var confirmLobbyTitle: String {
+        text("Return everyone to the lobby?", "¿Devolver a todos al lobby?", "Вернуть всех в лобби?", "Повернути всіх до лобі?")
+    }
+    var confirmLobbyMessage: String {
+        text("The current game will end. All players will return to this room’s lobby.",
+             "La partida actual terminará. Todos volverán al lobby de esta sala.",
+             "Текущая игра прервётся. Все игроки вернутся в лобби этой комнаты.",
+             "Поточна гра перерветься. Усі гравці повернуться до лобі цієї кімнати.")
+    }
+    func confirmLeaveTitle(isHost: Bool) -> String {
+        isHost
+            ? text("Close the room?", "¿Cerrar la sala?", "Закрыть комнату?", "Закрити кімнату?")
+            : text("Leave the game?", "¿Salir de la partida?", "Выйти из игры?", "Вийти з гри?")
+    }
+    func confirmLeaveMessage(isHost: Bool) -> String {
+        isHost
+            ? text("The room will close for everyone. The current game will end.",
+                   "La sala se cerrará para todos. La partida actual terminará.",
+                   "Комната закроется для всех игроков. Текущая игра прервётся.",
+                   "Кімната закриється для всіх гравців. Поточна гра перерветься.")
+            : text("You will leave this room.", "Saldrás de esta sala.", "Вы покинете эту комнату.", "Ви залишите цю кімнату.")
+    }
     var returnToLobby: String { text("RETURN TO LOBBY", "VOLVER AL LOBBY", "ВЕРНУТЬСЯ В ЛОББИ", "ПОВЕРНУТИСЯ ДО ЛОБІ") }
     var retryReturnToLobby: String { text("RETRY RETURN TO LOBBY", "REINTENTAR REGRESO AL LOBBY", "ПОВТОРИТЬ ВОЗВРАТ В ЛОББИ", "ПОВТОРИТИ ПОВЕРНЕННЯ ДО ЛОБІ") }
     func returnToLobbyAccessibilityValue(pending: Bool, failed: Bool) -> String {

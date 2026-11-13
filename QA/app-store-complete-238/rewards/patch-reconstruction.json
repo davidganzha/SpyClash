@@ -1,0 +1,32 @@
+[
+  {
+    "function": "app-store-entitlement",
+    "exact_reconstruction": true,
+    "files": 16
+  },
+  {
+    "function": "deleteAccount",
+    "exact_reconstruction": true,
+    "files": 15
+  },
+  {
+    "function": "generateWordPack",
+    "exact_reconstruction": true,
+    "files": 18
+  },
+  {
+    "function": "generationRewardAction",
+    "exact_reconstruction": true,
+    "files": 9
+  },
+  {
+    "function": "app-services",
+    "exact_reconstruction": true,
+    "files": 84
+  },
+  {
+    "function": "rewarded-generation-ssv",
+    "exact_reconstruction": true,
+    "files": 11
+  }
+]

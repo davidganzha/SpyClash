@@ -2210,7 +2210,7 @@ struct LocalGameView: View {
     }
 
     private var localThemePlaceholder: String {
-        localized(en: "Hero archetypes, European countries...", ru: "Архетипы героев, страны Европы...", es: "Arquetipos heroicos, países de Europa...", uk: "Архетипи героїв, країни Європи...")
+        localized(en: "Animals, movie characters...", ru: "Животные, персонажи фильмов...", es: "Animales, personajes de películas...", uk: "Тварини, персонажі фільмів...")
     }
 
     private var localCountLabel: String {

@@ -1,0 +1,278 @@
+TAP version 13
+# (node:98629) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:98629) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/davidganzha/Documents/SpyClash.worktrees/app-store-complete-238/.local/rewards238/prepared/supabase/app-services/app-services/membership.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /Users/davidganzha/package.json.
+# Subtest: membership preserves universal and gated weekly; forged evidence cannot grant
+ok 1 - membership preserves universal and gated weekly; forged evidence cannot grant
+  ---
+  duration_ms: 73.15175
+  type: 'test'
+  ...
+# Subtest: verified canonical transaction enforces immutable owner and older status cannot overwrite
+ok 2 - verified canonical transaction enforces immutable owner and older status cannot overwrite
+  ---
+  duration_ms: 22.273875
+  type: 'test'
+  ...
+# Subtest: encrypted token binds actor and topic; duplicate registration and event enqueue are idempotent
+ok 3 - encrypted token binds actor and topic; duplicate registration and event enqueue are idempotent
+  ---
+  duration_ms: 32.451959
+  type: 'test'
+  ...
+# Subtest: hidden notification and deleted-account outbox work is cancelled before delivery
+ok 4 - hidden notification and deleted-account outbox work is cancelled before delivery
+  ---
+  duration_ms: 20.718625
+  type: 'test'
+  ...
+# Subtest: legacy bridge rejects redirected canonical app and binds verified identity before durable generation
+ok 5 - legacy bridge rejects redirected canonical app and binds verified identity before durable generation
+  ---
+  duration_ms: 48.295542
+  type: 'test'
+  ...
+# Subtest: import dry run rejects conflicting identity ownership and source drift
+ok 6 - import dry run rejects conflicting identity ownership and source drift
+  ---
+  duration_ms: 0.341792
+  type: 'test'
+  ...
+# Subtest: Supabase JWT is rejected before any legacy HTTP request
+ok 7 - Supabase JWT is rejected before any legacy HTTP request
+  ---
+  duration_ms: 0.92075
+  type: 'test'
+  ...
+# Subtest: lost generation response keeps durable request for retry and rejects changed body
+ok 8 - lost generation response keeps durable request for retry and rejects changed body
+  ---
+  duration_ms: 21.665792
+  type: 'test'
+  ...
+# Subtest: proven library failure preserves its retry code and immutable reservation across legacy action aliases
+ok 9 - proven library failure preserves its retry code and immutable reservation across legacy action aliases
+  ---
+  duration_ms: 53.956917
+  type: 'test'
+  ...
+# Subtest: definite daily allowance rejection reaches legacy callers without authorizing generation or losing request ownership
+ok 10 - definite daily allowance rejection reaches legacy callers without authorizing generation or losing request ownership
+  ---
+  duration_ms: 30.494917
+  type: 'test'
+  ...
+# Subtest: push transport outage retries once eligible; competing workers cannot claim same lease
+ok 11 - push transport outage retries once eligible; competing workers cannot claim same lease
+  ---
+  duration_ms: 18.105625
+  type: 'test'
+  ...
+# Subtest: committed live events preserve privacy, replay dedup, and terminal end after room advanced
+ok 12 - committed live events preserve privacy, replay dedup, and terminal end after room advanced
+  ---
+  duration_ms: 36.140625
+  type: 'test'
+  ...
+# Subtest: import dry run reports unresolved verified mappings without writing content
+ok 13 - import dry run reports unresolved verified mappings without writing content
+  ---
+  duration_ms: 2.074417
+  type: 'test'
+  ...
+# Subtest: expired claimed tail reclaimed by another worker is never sent by stale owner
+ok 14 - expired claimed tail reclaimed by another worker is never sent by stale owner
+  ---
+  duration_ms: 15.9115
+  type: 'test'
+  ...
+# node:internal/modules/esm/resolve:275
+#     throw new ERR_MODULE_NOT_FOUND(
+#           ^
+# Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/Users/davidganzha/Documents/SpyClash.worktrees/app-store-complete-238/.local/rewards238/prepared/supabase/app-services/app-services/legacy-push.ts' imported from /Users/davidganzha/Documents/SpyClash.worktrees/app-store-complete-238/.local/rewards238/exact-tests/legacy-billing-push.test.mjs
+#     at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+#     at moduleResolve (node:internal/modules/esm/resolve:861:10)
+#     at defaultResolve (node:internal/modules/esm/resolve:985:11)
+#     at \#cachedDefaultResolve (node:internal/modules/esm/loader:731:20)
+#     at ModuleLoader.resolve (node:internal/modules/esm/loader:708:38)
+#     at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:310:38)
+#     at ModuleJob._link (node:internal/modules/esm/module_job:182:49) {
+#   code: 'ERR_MODULE_NOT_FOUND',
+#   url: 'file:///Users/davidganzha/Documents/SpyClash.worktrees/app-store-complete-238/.local/rewards238/prepared/supabase/app-services/app-services/legacy-push.ts'
+# }
+# Node.js v22.22.1
+# Subtest: /Users/davidganzha/Documents/SpyClash.worktrees/app-store-complete-238/.local/rewards238/exact-tests/legacy-billing-push.test.mjs
+not ok 2 - /Users/davidganzha/Documents/SpyClash.worktrees/app-store-complete-238/.local/rewards238/exact-tests/legacy-billing-push.test.mjs
+  ---
+  duration_ms: 123.948625
+  type: 'test'
+  location: '/Users/davidganzha/Documents/SpyClash.worktrees/app-store-complete-238/.local/rewards238/exact-tests/legacy-billing-push.test.mjs:1:1'
+  failureType: 'testCodeFailure'
+  exitCode: 1
+  signal: ~
+  error: 'test failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+# (node:98637) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:98637) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/davidganzha/Documents/SpyClash.worktrees/app-store-complete-238/.local/rewards238/prepared/supabase/app-services/app-services/native-apple.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /Users/davidganzha/package.json.
+# Subtest: verified weekly/monthly renewals and same-chain crossgrades restore with both new-purchase gates disabled
+ok 16 - verified weekly/monthly renewals and same-chain crossgrades restore with both new-purchase gates disabled
+  ---
+  duration_ms: 1.173875
+  type: 'test'
+  ...
+# Subtest: monthly support never admits an unlisted submitted product, app, or environment
+ok 17 - monthly support never admits an unlisted submitted product, app, or environment
+  ---
+  duration_ms: 0.26375
+  type: 'test'
+  ...
+# Subtest: monthly canonical status cannot substitute another product, chain, owner, renewal, or app
+ok 18 - monthly canonical status cannot substitute another product, chain, owner, renewal, or app
+  ---
+  duration_ms: 0.889583
+  type: 'test'
+  ...
+# (node:98638) ExperimentalWarning: Transform Types is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# (node:98638) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/davidganzha/Documents/SpyClash.worktrees/app-store-complete-238/.local/rewards238/prepared/supabase/app-services/app-services/account-gate.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /Users/davidganzha/package.json.
+# Subtest: native main Apple targets require exact server app identity and explicit environment gate
+ok 19 - native main Apple targets require exact server app identity and explicit environment gate
+  ---
+  duration_ms: 1.245708
+  type: 'test'
+  ...
+# Subtest: native account gets gated free access even when legacy rollout flags are absent
+ok 20 - native account gets gated free access even when legacy rollout flags are absent
+  ---
+  duration_ms: 46.58875
+  type: 'test'
+  ...
+# Subtest: native monthly checkout is independently gated and preserves the existing owner token and old client weekly product
+ok 21 - native monthly checkout is independently gated and preserves the existing owner token and old client weekly product
+  ---
+  duration_ms: 59.356125
+  type: 'test'
+  ...
+# Subtest: native owned monthly restore and crossgrades work with checkout disabled and keep the exact submitted product
+ok 22 - native owned monthly restore and crossgrades work with checkout disabled and keep the exact submitted product
+  ---
+  duration_ms: 72.000667
+  type: 'test'
+  ...
+# Subtest: editable provider metadata cannot bypass the legacy credential bridge
+ok 23 - editable provider metadata cannot bypass the legacy credential bridge
+  ---
+  duration_ms: 2.533708
+  type: 'test'
+  ...
+# Subtest: native memberships count durable charged AI reservations only
+ok 24 - native memberships count durable charged AI reservations only
+  ---
+  duration_ms: 6.662708
+  type: 'test'
+  ...
+# Subtest: verified main native purchase cannot be restored by a different Game Center account
+ok 25 - verified main native purchase cannot be restored by a different Game Center account
+  ---
+  duration_ms: 22.431042
+  type: 'test'
+  ...
+# Subtest: preparing a new purchase cannot claim an older foreign chain before its first server sync; its owner can recover
+ok 26 - preparing a new purchase cannot claim an older foreign chain before its first server sync; its owner can recover
+  ---
+  duration_ms: 52.848292
+  type: 'test'
+  ...
+# Subtest: a prepared native account cannot adopt a verified historical token missing from the billing registry
+ok 27 - a prepared native account cannot adopt a verified historical token missing from the billing registry
+  ---
+  duration_ms: 16.926666
+  type: 'test'
+  ...
+# Subtest: canonical refresh reconciles expired owned subscription renewal and refund
+ok 28 - canonical refresh reconciles expired owned subscription renewal and refund
+  ---
+  duration_ms: 37.929541
+  type: 'test'
+  ...
+# Subtest: Apple outage fails closed without overwriting the last owned entitlement
+ok 29 - Apple outage fails closed without overwriting the last owned entitlement
+  ---
+  duration_ms: 14.694333
+  type: 'test'
+  ...
+# Subtest: refresh after concurrent account deletion cannot reactivate a purchase
+ok 30 - refresh after concurrent account deletion cannot reactivate a purchase
+  ---
+  duration_ms: 17.223125
+  type: 'test'
+  ...
+# apple_transaction_verification_failed {
+#   environment: 'Production',
+#   status: 'RETRYABLE_VERIFICATION_FAILURE',
+#   reason: 'VERIFICATION_REJECTED',
+#   runtimeFailure: false
+# }
+# apple_transaction_verification_failed {
+#   environment: 'Production',
+#   status: 'INVALID_CERTIFICATE',
+#   reason: 'VERIFICATION_REJECTED',
+#   runtimeFailure: false
+# }
+# Subtest: ordinary game/profile read does not require a provider round trip
+ok 31 - ordinary game/profile read does not require a provider round trip
+  ---
+  duration_ms: 13.915583
+  type: 'test'
+  ...
+# Subtest: temporary Apple certificate verification failure stays retryable and does not try another environment
+ok 32 - temporary Apple certificate verification failure stays retryable and does not try another environment
+  ---
+  duration_ms: 0.951708
+  type: 'test'
+  ...
+# Subtest: Apple environment mismatch alone can try the second explicitly enabled environment
+ok 33 - Apple environment mismatch alone can try the second explicitly enabled environment
+  ---
+  duration_ms: 0.149792
+  type: 'test'
+  ...
+# Subtest: native Loyalty persists unique verified periods, survives history outage and reconciles refunds
+not ok 34 - native Loyalty persists unique verified periods, survives history outage and reconciles refunds
+  ---
+  duration_ms: 20.712125
+  type: 'test'
+  location: '/Users/davidganzha/Documents/SpyClash.worktrees/app-store-complete-238/.local/rewards238/exact-tests/native-game-center-billing.test.mjs:115:1'
+  failureType: 'testCodeFailure'
+  error: "Cannot read properties of undefined (reading 'find')"
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/davidganzha/Documents/SpyClash.worktrees/app-store-complete-238/.local/rewards238/exact-tests/native-game-center-billing.test.mjs:132:42)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: canonical Apple verification adds only complete Loyalty history, without making a history outage a purchase failure
+ok 35 - canonical Apple verification adds only complete Loyalty history, without making a history outage a purchase failure
+  ---
+  duration_ms: 0.833084
+  type: 'test'
+  ...
+1..35
+# tests 35
+# suites 0
+# pass 33
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2166.600458

@@ -1,0 +1,36 @@
+{
+  "devicesAndConfigurations": [
+    {
+      "device": {
+        "architecture": "arm64",
+        "deviceId": "68A18B86-12EB-4FCF-84C1-70E600BA24FD",
+        "deviceName": "SpyClash Membership Tests \u2014 iPhone 17",
+        "modelName": "iPhone 17",
+        "osBuildNumber": "23F77",
+        "osVersion": "26.5",
+        "platform": "iOS Simulator"
+      },
+      "expectedFailures": 0,
+      "failedTests": 0,
+      "passedTests": 8,
+      "skippedTests": 0,
+      "testPlanConfiguration": {
+        "configurationId": "1",
+        "configurationName": "Test Scheme Action"
+      }
+    }
+  ],
+  "environmentDescription": "SpyClash \u00b7 Built with macOS 26.5.2",
+  "expectedFailures": 0,
+  "failedTests": 0,
+  "finishTime": 1794534211.864,
+  "passedTests": 8,
+  "result": "Passed",
+  "skippedTests": 0,
+  "startTime": 1794534198.733,
+  "statistics": [],
+  "testFailures": [],
+  "title": "Test - SpyClash",
+  "topInsights": [],
+  "totalTestCount": 8
+}

@@ -4,7 +4,7 @@ import {spawnSync} from 'node:child_process';
 import {homedir} from 'node:os';
 import postgres from 'postgres';
 import {accountGate} from '../../supabase/functions/app-services/account-gate.ts';
-import {dispatchMembership,prepareMembershipExternal,refreshNativeMembership,membershipCapabilities,WEEKLY_PRODUCT,cleanupBillingPush} from '../../supabase/functions/app-services/membership.ts';
+import {dispatchMembership,prepareMembershipExternal,refreshNativeMembership,membershipCapabilities,WEEKLY_PRODUCT,MONTHLY_PRODUCT,cleanupBillingPush} from '../../supabase/functions/app-services/membership.ts';
 import {appleVerificationTargets,nativeGameCenterConfiguration,MAIN_APPLE_APP_ID,verifyApple} from '../../supabase/functions/app-services/native-apple.ts';
 import {projectedProfiles} from '../../supabase/functions/app-services/profile.ts';
 const config={APP_BILLING_PROVIDER:'base44',APP_IAP_ENABLED:'true',APP_NATIVE_GAME_CENTER_IAP_ENABLED:'true',APP_IAP_BUNDLE_ID:'com.spyclash.ios',APP_IAP_APPLE_ID:String(MAIN_APPLE_APP_ID),APP_IAP_ENVIRONMENT:'SandboxAndProduction',SPYCLASH_LIMITLESS_APPLE_PURCHASE_ENABLED:'true',APP_IAP_KEY_ID:'fixture',APP_IAP_ISSUER_ID:'fixture',APP_IAP_PRIVATE_KEY_P8:'fixture',APP_IAP_ROOT_CERTIFICATES_JSON:'[]'};
@@ -18,6 +18,41 @@ async function bought(actor,{environment='Sandbox',expires=Date.now()+3600000,st
 async function stale(a){await db`update app_private.entitlements set data=data||${db.json({last_verified_at:'2000-01-01T00:00:00Z',provider_event_at:'2000-01-01T00:00:00Z'})} where user_id=${a.id}`;}
 test('native main Apple targets require exact server app identity and explicit environment gate',()=>{const native=nativeGameCenterConfiguration(config);assert.deepEqual(appleVerificationTargets(native).map(t=>t.environment),['Production','Sandbox']);for(const patch of [{APP_IAP_APPLE_ID:'123'},{APP_IAP_BUNDLE_ID:'com.spyclash.ios.gamecenter000'},{APP_NATIVE_GAME_CENTER_IAP_ENABLED:'false'},{APP_IAP_ENVIRONMENT:'anything'}])assert.deepEqual(appleVerificationTargets({...native,...patch}),[]);assert.equal(membershipCapabilities(native).apple_purchase_enabled,true);assert.deepEqual(appleVerificationTargets(config),[]);});
 test('native account gets gated free access even when legacy rollout flags are absent',async()=>{const a=await fixture(),m=await call(a,{action:'check'});assert.equal(m.active,false);assert.equal(m.protocol,'limitless');assert.equal(m.benefits.ai_generations_daily_limit,10);assert.equal(m.ai_remaining,10);assert.match((await call(a,{action:'prepare'})).app_account_token,/^[a-f0-9-]{36}$/);});
+test('native monthly checkout is independently gated and preserves the existing owner token and old client weekly product',async()=>{
+ const a=await fixture();
+ for(const flag of [undefined,'false','TRUE','1']) {
+   await assert.rejects(call(a,{action:'prepare',requested_product_id:MONTHLY_PRODUCT},undefined,{...config,SPYCLASH_LIMITLESS_APPLE_MONTHLY_PURCHASE_ENABLED:flag}),
+     e=>e.code==='apple_monthly_purchase_unconfigured'&&e.status===503);
+ }
+ assert.equal((await db`select 1 from app_private.apple_accounts where user_id=${a.id}`).length,0);
+ const enabled={...config,SPYCLASH_LIMITLESS_APPLE_MONTHLY_PURCHASE_ENABLED:'true'};
+ await assert.rejects(call(a,{action:'prepare',requested_product_id:MONTHLY_PRODUCT},undefined,{...enabled,SPYCLASH_LIMITLESS_APPLE_PURCHASE_ENABLED:'false'}),e=>e.code==='apple_purchase_unconfigured');
+ for(const requested_product_id of ['',null,'unknown',{},[MONTHLY_PRODUCT]]) {
+   await assert.rejects(call(a,{action:'prepare',requested_product_id},undefined,enabled),e=>e.code==='unsupported_product');
+ }
+ const monthly=await call(a,{action:'prepare_purchase',requested_product_id:MONTHLY_PRODUCT},undefined,enabled);
+ const weekly=await call(a,{action:'prepare'},undefined,enabled);
+ assert.equal(monthly.product_id,MONTHLY_PRODUCT);assert.equal(weekly.product_id,WEEKLY_PRODUCT);
+ assert.equal(monthly.app_account_token,weekly.app_account_token);
+});
+test('native owned monthly restore and crossgrades work with checkout disabled and keep the exact submitted product',async()=>{
+ const a=await fixture(),b=await fixture(),weekly=await bought(a);
+ const disabled={...config,SPYCLASH_LIMITLESS_APPLE_PURCHASE_ENABLED:'false',SPYCLASH_LIMITLESS_APPLE_MONTHLY_PURCHASE_ENABLED:'false'};
+ for(const [submitted,canonical,status] of [[WEEKLY_PRODUCT,MONTHLY_PRODUCT,1],[MONTHLY_PRODUCT,WEEKLY_PRODUCT,1],[MONTHLY_PRODUCT,MONTHLY_PRODUCT,5]]) {
+   const transaction={...weekly.transaction,transactionId:appleID(),productId:canonical,signedDate:Date.now()};
+   const body={action:'sync_transaction',signed_transaction:'monthly-crossgrade-fixture-'+crypto.randomUUID()};
+   const verify=async()=>({transaction,submittedProductID:submitted,status,checkedAtMilliseconds:Date.now()});
+   const evidence=await prepareMembershipExternal({actor:a,body,config:disabled},{db,verify});
+   const response=await call(a,body,evidence,disabled);
+   assert.equal(response.server_status_verified,true);assert.equal(response.submitted_product_id,submitted);
+   assert.equal(response.entitlement.product_id,canonical);
+   const [row]=await db`select product_id,active,user_id from app_private.entitlements where user_id=${a.id}`;
+   assert.equal(row.product_id,canonical);assert.equal(row.active,status===1);assert.equal(row.user_id,a.id);
+   const foreign=await prepareMembershipExternal({actor:b,body,config:disabled},{db,verify});
+   await assert.rejects(call(b,body,foreign,disabled),e=>e.code==='purchase_owner_mismatch');
+ }
+ assert.equal((await call(a,{action:'check'})).active,false);
+});
 test('editable provider metadata cannot bypass the legacy credential bridge',async()=>{const a=await fixture(false);let fetched=0;await assert.rejects(prepareMembershipExternal({actor:a,body:{action:'check'},config},{db,fetch:async()=>{fetched++;return Response.json({});}}),e=>e.code==='legacy_billing_unconfigured');assert.equal(fetched,0);});
 test('native memberships count durable charged AI reservations only',async()=>{const a=await fixture();for(const charged of [true,true,false])await db`insert into game_center_private.generation_requests(user_id,request_id,request_hash,usage_date,charged,state) values(${a.id},${crypto.randomUUID()},${'a'.repeat(64)},(clock_timestamp() at time zone 'UTC')::date,${charged},'pending')`;const m=await call(a,{action:'check'});assert.equal(m.ai_generations_today,2);assert.equal(m.ai_remaining,8);});
 test('verified main native purchase cannot be restored by a different Game Center account',async()=>{const a=await fixture(),b=await fixture(),purchase=await bought(a,{environment:'Production'});assert.equal((await call(a,{action:'check'})).active,true);const foreign=await prepareMembershipExternal({actor:b,body:purchase.body,config},{db,verify:purchase.verify});await assert.rejects(call(b,purchase.body,foreign),e=>e.code==='purchase_owner_mismatch');});

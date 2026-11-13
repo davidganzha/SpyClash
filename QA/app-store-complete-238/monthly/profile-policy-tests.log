@@ -1,0 +1,18 @@
+Check .local/rewards238/review-tests/achievements_test.ts
+Check .local/rewards238/review-tests/invitation-permissions_test.ts
+running 9 tests from ./.local/rewards238/review-tests/achievements_test.ts
+awards count completed multiplayer once, including multi-spy and FAN missions ... ok (11ms)
+local, malformed, unfinished, email-only and too-small matches cannot unlock awards ... ok (196µs)
+legacy online history is retained and identities are isolated ... ok (408µs)
+FAN group wins never unlock role awards; standard FAN role wins do ... ok (43µs)
+award thresholds remain bounded; double-agent requires wins on both sides ... ok (151µs)
+Loyalty uses distinct verified production payments across billing snapshots, never membership access ... ok (741µs)
+public Loyalty projection exposes only bounded awards and ignores forged profile billing ... ok (1ms)
+public projection ignores writable profile counters and forged awards ... ok (202µs)
+draws cannot unlock completed-match, victory or role achievements ... ok (32µs)
+running 2 tests from ./.local/rewards238/review-tests/invitation-permissions_test.ts
+invitations default to friends, require community consent, and blocks override all sources ... ok (290µs)
+settings accept native and form booleans, reject ambiguous or incomplete payloads ... ok (351µs)
+
+ok | 11 passed | 0 failed (44ms)
+

@@ -3,12 +3,12 @@ import {readCanonicalAppleSubscriptionStatus} from './billing-rules/apple-subscr
 import {readAppleLoyaltyHistory, type AppleLoyaltySnapshot} from './billing-rules/apple-loyalty.ts';
 import {appleVerificationFailure} from './billing-rules/apple-verification-failure.ts';
 import {ensureAppleOCSPDateParsing} from './billing-rules/apple-ocsp-date.ts';
+import {APPLE_SUBSCRIPTION_PRODUCTS,isAppleSubscriptionProduct} from './billing-rules/apple-products.ts';
 
 export const MAIN_APPLE_BUNDLE = 'com.spyclash.ios';
 export const MAIN_APPLE_APP_ID = 6793534085;
 export const TEST_APPLE_BUNDLE = 'com.spyclash.ios.supabasetest';
 export const NATIVE_GAME_CENTER_BILLING = 'native-game-center';
-const WEEKLY_PRODUCT = 'com.spyclash.ios.limitless.weekly';
 type Config = Record<string,string|undefined>;
 type Target = {bundle:string,environment:'Sandbox'|'Production',appAppleID?:number};
 
@@ -59,9 +59,9 @@ async function appleTools(config:Config,target:Target) {
   };
 }
 async function canonical(transaction:any,target:Target,tools:Awaited<ReturnType<typeof appleTools>>) {
-  if (transaction.productId !== WEEKLY_PRODUCT || transaction.bundleId !== target.bundle || transaction.environment !== target.environment)
+  if (!isAppleSubscriptionProduct(transaction.productId) || transaction.bundleId !== target.bundle || transaction.environment !== target.environment)
     throw new AppServiceError('transaction_identity_mismatch','The transaction belongs to a different app or product.',422);
-  const verified = await readCanonicalAppleSubscriptionStatus({transaction,expectedBundleID:target.bundle,expectedProductID:WEEKLY_PRODUCT,
+  const verified = await readCanonicalAppleSubscriptionStatus({transaction,expectedBundleID:target.bundle,expectedProductIDs:APPLE_SUBSCRIPTION_PRODUCTS,
     expectedEnvironment:target.environment,expectedAppAppleID:target.appAppleID || 0,
     getStatuses:id=>tools.client.getAllSubscriptionStatuses(id),
     verifyTransaction:jws=>tools.verifier.verifyAndDecodeTransaction(jws),verifyRenewal:jws=>tools.verifier.verifyAndDecodeRenewalInfo(jws)});
@@ -70,7 +70,7 @@ async function canonical(transaction:any,target:Target,tools:Awaited<ReturnType<
   try {
     loyalty = await Promise.race([readAppleLoyaltyHistory({
       transactionID:verified.transaction.transactionId!,originalTransactionID:verified.transaction.originalTransactionId!,
-      appAccountToken:verified.transaction.appAccountToken,expectedBundleID:target.bundle,expectedProducts:[WEEKLY_PRODUCT],
+      appAccountToken:verified.transaction.appAccountToken,expectedBundleID:target.bundle,expectedProducts:APPLE_SUBSCRIPTION_PRODUCTS,
       expectedEnvironment:target.environment,expectedAppAppleID:target.appAppleID || 0,
       getHistory:tools.getHistory,verifyTransaction:jws=>tools.verifier.verifyAndDecodeTransaction(jws),
     }),new Promise<never>((_,reject)=>{historyTimeout=setTimeout(()=>reject(new Error('Apple Loyalty history timed out.')),8000);})]);
@@ -79,7 +79,7 @@ async function canonical(transaction:any,target:Target,tools:Awaited<ReturnType<
     // Awards are optional evidence: an Apple history outage must never block a
     // verified purchase/restore or replace a prior complete Loyalty snapshot.
   } finally { if (historyTimeout !== undefined) clearTimeout(historyTimeout); }
-  return {...verified,loyalty};
+  return {...verified,submittedProductID:transaction.productId,loyalty};
 }
 export async function verifyApple(signed:string,config:Config,dependencies?:{tools?:typeof appleTools}) {
   if (!appleVerificationConfigured(config)) throw new AppServiceError('apple_verification_unconfigured','App Store verification is not configured.',503);

@@ -25,7 +25,7 @@ struct PricingView: View {
                 membershipCategoryLabel: accessStatus,
                 membershipCategoryAccent: access.hasAccess ? SpyTheme.green : accessIsUnknown ? SpyTheme.amber : SpyTheme.muted,
                 displayPrice: store.product?.displayPrice,
-                subscriptionPeriodLabel: copy.week.uppercased()
+                subscriptionPeriodLabel: copy.month.uppercased()
             ) {
                 purchaseControls
             } legal: {
@@ -279,7 +279,7 @@ struct PricingView: View {
         if let reason = purchaseBlockReason { return copy.purchaseBlockMessage(reason) }
         if accessIsUnknown { return copy.purchasePreflight }
         if let price = store.product?.displayPrice {
-            return "\(price) / \(copy.week.uppercased()) // APP STORE"
+            return "\(price) / \(copy.month.uppercased()) // APP STORE"
         }
         return copy.appStorePrice
     }
@@ -513,9 +513,8 @@ struct LimitlessCopy {
             text("App Store couldn't load the subscription. Please retry.", "App Store не смог загрузить подписку. Повтори попытку.", "App Store no pudo cargar la suscripción. Reintenta.", "App Store не зміг завантажити підписку. Повтори спробу.")
         }
     }
-    var freeAllowance: String { text("FREE: 10 AI generations per day and your 5 latest matches.", "FREE: 10 генераций ИИ в день и 5 последних матчей.", "FREE: 10 generaciones de IA al día y tus 5 últimas partidas.", "FREE: 10 генерацій ШІ на день і 5 останніх матчів.") }
     var remaining: String { text("AI generations remaining today", "Осталось генераций ИИ сегодня", "Generaciones de IA restantes hoy", "Залишилось генерацій ШІ сьогодні") }
-    var week: String { text("week", "неделю", "semana", "тиждень") }
+    var month: String { text("month", "месяц", "mes", "місяць") }
     var subscribe: String { text("Subscribe with Apple", "Оформить через Apple", "Suscribirse con Apple", "Оформити через Apple") }
     var restore: String { text("Restore purchases", "Восстановить покупки", "Restaurar compras", "Відновити покупки") }
     var restoring: String { text("Restoring purchases…", "Восстанавливаем покупки…", "Restaurando compras…", "Відновлюємо покупки…") }
@@ -525,7 +524,7 @@ struct LimitlessCopy {
     var accessNotActive: String { text("Your SpyClash account has no active LIMITLESS access. If you have an App Store subscription, use Restore purchases.", "В твоём аккаунте SpyClash нет активного доступа LIMITLESS. Если у тебя есть подписка App Store, нажми «Восстановить покупки».", "Tu cuenta de SpyClash no tiene acceso LIMITLESS activo. Si tienes una suscripción de App Store, usa Restaurar compras.", "У твоєму акаунті SpyClash немає активного доступу LIMITLESS. Якщо маєш підписку App Store, натисни «Відновити покупки».") }
     var manage: String { text("Manage Apple subscription", "Управлять подпиской Apple", "Gestionar suscripción de Apple", "Керувати підпискою Apple") }
     var notAvailableYet: String { text("New subscriptions are currently unavailable.", "Оформление новых подписок пока недоступно.", "Las nuevas suscripciones no están disponibles.", "Оформлення нових підписок поки недоступне.") }
-    var renewal: String { text("Weekly auto-renewable subscription. Apple charges your account after confirmation. It renews unless cancelled at least 24 hours before the current period ends. Manage or cancel in your Apple account settings.", "Еженедельная подписка с автопродлением. Apple спишет оплату после подтверждения. Подписка продлевается, если не отменить её минимум за 24 часа до конца периода. Управление и отмена — в настройках аккаунта Apple.", "Suscripción semanal con renovación automática. Apple cobra tras confirmar. Se renueva salvo que la canceles al menos 24 horas antes del fin del período. Gestiona o cancela en tu cuenta de Apple.", "Щотижнева підписка з автоподовженням. Apple спише оплату після підтвердження. Підписка подовжується, якщо не скасувати її щонайменше за 24 години до кінця періоду. Керування й скасування — у налаштуваннях акаунта Apple.") }
+    var renewal: String { text("Monthly auto-renewable subscription. Apple charges your account after confirmation. It renews unless cancelled at least 24 hours before the current period ends. Manage or cancel in your Apple account settings.", "Ежемесячная подписка с автопродлением. Apple спишет оплату после подтверждения. Подписка продлевается, если не отменить её минимум за 24 часа до конца периода. Управление и отмена — в настройках аккаунта Apple.", "Suscripción mensual con renovación automática. Apple cobra tras confirmar. Se renueva salvo que la canceles al menos 24 horas antes del fin del período. Gestiona o cancela en tu cuenta de Apple.", "Щомісячна підписка з автоподовженням. Apple спише оплату після підтвердження. Підписка подовжується, якщо не скасувати її щонайменше за 24 години до кінця періоду. Керування й скасування — у налаштуваннях акаунта Apple.") }
     var privacy: String { text("Privacy", "Конфиденциальность", "Privacidad", "Конфіденційність") }
     var terms: String { text("Terms", "Условия", "Condiciones", "Умови") }
     var deletionNotice: String { text("Deleting your SpyClash account does not cancel an Apple subscription. Cancel it in your Apple account settings.", "Удаление аккаунта SpyClash не отменяет подписку Apple. Отмени её в настройках аккаунта Apple.", "Eliminar tu cuenta SpyClash no cancela la suscripción de Apple. Cancélala en los ajustes de tu cuenta Apple.", "Видалення акаунта SpyClash не скасовує підписку Apple. Скасуй її в налаштуваннях акаунта Apple.") }

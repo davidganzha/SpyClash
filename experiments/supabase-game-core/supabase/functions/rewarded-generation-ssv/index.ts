@@ -13,10 +13,12 @@ if (!local) {
     throw new Error('Unexpected database configuration.');
   }
   connection.hostname = 'aws-0-eu-west-1.pooler.supabase.com';
-  connection.port = '6543';
+  // Postgres.js pipelines require session mode, including callback transactions.
+  connection.port = '5432';
   connection.username = 'postgres.bbkfsgnordtdiblgdzkg';
 }
-const db = postgres(connection.href, {prepare: false, max: 3, idle_timeout: 15, connect_timeout: 8, ...(local ? {} : {ssl: 'require'})});
+// Session mode pins a backend per connection; keep one per warm worker.
+const db = postgres(connection.href, {prepare: false, max: 1, idle_timeout: 15, connect_timeout: 8, ...(local ? {} : {ssl: 'require'})});
 // The native handler rechecks the provider signature before its locked transaction.
 // Keeping that contract also protects its existing authenticated route.
 Deno.serve(createRewardedGenerationSSVGateway({config, native: createGenerationRewardSSVHandler(db,fetch,config)}));

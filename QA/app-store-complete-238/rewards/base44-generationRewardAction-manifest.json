@@ -1,0 +1,83 @@
+{
+  "prepared_only": true,
+  "production_target_changed": false,
+  "candidate_directory": ".local/rewards238/prepared/base44/generationRewardAction",
+  "app_id": "69a0e57fa939f578082f8091",
+  "function": "generationRewardAction",
+  "baseline_deployment_id": "d3fe3582212845d29097f301c919a3fb",
+  "entrypoint": "base44/functions/generationRewardAction/entry.ts",
+  "automations_preserved": [],
+  "reviewed_overlays": {
+    "entry.ts": "main.ts",
+    "generation-rewards.ts": "generation-rewards.ts",
+    "unity-ssv.ts": "unity-ssv.ts"
+  },
+  "missing_dependencies_added": [],
+  "baseline_files": 8,
+  "candidate_files": 9,
+  "changed_files": [
+    "base44/functions/generationRewardAction/entry.ts",
+    "base44/functions/generationRewardAction/generation-rewards.ts",
+    "base44/functions/generationRewardAction/unity-ssv.ts"
+  ],
+  "preserved_files": 6,
+  "all_unrelated_files_byte_identical": true,
+  "patch": "QA/app-store-complete-238/rewards/base44-generationRewardAction.patch",
+  "patch_sha256": "64172ef58509483692fba45a01287454dd2b6d4ad15553eeb23d4fa47dac5cf8",
+  "files": [
+    {
+      "path": "base44/functions/generationRewardAction/admob-ssv.ts",
+      "before_sha256": "3363c7a2428ef786fff41f45ab4bbdb23be72623f75be9799182cc291b45e315",
+      "after_sha256": "3363c7a2428ef786fff41f45ab4bbdb23be72623f75be9799182cc291b45e315",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generationRewardAction/base44-context.ts",
+      "before_sha256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de",
+      "after_sha256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generationRewardAction/billing-identity-lifecycle.ts",
+      "before_sha256": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25",
+      "after_sha256": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generationRewardAction/entry.ts",
+      "before_sha256": "59225d2affcef1967f5183eebfebfa391f7a94078d14d91095f2cdf3c99c4776",
+      "after_sha256": "9d35827610dc6314a8ef4130eeb1ff7f0a653c03cb0e3cee08eca235b5860e54",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/generationRewardAction/generation-rewards.ts",
+      "before_sha256": "f690b2f1a5e512e399e2d793673a75263fb6426f6562b4947281788f3c5a2c8b",
+      "after_sha256": "ccf451fbd45071a27fd6d46f8df05d7c38eee7c9eff8a67a215ba322c13ac686",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/generationRewardAction/generation-write-lifecycle.ts",
+      "before_sha256": "0b50f5159baf5271e085ca8363d030be840039e3a1b1ba236ad9f4d4e4e6179f",
+      "after_sha256": "0b50f5159baf5271e085ca8363d030be840039e3a1b1ba236ad9f4d4e4e6179f",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generationRewardAction/membership.ts",
+      "before_sha256": "c0ca269c61ef4df2a65646c4d8c0b033a06e218d6f44d6b3c2dc98ccd6090df4",
+      "after_sha256": "c0ca269c61ef4df2a65646c4d8c0b033a06e218d6f44d6b3c2dc98ccd6090df4",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generationRewardAction/quota.ts",
+      "before_sha256": "4b77aeff53148483316fd5d443b2bbc03b6ff2fcf13b19acc90609f42c2c36be",
+      "after_sha256": "4b77aeff53148483316fd5d443b2bbc03b6ff2fcf13b19acc90609f42c2c36be",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generationRewardAction/unity-ssv.ts",
+      "before_sha256": null,
+      "after_sha256": "76447820be5805604e232be2a5cdac3ef83b8b327990562eea862ad52dab5c3a",
+      "changed": true
+    }
+  ]
+}

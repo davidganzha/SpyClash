@@ -1,0 +1,20 @@
+{
+  "unit_passed_unique_after_focused_repairs": 879,
+  "unit_skipped": 7,
+  "local_storekit_transaction_tests": {
+    "attempted": 6,
+    "passed": 0,
+    "blocked_before_purchase": "notEntitled at synthetic canary"
+  },
+  "public_release_tests_passed": 4,
+  "intro_ui_passed": 2,
+  "header_ui_passed": 3,
+  "exact_backend_tests_passed": 168,
+  "independent_profile_review_tests_passed": 30,
+  "website_tests_passed": 147,
+  "release_package_fixtures_passed": 81,
+  "python_script_tests_passed": 25,
+  "apple_validation": "passed, no errors",
+  "archive_source_hashes_verified": 132,
+  "device_acceptance_pending": true
+}

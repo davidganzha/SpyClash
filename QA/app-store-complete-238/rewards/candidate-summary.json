@@ -1,0 +1,106 @@
+{
+  "prepared_only": true,
+  "targets": [
+    {
+      "function": "app-services",
+      "candidate_directory": ".local/rewards238/prepared/supabase/app-services",
+      "candidate_files": 84,
+      "changed_files": [
+        "app-services/billing-rules/apple-loyalty.ts",
+        "app-services/billing-rules/apple-products.ts",
+        "app-services/billing-rules/apple-subscription-status.ts",
+        "app-services/community.ts",
+        "app-services/generation-reward-deletion.ts",
+        "app-services/generation-reward-ledger.ts",
+        "app-services/generation-rewards.ts",
+        "app-services/inbox.ts",
+        "app-services/legacy-billing.ts",
+        "app-services/lifecycle.ts",
+        "app-services/membership.ts",
+        "app-services/native-apple.ts",
+        "app-services/native-generation.ts",
+        "app-services/policies/achievements.ts",
+        "app-services/policies/community.ts",
+        "app-services/policies/invitation-permissions.ts",
+        "app-services/profile.ts",
+        "app-services/unity-ssv.ts",
+        "app-services/worker.ts"
+      ],
+      "preserved_files": 65,
+      "patch": "QA/app-store-complete-238/rewards/supabase-app-services.patch"
+    },
+    {
+      "function": "rewarded-generation-ssv",
+      "candidate_directory": ".local/rewards238/prepared/supabase/rewarded-generation-ssv",
+      "candidate_files": 11,
+      "changed_files": [
+        "app-services/generation-reward-ledger.ts",
+        "app-services/generation-rewards.ts",
+        "app-services/unity-ssv.ts",
+        "rewarded-generation-ssv/handler.ts",
+        "rewarded-generation-ssv/index.ts"
+      ],
+      "preserved_files": 6,
+      "patch": "QA/app-store-complete-238/rewards/supabase-rewarded-generation-ssv.patch"
+    },
+    {
+      "function": "generateWordPack",
+      "candidate_directory": ".local/rewards238/prepared/base44/generateWordPack",
+      "candidate_files": 18,
+      "changed_files": [
+        "base44/functions/generateWordPack/entry.ts",
+        "base44/functions/generateWordPack/generation-rewards.ts"
+      ],
+      "preserved_files": 16,
+      "patch": "QA/app-store-complete-238/rewards/base44-generateWordPack.patch"
+    },
+    {
+      "function": "generationRewardAction",
+      "candidate_directory": ".local/rewards238/prepared/base44/generationRewardAction",
+      "candidate_files": 9,
+      "changed_files": [
+        "base44/functions/generationRewardAction/entry.ts",
+        "base44/functions/generationRewardAction/generation-rewards.ts",
+        "base44/functions/generationRewardAction/unity-ssv.ts"
+      ],
+      "preserved_files": 6,
+      "patch": "QA/app-store-complete-238/rewards/base44-generationRewardAction.patch"
+    },
+    {
+      "function": "deleteAccount",
+      "candidate_directory": ".local/rewards238/prepared/base44/deleteAccount",
+      "candidate_files": 15,
+      "changed_files": [
+        "base44/functions/deleteAccount/entry.ts"
+      ],
+      "preserved_files": 14,
+      "patch": "QA/app-store-complete-238/rewards/base44-deleteAccount.patch"
+    },
+    {
+      "function": "app-store-entitlement",
+      "candidate_directory": ".local/rewards238/prepared/base44/app-store-entitlement",
+      "candidate_files": 16,
+      "changed_files": [
+        "base44/functions/app-store-entitlement/apple-entitlement.ts",
+        "base44/functions/app-store-entitlement/apple-loyalty.ts",
+        "base44/functions/app-store-entitlement/apple-subscription-status.ts",
+        "base44/functions/app-store-entitlement/entry.ts",
+        "base44/functions/app-store-entitlement/limitless-rollout.ts"
+      ],
+      "preserved_files": 11,
+      "patch": "QA/app-store-complete-238/rewards/base44-app-store-entitlement.patch"
+    }
+  ],
+  "required_schema_files": [
+    {
+      "path": "base44/entities/generation-reward-enrollment.jsonc",
+      "sha256": "587f19da6c935d65818c0119112de0bd028cbd8cbc19cfcba6357e3bb764c8c2"
+    },
+    {
+      "path": "experiments/supabase-game-core/supabase/migrations/20261111184822_rewarded_generation_enrollment.sql",
+      "sha256": "4e83b4bb81db338d5331b7134f8a2964110c51afbff5476b4d048a847b2c3536"
+    }
+  ],
+  "excluded_input": ".local/rewards238/base44-eject",
+  "activation": "Separate approval required for deployment, schema/migration and configuration. Unity S2S secret/activation and real callback acceptance remain unverified."
+}

@@ -72,7 +72,7 @@ try{
     create table app_private.legacy_links(user_id uuid,legacy_user_id text,source_origin text,state text);
     create table app_private.legacy_session_accounts(user_id uuid);
     create table app_private.main_account_deletions(user_id uuid);
-    create table app_private.entitlements(user_id uuid,active boolean,expires_at timestamptz);
+    create table app_private.entitlements(user_id uuid,active boolean,expires_at timestamptz,provider text);
     create table app_private.membership_grants(user_id uuid,active boolean,expires_at timestamptz);
     create table app_private.receipts(actor_id uuid,request_id uuid,request_hash text,status int,response jsonb,primary key(actor_id,request_id));`);
   const files=['../../supabase/functions/game-center-session/schema.sql','../../supabase/migrations/20261026234309_native_game_center_ai_relay.sql',
@@ -382,6 +382,24 @@ try{
     const old=await app(a,{service:'generation_rewards',action:'status',supported_reward_provider:'unity',client_build:227},unityConfig);
     assert.equal(old.body.enabled,false);
     const missing=await app(a,{service:'generation_rewards',action:'status'},unityConfig);assert.equal(missing.body.enabled,false);
+  });
+  await check('membership reports the enrolled allowance and confirmed bonus balance without changing old-account access',async()=>{
+    const a=await actor(),old=await actor(false),c={...unityConfig,APP_BILLING_PROVIDER:'native-game-center'};
+    const membership=async(who:any,settings=c)=>(await app(who,{service:'membership',action:'check'},settings)).body;
+    assert.equal((await membership(old)).benefits.ai_generations_daily_limit,10);
+    assert.equal((await membership(old)).ai_remaining,10);
+    const initial=await membership(a);assert.equal(initial.benefits.ai_generations_daily_limit,3);assert.equal(initial.ai_remaining,3);
+    for(let i=0;i<3;i++)assert.equal((await generate(a,crypto.randomUUID(),provider,unityConfig)).status,200);
+    assert.equal((await membership(a)).ai_remaining,0);
+    const attempt=await prepare(a,crypto.randomUUID(),unityConfig);
+    assert.equal((await unitySSV(new Request(unityURL(attempt)))).status,200);
+    assert.equal((await membership(a)).ai_remaining,1);
+    assert.equal((await generate(a,crypto.randomUUID(),provider,unityConfig)).status,200);
+    assert.equal((await membership(a)).ai_remaining,0);
+    const off=await membership(a,{...c,SPYCLASH_REWARDED_GENERATION_ENABLED:'false'});
+    assert.equal(off.benefits.ai_generations_daily_limit,10);assert.equal(off.ai_remaining,6);
+    await db`insert into app_private.membership_grants values(${a.id},true,clock_timestamp()+interval '1 day')`;
+    const paid=await membership(a);assert.equal(paid.active,true);assert.equal(paid.ai_remaining,null);assert.equal(paid.benefits.ai_generations_daily_limit,null);
   });
   await check('supported native status enrolls once and absent or downgraded capabilities never bypass quota',async()=>{
     const a=await actor(false),other=await actor(false),body={service:'generation_rewards',action:'status',supported_reward_provider:'unity',client_build:228,user_id:other.id};

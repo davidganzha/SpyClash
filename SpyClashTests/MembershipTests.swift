@@ -391,20 +391,20 @@ final class MembershipTests: XCTestCase {
         XCTAssertFalse(revoked.grantsAccess)
     }
 
-    func testSelectedWeeklyCheckoutRequiresMatchingSupportedPreparationProduct() {
-        let weekly = StoreKitManager.limitlessProductID
-        let monthly = StoreKitSubscriptionProduct.monthly.rawValue
-        XCTAssertEqual(weekly, "com.spyclash.ios.limitless.weekly")
-        let prepared = AppStorePurchaseContext(productID: weekly, appAccountToken: UUID())
-        XCTAssertTrue(prepared.acceptsPurchase(for: weekly))
-        XCTAssertFalse(prepared.acceptsPurchase(for: monthly))
-        XCTAssertFalse(AppStorePurchaseContext(productID: monthly, appAccountToken: UUID()).acceptsPurchase(for: weekly))
-        XCTAssertFalse(AppStorePurchaseContext(productID: "unknown", appAccountToken: UUID()).acceptsPurchase(for: weekly))
+    func testSelectedMonthlyCheckoutRequiresMatchingSupportedPreparationProduct() {
+        let monthly = StoreKitManager.limitlessProductID
+        let weekly = StoreKitManager.legacyWeeklyProductID
+        XCTAssertEqual(monthly, "com.spyclash.ios.limitless.monthly")
+        let prepared = AppStorePurchaseContext(productID: monthly, appAccountToken: UUID())
+        XCTAssertTrue(prepared.acceptsPurchase(for: monthly))
+        XCTAssertFalse(prepared.acceptsPurchase(for: weekly))
+        XCTAssertFalse(AppStorePurchaseContext(productID: weekly, appAccountToken: UUID()).acceptsPurchase(for: monthly))
+        XCTAssertFalse(AppStorePurchaseContext(productID: "unknown", appAccountToken: UUID()).acceptsPurchase(for: monthly))
     }
 
     func testPreparedMonthlyContextRequiresItsOwnSupportedProduct() {
         let monthly = StoreKitSubscriptionProduct.monthly.rawValue
-        let weekly = StoreKitManager.limitlessProductID
+        let weekly = StoreKitManager.legacyWeeklyProductID
         let prepared = AppStorePurchaseContext(productID: monthly, appAccountToken: UUID())
         XCTAssertTrue(prepared.acceptsPurchase(for: monthly))
         XCTAssertFalse(prepared.acceptsPurchase(for: weekly))
@@ -428,16 +428,16 @@ final class MembershipTests: XCTestCase {
         XCTAssertFalse(AppStoreEntitlementSyncResponse(success: true, serverStatusVerified: true, entitlement: unknown).acceptsDelivery(for: "unknown"))
     }
 
-    func testSelectedWeeklyOfferCopyUsesWeeklyPeriodInEveryLanguage() {
-        XCTAssertEqual(StoreKitManager.limitlessProductID, StoreKitSubscriptionProduct.weekly.rawValue)
-        for (language, week, renewalPrefix) in [
-            (AppLanguage.en, "week", "Weekly"),
-            (.ru, "неделю", "Еженедельная"),
-            (.es, "semana", "Suscripción semanal"),
-            (.uk, "тиждень", "Щотижнева")
+    func testSelectedMonthlyOfferCopyUsesMonthlyPeriodInEveryLanguage() {
+        XCTAssertEqual(StoreKitManager.limitlessProductID, StoreKitSubscriptionProduct.monthly.rawValue)
+        for (language, month, renewalPrefix) in [
+            (AppLanguage.en, "month", "Monthly"),
+            (.ru, "месяц", "Ежемесячная"),
+            (.es, "mes", "Suscripción mensual"),
+            (.uk, "місяць", "Щомісячна")
         ] {
             let copy = LimitlessCopy(language: language)
-            XCTAssertEqual(copy.week, week)
+            XCTAssertEqual(copy.month, month)
             XCTAssertTrue(copy.renewal.hasPrefix(renewalPrefix))
         }
     }

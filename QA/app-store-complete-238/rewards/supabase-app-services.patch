@@ -1,0 +1,716 @@
+--- /dev/null
++++ b/app-services/billing-rules/apple-loyalty.ts
+@@ -0,0 +1,128 @@
++/** A complete, server-verified view of paid transactions in one owned chain.
++ * No amounts, receipts or account tokens are exposed by profile projections. */
++export type AppleLoyaltySnapshot = {
++  original_transaction_id: string;
++  environment: 'production' | 'sandbox';
++  transaction_ids: string[];
++  verified_at: string;
++};
++
++type Transaction = {
++  transactionId?: string; originalTransactionId?: string; appAccountToken?: string;
++  bundleId?: string; productId?: string; environment?: string; type?: string;
++  inAppOwnershipType?: string; price?: number; offerDiscountType?: string;
++  purchaseDate?: number; signedDate?: number; revocationDate?: number;
++  revocationReason?: number; revocationPercentage?: number; revocationType?: string;
++};
++type HistoryPage = {
++  bundleId?: string; environment?: string; appAppleId?: number;
++  hasMore?: boolean; revision?: string; signedTransactions?: string[];
++};
++const validID = (value: unknown): value is string =>
++  typeof value === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(value);
++const positive = (value: unknown): value is number =>
++  typeof value === 'number' && Number.isFinite(value) && value > 0;
++
++/** Caller must first verify the current subscription and its account binding.
++ * Failed/incomplete reads throw; callers retain the previous complete snapshot.
++ * History includes revoked records so a later refund can remove a paid period. */
++export async function readAppleLoyaltyHistory(input: {
++  transactionID: string;
++  originalTransactionID: string;
++  appAccountToken: string;
++  expectedBundleID: string;
++  expectedProducts: readonly string[];
++  expectedEnvironment: string;
++  expectedAppAppleID: number;
++  getHistory: (transactionID: string, revision: string | null) => Promise<HistoryPage>;
++  verifyTransaction: (jws: string) => Promise<Transaction>;
++  now?: () => number;
++  deadlineMilliseconds?: number;
++}): Promise<AppleLoyaltySnapshot> {
++  const now = (input.now || Date.now)();
++  const deadline = input.deadlineMilliseconds ?? Date.now() + 8000;
++  const requireTime = () => {
++    if (!Number.isFinite(deadline) || Date.now() >= deadline) throw new Error('Apple Loyalty history timed out.');
++  };
++  const token = input.appAccountToken.toLowerCase();
++  if (!validID(input.transactionID) || !validID(input.originalTransactionID) || !token
++      || !['Production', 'Sandbox'].includes(input.expectedEnvironment)
++      || !positive(now)) throw new Error('Invalid verified Loyalty binding.');
++  const records = new Map<string, { signedAt: number; eligible: boolean }>();
++  const revisions = new Set<string>();
++  let revision: string | null = null;
++  for (let pageNumber = 0; pageNumber < 100; pageNumber++) {
++    requireTime();
++    const page = await input.getHistory(input.transactionID, revision);
++    requireTime();
++    if (page.bundleId !== input.expectedBundleID || page.environment !== input.expectedEnvironment
++        || (input.expectedEnvironment === 'Production' && page.appAppleId !== input.expectedAppAppleID)
++        || typeof page.hasMore !== 'boolean' || !Array.isArray(page.signedTransactions)
++        || page.signedTransactions.length > 20) throw new Error('Invalid Apple Loyalty history response.');
++    for (const signed of page.signedTransactions) {
++      requireTime();
++      if (typeof signed !== 'string' || !signed || signed.length > 250_000)
++        throw new Error('Invalid signed Loyalty transaction.');
++      const transaction = await input.verifyTransaction(signed);
++      requireTime();
++      if (transaction.bundleId !== input.expectedBundleID || transaction.environment !== input.expectedEnvironment)
++        throw new Error('Apple Loyalty transaction identity mismatch.');
++      // Apple's history is app-wide. A different chain is never evidence for this binding.
++      if (transaction.originalTransactionId !== input.originalTransactionID) continue;
++      const suppliedToken = transaction.appAccountToken?.toLowerCase();
++      if (suppliedToken && suppliedToken !== token) throw new Error('Apple Loyalty account binding mismatch.');
++      const id = transaction.transactionId;
++      if (!validID(id) || !positive(transaction.signedDate)) throw new Error('Invalid Apple Loyalty transaction identity.');
++      const eligible = input.expectedEnvironment === 'Production'
++        && input.expectedProducts.includes(transaction.productId || '')
++        && transaction.type === 'Auto-Renewable Subscription'
++        && transaction.inAppOwnershipType === 'PURCHASED'
++        && positive(transaction.price) && transaction.offerDiscountType !== 'FREE_TRIAL'
++        && positive(transaction.purchaseDate) && transaction.purchaseDate <= now
++        && transaction.revocationDate == null && transaction.revocationReason == null
++        && transaction.revocationType == null && transaction.revocationPercentage == null;
++      const prior = records.get(id);
++      // Updated transactions can recur during pagination; newest signed state wins.
++      // For equal timestamps, a revocation/ineligible representation wins safely.
++      if (!prior || transaction.signedDate > prior.signedAt
++          || (transaction.signedDate === prior.signedAt && !eligible))
++        records.set(id, { signedAt: transaction.signedDate, eligible });
++    }
++    if (!page.hasMore) {
++      // The verified current transaction must still be visible in a complete
++      // unfiltered history. A missing chain is an incomplete observation, not
++      // evidence that all previously earned paid periods disappeared.
++      if (!records.has(input.transactionID)) throw new Error('Apple Loyalty history omitted the verified transaction.');
++      return {
++      original_transaction_id: input.originalTransactionID,
++      environment: input.expectedEnvironment === 'Production' ? 'production' : 'sandbox',
++      transaction_ids: [...records].filter(([, record]) => record.eligible).map(([id]) => id).sort(),
++      verified_at: new Date(now).toISOString(),
++      };
++    }
++    if (typeof page.revision !== 'string' || !page.revision || page.revision.length > 4096 || revisions.has(page.revision))
++      throw new Error('Incomplete Apple Loyalty history.');
++    revisions.add(page.revision);
++    revision = page.revision;
++  }
++  throw new Error('Apple Loyalty history exceeded the bounded page limit.');
++}
++
++/** Only call with private server evidence, never with a client request object. */
++export function mergeAppleLoyaltySnapshot<T extends Record<string, any>>(
++  current: T, prior: Record<string, any> | undefined, snapshot?: AppleLoyaltySnapshot,
++): T & { loyalty_transaction_ids?: string[]; loyalty_verified_at?: string } {
++  const sameChain = prior?.original_transaction_id === current.original_transaction_id
++    && prior?.environment === current.environment;
++  const previousIDs = sameChain && Array.isArray(prior?.loyalty_transaction_ids)
++    ? prior.loyalty_transaction_ids.filter(validID) : undefined;
++  const previousTime = sameChain ? Date.parse(prior?.loyalty_verified_at || '') : NaN;
++  const nextTime = Date.parse(snapshot?.verified_at || '');
++  const valid = snapshot && snapshot.original_transaction_id === current.original_transaction_id
++    && snapshot.environment === current.environment && Number.isFinite(nextTime)
++    && (!Number.isFinite(previousTime) || nextTime >= previousTime)
++    && Array.isArray(snapshot.transaction_ids) && snapshot.transaction_ids.length <= 2000
++    && snapshot.transaction_ids.every(validID);
++  if (valid) return {...current, loyalty_transaction_ids: [...new Set(snapshot.transaction_ids)], loyalty_verified_at: snapshot.verified_at};
++  return previousIDs ? {...current, loyalty_transaction_ids: previousIDs, loyalty_verified_at: prior!.loyalty_verified_at} : current;
++}
+--- /dev/null
++++ b/app-services/billing-rules/apple-products.ts
+@@ -0,0 +1,13 @@
++// Fixed server-owned products. Rollout gates apply to new checkout only; signed
++// existing weekly/monthly chains remain verifiable when a gate is disabled.
++export const WEEKLY_PRODUCT = 'com.spyclash.ios.limitless.weekly';
++export const MONTHLY_PRODUCT = 'com.spyclash.ios.limitless.monthly';
++export const APPLE_SUBSCRIPTION_PRODUCTS = [WEEKLY_PRODUCT, MONTHLY_PRODUCT] as const;
++
++export function isAppleSubscriptionProduct(value: unknown): value is typeof APPLE_SUBSCRIPTION_PRODUCTS[number] {
++  return APPLE_SUBSCRIPTION_PRODUCTS.some(product => product === value);
++}
++
++export function monthlyAppleCheckoutEnabled(config: Record<string,string|undefined>) {
++  return config.SPYCLASH_LIMITLESS_APPLE_MONTHLY_PURCHASE_ENABLED === 'true';
++}
+--- a/app-services/billing-rules/apple-subscription-status.ts
++++ b/app-services/billing-rules/apple-subscription-status.ts
+@@ -19 +19 @@
+-  expectedProductID: string;
++  expectedProductIDs: readonly string[];
+@@ -31,0 +32,6 @@
++      422,
++    );
++  }
++  if (!input.expectedProductIDs.includes(input.transaction.productId || "")) {
++    throw new AppleSubscriptionStatusError(
++      "Apple transaction product is not a supported subscription.",
+@@ -67 +73,3 @@
+-    transaction.productId !== input.expectedProductID ||
++    // A crossgrade retains the original chain and binding; only these known
++    // products may replace the historical product in Apple's current status.
++    !input.expectedProductIDs.includes(transaction.productId || "") ||
+--- a/app-services/community.ts
++++ b/app-services/community.ts
+@@ -0,0 +1 @@
++import { canReceiveGameInvitation } from './policies/invitation-permissions.ts';
+@@ -43 +44,2 @@
+-    join app_private.friendships f on f.pair_low=least(i.sender_user_id,i.recipient_user_id) and f.pair_high=greatest(i.sender_user_id,i.recipient_user_id) and f.status='accepted'
++    left join app_private.friendships f on f.pair_low=least(i.sender_user_id,i.recipient_user_id) and f.pair_high=greatest(i.sender_user_id,i.recipient_user_id)
++    join app_private.profiles recipient on recipient.user_id=i.recipient_user_id and recipient.state='active'
+@@ -46,0 +49,3 @@
++    and f.status is distinct from 'blocked'
++    and (case when f.status='accepted' then recipient.data->'friend_invitations_allowed' is distinct from 'false'::jsonb
++      else recipient.data->'stranger_invitations_allowed'='true'::jsonb end)
+@@ -119 +124 @@
+-  if(action==='update_profile'||action==='set_radar_invite_policy') return await dispatchProfile(ctx,body);
++  if(['update_profile','set_radar_invite_policy','set_invitation_permissions'].includes(action)) return await dispatchProfile(ctx,body);
+@@ -163 +168,2 @@
+-    if(rel?.status!=='accepted') throw new AppServiceError('friends_required','Only accepted friends can be invited.',403);
++    const recipient=await activeProfile(ctx,targetID);
++    if(!canReceiveGameInvitation(recipient.data,rel?.status??null)) throw new AppServiceError('invitation_not_allowed','This operative is not accepting invitations from this source.',403);
+@@ -166,0 +173,5 @@
++      if(rel?.status!=='accepted') {
++        await ctx.tx`select pg_advisory_xact_lock(hashtextextended(${'app:community-invites:'+id},0))`;
++        const recent=await ctx.tx`select created_at from app_private.notification_events where actor_id=${id} and event_type='room_invite' and created_at>${new Date(ctx.now.getTime()-3600000)} order by created_at desc limit 30`;
++        if(recent.length>=30||(recent[0]&&ctx.now.getTime()-new Date(recent[0].created_at).getTime()<5000)) throw new AppServiceError('invitation_cooldown','Wait before sending another community invitation.',429);
++      }
+@@ -222 +233,2 @@
+-      if(rel?.status!=='accepted') throw new AppServiceError('friends_required','Only accepted friends can accept room invites.',403);
++      const recipient=await activeProfile(ctx,id);
++      if(!canReceiveGameInvitation(recipient.data,rel?.status??null)) throw new AppServiceError('invitation_not_allowed','Invitations from this source are disabled.',403);
+--- /dev/null
++++ b/app-services/generation-reward-deletion.ts
+@@ -0,0 +1,14 @@
++/** Run within the account deletion transaction, after the profile tombstone.
++ * Optional-table checks preserve deletion before the advertising migrations.
++ * The account gate prevents enrollment/credit writers from reopening access. */
++export async function eraseGenerationRewardAccountData(tx: any, userID: string) {
++  const [schema] = await tx`select
++    to_regclass('game_center_private.generation_reward_attempts') is not null as attempts,
++    to_regclass('game_center_private.generation_reward_enrollments') is not null as enrollments`;
++  if (schema.attempts) {
++    await tx`delete from game_center_private.generation_reward_attempts where user_id=${userID}`;
++  }
++  if (schema.enrollments) {
++    await tx`delete from game_center_private.generation_reward_enrollments where user_id=${userID}`;
++  }
++}
+--- a/app-services/generation-reward-ledger.ts
++++ b/app-services/generation-reward-ledger.ts
+@@ -1,0 +2 @@
++import {unityRewardUnit} from './unity-ssv.ts';
+@@ -6,0 +8,5 @@
++/** Pass only the authenticated, server-owned account ID. This test capability
++ * never enables the generation quota or changes membership benefits. */
++export function isGenerationRewardTester(config:RewardConfig,userID:string):boolean {
++  return Boolean(userID)&&Boolean(config.SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS?.split(',').some(id=>id.trim()===userID));
++}
+@@ -7,0 +14,3 @@
++  const provider=config.SPYCLASH_REWARDED_AD_PROVIDER||'admob';
++  if(provider==='unity')return unityRewardUnit(config);
++  if(provider!=='admob')return null;
+@@ -11,0 +21,13 @@
++}
++/** This persisted account decision is consulted for every generation, including
++ * requests from downgraded clients. Caller holds the account/quota lock. */
++export async function rewardedGenerationEnabledForUser(tx:any,userID:string,config:RewardConfig):Promise<boolean>{
++  if(!rewardedGenerationEnabled(config))return false;
++  const [row]=await tx`select user_id from game_center_private.generation_reward_enrollments where user_id=${userID}`;
++  return Boolean(row);
++}
++export async function enrollRewardGeneration(tx:any,userID:string,body:Record<string,any>,config:RewardConfig){
++  if(!rewardedGenerationEnabled(config)||body.supported_reward_provider!=='unity'||!Number.isSafeInteger(body.client_build)
++    ||body.client_build<228||body.client_build>2147483647||!rewardedAdUnit(config)?.startsWith('unity:'))return;
++  await tx`insert into game_center_private.generation_reward_enrollments(user_id,provider,client_build)
++    values(${userID},'unity',${body.client_build}) on conflict(user_id) do nothing`;
+@@ -20,2 +42,8 @@
+-  const enabled=rewardedGenerationEnabled(config);
+-  if(!enabled)return {enabled:false,unlimited,daily_limit:REWARDED_AI_DAILY_LIMIT,free_remaining:null,bonus_credits:0,resets_at:new Date(resets_at).toISOString(),ad_available:false};
++  const enabled=await rewardedGenerationEnabledForUser(tx,userID,config);
++  if(!enabled){
++    const tester=isGenerationRewardTester(config,userID);
++    const [{credits}]=tester?await tx`select count(*)::int as credits from game_center_private.generation_reward_attempts
++      where user_id=${userID} and state='earned' and consumed_request_id is null`:[{credits:0}];
++    return {enabled:false,unlimited,daily_limit:REWARDED_AI_DAILY_LIMIT,free_remaining:null,bonus_credits:credits,
++      resets_at:new Date(resets_at).toISOString(),ad_available:false,...(tester?{test_ad_available:Boolean(rewardedAdUnit(config))}:{})};
++  }
+--- a/app-services/generation-rewards.ts
++++ b/app-services/generation-rewards.ts
+@@ -5 +5 @@
+-import {lockGenerationQuota,nativeRewardStatus,rewardedAdUnit,rewardedGenerationEnabled,type RewardConfig} from './generation-reward-ledger.ts';
++import {lockGenerationQuota,nativeRewardStatus,rewardedAdUnit,enrollRewardGeneration,type RewardConfig} from './generation-reward-ledger.ts';
+@@ -6,0 +7 @@
++import {isUnityCallback,unityAttemptFields,verifyUnityCallback,UnityVerificationError} from './unity-ssv.ts';
+@@ -30 +31,2 @@
+-    ...(input.body.action==='claim_status'?{attempt_id:input.body.attempt_id}:{})};
++    ...(input.body.action==='claim_status'?{attempt_id:input.body.attempt_id}:{}),
++    ...(input.body.action==='status'?{supported_reward_provider:input.body.supported_reward_provider,client_build:input.body.client_build}:{})};
+@@ -54,0 +57 @@
++  if(body.action==='status')await enrollRewardGeneration(ctx.tx,ctx.actor.id,body,ctx.config);
+@@ -66 +69,2 @@
+-  if(!existing&&(status.unlimited||(status.free_remaining||0)>0||status.bonus_credits>0))
++  const testOffer=!status.enabled&&'test_ad_available' in status&&status.test_ad_available===true;
++  if(!existing&&!testOffer&&(status.unlimited||(status.free_remaining||0)>0||status.bonus_credits>0))
+@@ -68 +72 @@
+-  if(!rewardedGenerationEnabled(ctx.config)||!status.ad_available)throw new AppServiceError('reward_unavailable','A rewarded ad is not available right now.',409);
++  if(!status.ad_available&&!testOffer)throw new AppServiceError('reward_unavailable','A rewarded ad is not available right now.',409);
+@@ -72 +76 @@
+-  return {...status,attempt_id:attempt.attempt_id,custom_data:attempt.custom_data,ad_unit_id:attempt.ad_unit_id,user_id:ctx.actor.id,ssv_user_id:ctx.actor.id};
++  return {...status,attempt_id:attempt.attempt_id,custom_data:attempt.custom_data,user_id:ctx.actor.id,ssv_user_id:ctx.actor.id,...unityAttemptFields(attempt.ad_unit_id,attempt.custom_data)};
+@@ -74 +78 @@
+-/** No user SDK callback reaches this credit path. The signed Google event and
++/** No user SDK callback reaches this credit path. The signed provider event and
+@@ -76 +80 @@
+-export function createGenerationRewardSSVHandler(db:any,fetcher:typeof fetch=fetch){
++export function createGenerationRewardSSVHandler(db:any,fetcher:typeof fetch=fetch,config:RewardConfig={}){
+@@ -80,2 +84,2 @@
+-      const event=await verifyAdMobCallback(request.url,fetcher);
+-      const userID=requireUUID(event.userID,'user_id');
++      const unity=isUnityCallback(request.url);
++      const event=unity?{...verifyUnityCallback(request.url,config),userID:'',timestamp:Date.now()}:await verifyAdMobCallback(request.url,fetcher);
+@@ -82,0 +87 @@
++      if(unity&&event.customData.split('.')[1]!=='native')throw new AppServiceError('invalid_reward_claim','Invalid reward destination.',400);
+@@ -83,0 +89,3 @@
++        const [owner]=unity?await tx`select user_id from game_center_private.generation_reward_attempts where custom_data=${event.customData}`:[{user_id:event.userID}];
++        if(!owner)throw new AppServiceError('invalid_reward_claim','Unknown reward attempt.',400);
++        const userID=requireUUID(owner.user_id,'user_id');
+@@ -90,2 +98 @@
+-        if(!attempt||attempt.custom_data!==event.customData||!(event.adUnit===unit||event.adUnit===unit?.split('/')[1])||event.rewardAmount!==1||event.rewardItem!=='generation'
+-          ||timestamp<new Date(attempt.created_at).getTime()-60_000||timestamp>new Date(attempt.expires_at).getTime()||timestamp>Date.now()+60_000)
++        if(!attempt||attempt.custom_data!==event.customData||!(event.adUnit===unit||(!unity&&unit?.startsWith('ca-app-pub-')&&event.adUnit===unit?.split('/')[1]))||event.rewardAmount!==1||event.rewardItem!=='generation')
+@@ -92,0 +100,6 @@
++        if(unity&&attempt.state==='earned'){
++          if(attempt.transaction_id!==event.transactionID)throw new AppServiceError('reward_already_earned','This attempt already earned its reward.',409);
++          return;
++        }
++        if(timestamp<new Date(attempt.created_at).getTime()-60_000||timestamp>new Date(attempt.expires_at).getTime()||timestamp>Date.now()+60_000)
++          throw new AppServiceError('invalid_reward_claim','The reward claim expired.',400);
+@@ -102 +115 @@
+-      return Response.json({received:true});
++      return unity?new Response('1',{headers:{'Content-Type':'text/plain','Cache-Control':'no-store'}}):Response.json({received:true});
+@@ -104 +117 @@
+-      const expected=error instanceof AppServiceError||error instanceof AdMobVerificationError;
++      const expected=error instanceof AppServiceError||error instanceof AdMobVerificationError||error instanceof UnityVerificationError;
+--- a/app-services/inbox.ts
++++ b/app-services/inbox.ts
+@@ -53 +53,2 @@
+-        join app_private.friendships f on f.pair_low=least(i.sender_user_id,i.recipient_user_id) and f.pair_high=greatest(i.sender_user_id,i.recipient_user_id) and f.status='accepted'
++        left join app_private.friendships f on f.pair_low=least(i.sender_user_id,i.recipient_user_id) and f.pair_high=greatest(i.sender_user_id,i.recipient_user_id)
++        join app_private.profiles recipient on recipient.user_id=i.recipient_user_id and recipient.state='active'
+@@ -55 +56,5 @@
+-        where i.id=e.source_id and i.notification_event_id=e.id and i.status in ('pending','accepted') and not exists(select 1 from full_game_private.members already where already.room_id=i.room_id and already.user_id=i.recipient_user_id))))
++        where i.id=e.source_id and i.notification_event_id=e.id and i.recipient_user_id=e.recipient_id and i.sender_user_id=e.actor_id
++        and i.status in ('pending','accepted') and f.status is distinct from 'blocked'
++        and (case when f.status='accepted' then recipient.data->'friend_invitations_allowed' is distinct from 'false'::jsonb
++          else recipient.data->'stranger_invitations_allowed'='true'::jsonb end)
++        and not exists(select 1 from full_game_private.members already where already.room_id=i.room_id and already.user_id=i.recipient_user_id))))
+--- a/app-services/legacy-billing.ts
++++ b/app-services/legacy-billing.ts
+@@ -3,0 +4,2 @@
++import type {AppleLoyaltySnapshot} from './billing-rules/apple-loyalty.ts';
++import {WEEKLY_PRODUCT,MONTHLY_PRODUCT,APPLE_SUBSCRIPTION_PRODUCTS,isAppleSubscriptionProduct,monthlyAppleCheckoutEnabled} from './billing-rules/apple-products.ts';
+@@ -7 +9 @@
+-const WEEKLY = 'com.spyclash.ios.limitless.weekly';
++const WEEKLY = WEEKLY_PRODUCT;
+@@ -12 +14 @@
+-// Checkout stays weekly. Restore may reconcile either existing product, but
++// Monthly checkout has a separate gate. Restore may reconcile either product, but
+@@ -14 +16 @@
+-const RESTORABLE_PRODUCTS = new Set([WEEKLY, 'com.spyclash.ios.limitless.monthly']);
++const RESTORABLE_PRODUCTS: ReadonlySet<string> = new Set(APPLE_SUBSCRIPTION_PRODUCTS);
+@@ -31,2 +33,3 @@
+-    if ((body.requested_product_id || WEEKLY) !== WEEKLY) throw new AppServiceError('unsupported_product','Only the current weekly subscription is enabled.',422);
+-    return {action,requested_product_id:WEEKLY};
++    const productID = body.requested_product_id === undefined ? WEEKLY : body.requested_product_id;
++    if (!isAppleSubscriptionProduct(productID)) throw new AppServiceError('unsupported_product','Unsupported App Store subscription product.',422);
++    return {action,requested_product_id:productID};
+@@ -52,0 +56,30 @@
++function verifiedLoyaltySnapshot(value:any, now:Date): AppleLoyaltySnapshot | undefined {
++  const validID = (id:unknown): id is string => typeof id === 'string' && /^[0-9]{1,128}$/.test(id);
++  const checked = typeof value?.verified_at === 'string' ? Date.parse(value.verified_at) : NaN;
++  if (!value || value.environment !== 'production' || !validID(value.original_transaction_id)
++    || !Number.isFinite(checked) || checked < 0 || checked > now.getTime()+300_000
++    || !Array.isArray(value.transaction_ids) || value.transaction_ids.length > 2000
++    || !value.transaction_ids.every(validID)) return undefined;
++  return {original_transaction_id:value.original_transaction_id,environment:'production',
++    transaction_ids:[...new Set<string>(value.transaction_ids)],verified_at:new Date(checked).toISOString()};
++}
++
++/** Input is server-only Base44 evidence. Never pass the client request here.
++ * New complete histories replace a chain, so refunds can remove paid periods;
++ * ordinary membership checks, outages and delayed restores retain prior data. */
++export function mergeLegacyLoyaltyChains(previous:unknown, incoming:unknown, now:Date) {
++  const chains:Record<string,AppleLoyaltySnapshot> = {};
++  if (previous && typeof previous === 'object' && !Array.isArray(previous)) {
++    for (const [key,value] of Object.entries(previous)) {
++      const snapshot = verifiedLoyaltySnapshot(value,now);
++      if (snapshot?.original_transaction_id === key) chains[key] = snapshot;
++    }
++  }
++  const next = verifiedLoyaltySnapshot(incoming,now);
++  if (next && (!chains[next.original_transaction_id]
++    || Date.parse(next.verified_at) >= Date.parse(chains[next.original_transaction_id].verified_at))) {
++    chains[next.original_transaction_id] = next;
++  }
++  return chains;
++}
++
+@@ -59,0 +93,2 @@
++  if (command.action === 'prepare' && command.requested_product_id === MONTHLY_PRODUCT && !monthlyAppleCheckoutEnabled(input.config))
++    throw new AppServiceError('apple_monthly_purchase_unconfigured','Monthly App Store purchases are not enabled.',503);
+@@ -96 +131 @@
+-      if (result?.product_id !== WEEKLY) throw new AppServiceError('legacy_billing_response_invalid','The existing product does not match the weekly subscription.',502);
++      if (result?.product_id !== command.requested_product_id) throw new AppServiceError('legacy_billing_response_invalid','The prepared product does not match the requested subscription.',502);
+@@ -124 +159,11 @@
+-    const data = {status:active?'active':'inactive',providers:snapshot.providers,protocol:snapshot.protocol,source_expires_at:snapshot.expires_at,verified_at:checkedAt.toISOString()};
++    const sourceKey = 'base44:'+evidence.legacyID;
++    // Serialize empty-row inserts as well as subsequent mirror refreshes. This
++    // prevents a simultaneous aggregate check from erasing a verified chain.
++    await ctx.tx`select pg_advisory_xact_lock(hashtextextended(${sourceKey},0))`;
++    const [owner] = await ctx.tx`select user_id,data from app_private.entitlements where source_key=${sourceKey} for update`;
++    if (owner && owner.user_id !== ctx.actor.id) throw new AppServiceError('legacy_owner_mismatch','This membership belongs to a different account.',409);
++    const loyaltyChains = mergeLegacyLoyaltyChains(owner?.data?.loyalty_chains,
++      command.action === 'sync_transaction' && evidence.result?.entitlement?.environment === 'production'
++        ? evidence.result?.loyalty : undefined,ctx.now);
++    const data = {status:active?'active':'inactive',providers:snapshot.providers,protocol:snapshot.protocol,source_expires_at:snapshot.expires_at,verified_at:checkedAt.toISOString(),
++      ...(Object.keys(loyaltyChains).length ? {loyalty_chains:loyaltyChains} : {})};
+@@ -128,2 +172,0 @@
+-    const [owner] = await ctx.tx`select user_id from app_private.entitlements where source_key=${'base44:'+evidence.legacyID}`;
+-    if (owner && owner.user_id !== ctx.actor.id) throw new AppServiceError('legacy_owner_mismatch','This membership belongs to a different account.',409);
+--- a/app-services/lifecycle.ts
++++ b/app-services/lifecycle.ts
+@@ -5,0 +6 @@
++import { eraseGenerationRewardAccountData } from './generation-reward-deletion.ts';
+@@ -54,2 +55 @@
+-    const [rewardSchema]=await tx`select to_regclass('game_center_private.generation_reward_attempts') is not null as present`;
+-    if(rewardSchema.present)await tx`delete from game_center_private.generation_reward_attempts where user_id=${actor.id}`;
++    await eraseGenerationRewardAccountData(tx, actor.id);
+@@ -93 +92,0 @@
+-
+--- a/app-services/membership.ts
++++ b/app-services/membership.ts
+@@ -7,0 +8,3 @@
++import {mergeAppleLoyaltySnapshot} from './billing-rules/apple-loyalty.ts';
++import {nativeRewardStatus,rewardedGenerationEnabled} from './generation-reward-ledger.ts';
++import {WEEKLY_PRODUCT,MONTHLY_PRODUCT,isAppleSubscriptionProduct,monthlyAppleCheckoutEnabled} from './billing-rules/apple-products.ts';
+@@ -9 +12 @@
+-export const WEEKLY_PRODUCT = 'com.spyclash.ios.limitless.weekly';
++export {WEEKLY_PRODUCT,MONTHLY_PRODUCT};
+@@ -59 +62,2 @@
+-    if ((body.requested_product_id || WEEKLY_PRODUCT) !== WEEKLY_PRODUCT) throw new AppServiceError('unsupported_product','Only the current weekly subscription is enabled.',422);
++    const productID = body.requested_product_id === undefined ? WEEKLY_PRODUCT : body.requested_product_id;
++    if (!isAppleSubscriptionProduct(productID)) throw new AppServiceError('unsupported_product','Unsupported App Store subscription product.',422);
+@@ -60,0 +65 @@
++    if (productID === MONTHLY_PRODUCT && !monthlyAppleCheckoutEnabled(ctx.config)) throw new AppServiceError('apple_monthly_purchase_unconfigured','Monthly App Store purchases are not enabled.',503);
+@@ -67 +72 @@
+-    return {product_id:WEEKLY_PRODUCT,app_account_token:account.app_account_token};
++    return {product_id:productID,app_account_token:account.app_account_token};
+@@ -87 +92,2 @@
+-  const record = prior && !shouldApplyProviderEvent(prior.data,incoming) ? prior.data : incoming;
++  const record = prior && !shouldApplyProviderEvent(prior.data,incoming) ? prior.data
++    : mergeAppleLoyaltySnapshot(incoming,prior?.data,verified.loyalty);
+@@ -91,2 +97,2 @@
+-    on conflict(source_key) do update set active=excluded.active,expires_at=excluded.expires_at,data=excluded.data,provider_event_at=excluded.provider_event_at,updated_at=excluded.updated_at`;
+-  return {success:true,server_status_verified:true,submitted_product_id:WEEKLY_PRODUCT,entitlement:publicAppleEntitlement(record)};
++    on conflict(source_key) do update set active=excluded.active,expires_at=excluded.expires_at,data=excluded.data,product_id=excluded.product_id,provider_event_at=excluded.provider_event_at,updated_at=excluded.updated_at`;
++  return {success:true,server_status_verified:true,submitted_product_id:verified.submittedProductID || transaction.productId,entitlement:publicAppleEntitlement(record)};
+@@ -105,0 +112,3 @@
++  const rewards = native && rewardedGenerationEnabled(ctx.config) ? await nativeRewardStatus(ctx.tx,ctx.actor.id,ctx.config) : undefined;
++  const dailyLimit = rewards?.enabled ? rewards.daily_limit : 10;
++  const remaining = rewards?.enabled ? (rewards.free_remaining || 0) + rewards.bonus_credits : Math.max(0,dailyLimit-(used || 0));
+@@ -107,2 +116,2 @@
+-    benefits:active?unlimited:{ai_generations_daily_limit:10,premium_avatars:false,full_history:false,advanced_statistics:false,history_limit:5},
+-    expires_at:expiry,ai_generations_today:used,ai_remaining:active || used === null ? null : Math.max(0,10-used),apple_purchase_enabled:membershipCapabilities(ctx.config).apple_purchase_enabled};
++    benefits:active?unlimited:{ai_generations_daily_limit:dailyLimit,premium_avatars:false,full_history:false,advanced_statistics:false,history_limit:5},
++    expires_at:expiry,ai_generations_today:used,ai_remaining:active || used === null ? null : remaining,apple_purchase_enabled:membershipCapabilities(ctx.config).apple_purchase_enabled};
+@@ -115 +124 @@
+-  await ctx.tx`update app_private.entitlements set active=false,data=data-'user_email' where user_id=${ctx.actor.id}`;
++  await ctx.tx`update app_private.entitlements set active=false,data=data-'user_email'-'loyalty_transaction_ids'-'loyalty_verified_at'-'loyalty_chains' where user_id=${ctx.actor.id}`;
+@@ -162 +170,0 @@
+-
+--- a/app-services/native-apple.ts
++++ b/app-services/native-apple.ts
+@@ -1,0 +2,2 @@
++import {readCanonicalAppleSubscriptionStatus} from './billing-rules/apple-subscription-status.ts';
++import {readAppleLoyaltyHistory, type AppleLoyaltySnapshot} from './billing-rules/apple-loyalty.ts';
+@@ -4 +6 @@
+-import {readCanonicalAppleSubscriptionStatus} from './billing-rules/apple-subscription-status.ts';
++import {APPLE_SUBSCRIPTION_PRODUCTS,isAppleSubscriptionProduct} from './billing-rules/apple-products.ts';
+@@ -10 +11,0 @@
+-const WEEKLY_PRODUCT = 'com.spyclash.ios.limitless.weekly';
+@@ -47 +48 @@
+-  const {AppStoreServerAPIClient,Environment,SignedDataVerifier,VerificationStatus} = await import('npm:@apple/app-store-server-library@3.1.0');
++  const {AppStoreServerAPIClient,Environment,SignedDataVerifier,VerificationStatus,GetTransactionHistoryVersion} = await import('npm:@apple/app-store-server-library@3.1.0');
+@@ -48,0 +50 @@
++  const client = new AppStoreServerAPIClient(config.APP_IAP_PRIVATE_KEY_P8!,config.APP_IAP_KEY_ID!,config.APP_IAP_ISSUER_ID!,target.bundle,environment);
+@@ -54,2 +56,3 @@
+-    verifier:verifier,
+-    client:new AppStoreServerAPIClient(config.APP_IAP_PRIVATE_KEY_P8!,config.APP_IAP_KEY_ID!,config.APP_IAP_ISSUER_ID!,target.bundle,environment),
++    verifier,
++    client,
++    getHistory:(id:string,revision:string|null)=>client.getTransactionHistory(id,revision,{},GetTransactionHistoryVersion.V2),
+@@ -59 +62 @@
+-  if (transaction.productId !== WEEKLY_PRODUCT || transaction.bundleId !== target.bundle || transaction.environment !== target.environment)
++  if (!isAppleSubscriptionProduct(transaction.productId) || transaction.bundleId !== target.bundle || transaction.environment !== target.environment)
+@@ -61 +64 @@
+-  return await readCanonicalAppleSubscriptionStatus({transaction,expectedBundleID:target.bundle,expectedProductID:WEEKLY_PRODUCT,
++  const verified = await readCanonicalAppleSubscriptionStatus({transaction,expectedBundleID:target.bundle,expectedProductIDs:APPLE_SUBSCRIPTION_PRODUCTS,
+@@ -64,0 +68,15 @@
++  let loyalty: AppleLoyaltySnapshot | undefined;
++  let historyTimeout: ReturnType<typeof setTimeout> | undefined;
++  try {
++    loyalty = await Promise.race([readAppleLoyaltyHistory({
++      transactionID:verified.transaction.transactionId!,originalTransactionID:verified.transaction.originalTransactionId!,
++      appAccountToken:verified.transaction.appAccountToken,expectedBundleID:target.bundle,expectedProducts:APPLE_SUBSCRIPTION_PRODUCTS,
++      expectedEnvironment:target.environment,expectedAppAppleID:target.appAppleID || 0,
++      getHistory:tools.getHistory,verifyTransaction:jws=>tools.verifier.verifyAndDecodeTransaction(jws),
++    }),new Promise<never>((_,reject)=>{historyTimeout=setTimeout(()=>reject(new Error('Apple Loyalty history timed out.')),8000);})]);
++    if (verified.status === 5) loyalty.transaction_ids = loyalty.transaction_ids.filter(id=>id!==verified.transaction.transactionId);
++  } catch {
++    // Awards are optional evidence: an Apple history outage must never block a
++    // verified purchase/restore or replace a prior complete Loyalty snapshot.
++  } finally { if (historyTimeout !== undefined) clearTimeout(historyTimeout); }
++  return {...verified,submittedProductID:transaction.productId,loyalty};
+@@ -99 +116,0 @@
+-
+--- a/app-services/native-generation.ts
++++ b/app-services/native-generation.ts
+@@ -9 +9 @@
+-import {generationRewardMetadata,lockGenerationQuota,nativeRewardStatus,reserveRewardGeneration,rewardedGenerationEnabled} from './generation-reward-ledger.ts';
++import {generationRewardMetadata,lockGenerationQuota,nativeRewardStatus,reserveRewardGeneration,rewardedGenerationEnabledForUser} from './generation-reward-ledger.ts';
+@@ -46 +46 @@
+-  const rewardsEnabled=rewardedGenerationEnabled(input.config);
++  let rewardsEnabled=false;
+@@ -55,0 +56 @@
++    rewardsEnabled=await rewardedGenerationEnabledForUser(tx,input.actor.id,input.config);
+--- /dev/null
++++ b/app-services/policies/achievements.ts
+@@ -0,0 +1,74 @@
++import { deduplicateCompetitiveHistory } from '../../full-game-core/rules/competitive-stats.ts';
++
++type History = Record<string, unknown>;
++export type AchievementStats = { games: number; wins: number; spyWins: number; detectiveWins: number };
++export type AchievementProgress = { id: string; progress: number; target: number };
++
++const clean = (value: unknown) => String(value ?? '').trim();
++const count = (value: number) => Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
++
++/** Only the private server history is an award source. Never accept profile-input counters. */
++export function aggregateAchievementStats(records: readonly History[]): Map<string, AchievementStats> {
++  const table = new Map<string, AchievementStats>();
++  for (const row of deduplicateCompetitiveHistory(records)) {
++    const id = clean(row.player_user_id);
++    const type = clean(row.match_type).toLowerCase();
++    const online = type ? type === 'online' : /^[A-Z0-9]{6}$/.test(clean(row.room_code).toUpperCase());
++    if (!id || !online || typeof row.won !== 'boolean' || clean(row.winner).toLowerCase() === 'draw') continue;
++    if (row.player_count != null && (!Number.isInteger(Number(row.player_count)) || Number(row.player_count) < 3)) continue;
++    const stats = table.get(id) ?? { games: 0, wins: 0, spyWins: 0, detectiveWins: 0 };
++    stats.games += 1;
++    if (row.won) {
++      stats.wins += 1;
++      // A collective FAN answer is a team win, not evidence of catching or evading a spy.
++      const scenario = clean(row.fan_scenario);
++      const roleWin = !['all_spies', 'no_spies'].includes(scenario) && !['all', 'system'].includes(clean(row.winner));
++      if (roleWin && clean(row.role).toLowerCase() === 'spy') stats.spyWins += 1;
++      if (roleWin && clean(row.role).toLowerCase() === 'detective') stats.detectiveWins += 1;
++    }
++    table.set(id, stats);
++  }
++  return table;
++}
++
++/** Read only private, server-verified billing snapshots. No profile or client counters. */
++export function aggregateLoyaltyPayments(entitlements: readonly Record<string, any>[]): Map<string, number> {
++  const users = new Map<string, Set<string>>();
++  for (const row of entitlements) {
++    const userID = clean(row.user_id), data = row.data;
++    if (!userID || !data || typeof data !== 'object') continue;
++    const snapshots = row.provider === 'apple'
++      ? [{ environment: data.environment, transaction_ids: data.loyalty_transaction_ids, verified_at: data.loyalty_verified_at }]
++      : row.provider === 'base44' && data.loyalty_chains && typeof data.loyalty_chains === 'object'
++      ? Object.values(data.loyalty_chains) : [];
++    for (const snapshot of snapshots as any[]) {
++      if (snapshot?.environment !== 'production' || !Number.isFinite(Date.parse(snapshot?.verified_at))
++        || !Array.isArray(snapshot?.transaction_ids)) continue;
++      const ids = users.get(userID) ?? new Set<string>();
++      for (const id of snapshot.transaction_ids) {
++        if (typeof id === 'string' && /^[0-9]{1,128}$/.test(id)) ids.add(id);
++      }
++      users.set(userID, ids);
++    }
++  }
++  return new Map([...users].map(([id, transactions]) => [id, transactions.size]));
++}
++
++export function achievementProgress(stats: AchievementStats = { games: 0, wins: 0, spyWins: 0, detectiveWins: 0 }, paidSubscriptions = 0): AchievementProgress[] {
++  const milestone = (id: string, value: number, target: number): AchievementProgress => ({ id, progress: Math.min(count(value), target), target });
++  return [
++    milestone('first_mission', stats.games, 1),
++    milestone('field_agent', stats.games, 10),
++    milestone('veteran', stats.games, 50),
++    milestone('first_victory', stats.wins, 1),
++    milestone('winning_record', stats.wins, 10),
++    milestone('ghost', stats.spyWins, 1),
++    milestone('master_of_disguise', stats.spyWins, 10),
++    milestone('sharp_eye', stats.detectiveWins, 1),
++    milestone('case_closed', stats.detectiveWins, 10),
++    milestone('double_agent', Math.min(stats.spyWins, stats.detectiveWins), 5),
++    milestone('loyalty_3', paidSubscriptions, 3),
++    milestone('loyalty_6', paidSubscriptions, 6),
++    milestone('loyalty_12', paidSubscriptions, 12),
++  ];
++}
+--- a/app-services/policies/community.ts
++++ b/app-services/policies/community.ts
+@@ -222,0 +223 @@
++    achievements: Array.isArray(user.achievements) ? user.achievements : [],
+--- /dev/null
++++ b/app-services/policies/invitation-permissions.ts
+@@ -0,0 +1,29 @@
++/** Existing accounts keep friend invitations. Community invitations require
++ * explicit opt-in; relationship blocks always override either preference. */
++export function invitationPermissions(data: Record<string, unknown> = {}) {
++  return {
++    friend_invitations_allowed: data.friend_invitations_allowed !== false,
++    stranger_invitations_allowed: data.stranger_invitations_allowed === true,
++  };
++}
++
++export function canReceiveGameInvitation(data: Record<string, unknown>, relationshipStatus: string | null): boolean {
++  if (relationshipStatus === 'blocked') return false;
++  const permissions = invitationPermissions(data);
++  return relationshipStatus === 'accepted'
++    ? permissions.friend_invitations_allowed
++    : permissions.stranger_invitations_allowed;
++}
++
++export function invitationPermissionPatch(body: Record<string, unknown>) {
++  const boolean = (key: string): boolean => {
++    const value = body[key];
++    if (value === true || value === 'true') return true;
++    if (value === false || value === 'false') return false;
++    throw new Error('invalid_invitation_permissions');
++  };
++  return {
++    friend_invitations_allowed: boolean('friend_invitations_allowed'),
++    stranger_invitations_allowed: boolean('stranger_invitations_allowed'),
++  };
++}
+--- a/app-services/profile.ts
++++ b/app-services/profile.ts
+@@ -0,0 +1 @@
++import { invitationPermissions, invitationPermissionPatch } from './policies/invitation-permissions.ts';
+@@ -5,0 +7 @@
++import { aggregateAchievementStats, aggregateLoyaltyPayments, achievementProgress } from './policies/achievements.ts';
+@@ -18 +20 @@
+-    const data={full_name:safeCommunityDisplayName(actor.full_name || 'Operative'),display_name:safeCommunityDisplayName(actor.full_name || 'Operative'),avatar:'🕵️',language:'en',spy_card_theme:'field',spy_card_accent:'signal_red',spy_card_badge:'operative',radar_invite_policy:'ask',onboarding_completed:false,onboarding_version:0};
++    const data={full_name:safeCommunityDisplayName(actor.full_name || 'Operative'),display_name:safeCommunityDisplayName(actor.full_name || 'Operative'),avatar:'🕵️',language:'en',spy_card_theme:'field',spy_card_accent:'signal_red',spy_card_badge:'operative',radar_invite_policy:'ask',friend_invitations_allowed:true,stranger_invitations_allowed:false,onboarding_completed:false,onboarding_version:0};
+@@ -66 +68,3 @@
+-  const stats=aggregateCompetitiveStats(records), roles=aggregateCompetitiveRoleStats(records);
++  const stats=aggregateCompetitiveStats(records), roles=aggregateCompetitiveRoleStats(records), awards=aggregateAchievementStats(records);
++  const billing=await ctx.tx`select user_id,provider,data from app_private.entitlements where user_id=any(${ids}::uuid[]) and provider in ('apple','base44')`;
++  const loyalty=aggregateLoyaltyPayments(billing);
+@@ -69 +73 @@
+-    return publicProfile({...p.data,id:p.user_id,spy_id:p.spy_id,rating:s?.rating||0,games_played:s?.games||0,games_won:s?.wins||0,spy_games_played:r?.spyGames||0,spy_games_won:r?.spyWins||0,detective_games_played:r?.detectiveGames||0,detective_games_won:r?.detectiveWins||0});
++    return publicProfile({...p.data,id:p.user_id,spy_id:p.spy_id,rating:s?.rating||0,games_played:s?.games||0,games_won:s?.wins||0,spy_games_played:r?.spyGames||0,spy_games_won:r?.spyWins||0,detective_games_played:r?.detectiveGames||0,detective_games_won:r?.detectiveWins||0,achievements:achievementProgress(awards.get(p.user_id),loyalty.get(p.user_id))});
+@@ -75 +79 @@
+-  return {...publicData,email:ctx.actor.email,contact_email:profile.contact_email,full_name:clean(data.full_name)||publicData.display_name,language:languages.has(data.language)?data.language:'en',role:isAppAdmin(ctx,profile)?'admin':'user',is_verified:true,onboarding_completed:data.onboarding_completed===true,onboarding_version:Number(data.onboarding_version)||0,onboarding_completed_at:data.onboarding_completed_at||null,acquisition_source:data.acquisition_source||null,radar_invite_policy:['ask','automatic','blocked'].includes(data.radar_invite_policy)?data.radar_invite_policy:'ask'};
++  return {...publicData,...invitationPermissions(data),email:ctx.actor.email,contact_email:profile.contact_email,full_name:clean(data.full_name)||publicData.display_name,language:languages.has(data.language)?data.language:'en',role:isAppAdmin(ctx,profile)?'admin':'user',is_verified:true,onboarding_completed:data.onboarding_completed===true,onboarding_version:Number(data.onboarding_version)||0,onboarding_completed_at:data.onboarding_completed_at||null,acquisition_source:data.acquisition_source||null,radar_invite_policy:['ask','automatic','blocked'].includes(data.radar_invite_policy)?data.radar_invite_policy:'ask'};
+@@ -110,0 +115,4 @@
++  else if(action==='set_invitation_permissions') {
++    try { Object.assign(patch,invitationPermissionPatch(body)); }
++    catch { throw new AppServiceError('invalid_invitation_permissions','Invitation settings must be true or false.',422); }
++  }
+--- /dev/null
++++ b/app-services/unity-ssv.ts
+@@ -0,0 +1,54 @@
++import { createHmac, timingSafeEqual } from "node:crypto";
++
++/** Unity's provider protocol uses HMAC-MD5 (not a client assertion).
++ * https://docs.unity.com/en-us/grow/ads/mediation/s2s-redeem-callbacks
++ * The support-issued secret exists only on the server. */
++export type UnityRewardConfig = Record<string, string | undefined>;
++export class UnityVerificationError extends Error {
++  constructor(readonly code: string, readonly status = 400) { super(code); }
++}
++export function unityRewardUnit(config: UnityRewardConfig): string | null {
++  const game = config.UNITY_ADS_GAME_ID?.trim() || "";
++  const placement = config.UNITY_ADS_REWARDED_PLACEMENT_ID?.trim() || "";
++  const secret = config.UNITY_ADS_S2S_SECRET || "";
++  return /^[1-9][0-9]{0,15}$/.test(game) && game !== "14850" &&
++      /^[A-Za-z0-9_-]{1,80}$/.test(placement) && secret.length >= 16
++    ? `unity:${game}:${placement}` : null;
++}
++export function unityAttemptFields(unit: string, token: string) {
++  const match = /^unity:([1-9][0-9]{0,15}):([A-Za-z0-9_-]{1,80})$/.exec(unit);
++  return match ? { provider: "unity", unity_game_id: match[1], ad_unit_id: match[2], server_id: token }
++    : { provider: "admob", ad_unit_id: unit };
++}
++export function isUnityCallback(url: string): boolean {
++  const params = new URL(url).searchParams;
++  return params.get("provider") === "unity" || params.has("hmac") || params.has("sid");
++}
++export function verifyUnityCallback(url: string, config: UnityRewardConfig) {
++  const configured = unityRewardUnit(config);
++  if (!configured) throw new UnityVerificationError("unity_reward_unconfigured", 503);
++  const fail = (): never => { throw new UnityVerificationError("invalid_reward_signature"); };
++  const query = new URL(url).search;
++  if (!query || query.length > 4096) return fail();
++  const params = new URLSearchParams(query);
++  const values = new Map<string, string>();
++  for (const [name, value] of params) {
++    // Closed contract prevents ambiguous comma/equal concatenation and duplicate keys.
++    if (!/^[a-z_]+$/.test(name) || values.has(name) || /[,=\u0000-\u0020]/.test(value)) return fail();
++    values.set(name, value);
++  }
++  const allowed = ["provider", "game_id", "placement_id", "sid", "oid", "hmac"];
++  if (values.size !== allowed.length || allowed.some(key => !values.get(key))) return fail();
++  if (values.get("provider") !== "unity" ||
++      `unity:${values.get("game_id")}:${values.get("placement_id")}` !== configured) return fail();
++  const sid = values.get("sid")!, oid = values.get("oid")!, signature = values.get("hmac")!;
++  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(legacy|native)\.[0-9a-f]{64}$/.test(sid) ||
++      !/^[A-Za-z0-9_-]{1,180}$/.test(oid) || !/^[0-9a-fA-F]{32}$/.test(signature)) return fail();
++  const canonical = [...values.keys()].filter(key => key !== "hmac").sort()
++    .map(key => `${key}=${values.get(key)}`).join(",");
++  const expected = createHmac("md5", config.UNITY_ADS_S2S_SECRET!).update(canonical).digest();
++  const supplied = Uint8Array.from(signature.match(/../g)!, pair => Number.parseInt(pair, 16));
++  if (!timingSafeEqual(expected, supplied)) return fail();
++  return { transactionID: `unity:${values.get("game_id")}:${oid}`, customData: sid,
++    adUnit: configured, rewardAmount: 1, rewardItem: "generation" };
++}
+--- a/app-services/worker.ts
++++ b/app-services/worker.ts
+@@ -45 +45 @@
+-        const [event]=await db`select visible from app_private.notification_events where id::text=${job.event_key} and recipient_id=${job.user_id}`;
++        const [event]=await db`select visible,event_type from app_private.notification_events where id::text=${job.event_key} and recipient_id=${job.user_id}`;
+@@ -46,0 +47,17 @@
++        else if(event.event_type==='room_invite') {
++          // Recipient preferences may change while delivery is queued. Recheck
++          // the same live source as the inbox before sending a stale invitation.
++          const [invite]=await db`select i.id from app_private.room_invites i
++            join app_private.notification_events e on e.id=i.notification_event_id and e.source_id=i.id and e.actor_id=i.sender_user_id and e.recipient_id=i.recipient_user_id
++            join app_private.profiles recipient on recipient.user_id=i.recipient_user_id and recipient.state='active'
++            join app_private.profiles sender on sender.user_id=i.sender_user_id and sender.state='active'
++            left join app_private.friendships f on f.pair_low=least(i.sender_user_id,i.recipient_user_id) and f.pair_high=greatest(i.sender_user_id,i.recipient_user_id)
++            join full_game_private.rooms r on r.id=i.room_id and not r.closed and r.state->>'status'='waiting'
++            join full_game_private.members m on m.room_id=i.room_id and m.user_id=i.sender_user_id
++            where i.notification_event_id::text=${job.event_key} and i.recipient_user_id=${job.user_id}
++            and i.status in ('pending','accepted') and f.status is distinct from 'blocked'
++            and (case when f.status='accepted' then recipient.data->'friend_invitations_allowed' is distinct from 'false'::jsonb
++              else recipient.data->'stranger_invitations_allowed'='true'::jsonb end)
++            and not exists(select 1 from full_game_private.members already where already.room_id=i.room_id and already.user_id=i.recipient_user_id)`;
++          if(!invite)cancellation='invitation_not_available';
++        }
