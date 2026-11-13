@@ -534,6 +534,29 @@ struct LimitlessCopy {
     var synchronized: String { text("Purchase verified. Access synchronized.", "Покупка проверена. Доступ синхронизирован.", "Compra verificada. Acceso sincronizado.", "Купівлю перевірено. Доступ синхронізовано.") }
     var noPurchases: String { text("No active Apple purchase was found for this account.", "Активная покупка Apple для этого аккаунта не найдена.", "No se encontró una compra activa de Apple para esta cuenta.", "Активну купівлю Apple для цього акаунта не знайдено.") }
     func operationFailed(_ failure: StoreKitOperationFailure) -> String {
+        let codeLabel = text("Support code", "Код для поддержки", "Código para soporte", "Код для підтримки")
+        let purchaseResultMessage: String?
+        switch failure.reason {
+        case "ACCOUNT_BINDING":
+            purchaseResultMessage = text(
+                "This Apple purchase could not be linked to the current SpyClash account. Sign in to the SpyClash account used for this purchase, or contact support with the code below.",
+                "Не удалось связать эту покупку Apple с текущим аккаунтом SpyClash. Войди в аккаунт SpyClash, с которым оформлялась покупка, или обратись в поддержку с кодом ниже.",
+                "No se pudo vincular esta compra de Apple a la cuenta actual de SpyClash. Inicia sesión en la cuenta de SpyClash que usaste para esta compra o contacta con soporte con el código de abajo.",
+                "Не вдалося пов’язати цю купівлю Apple з поточним акаунтом SpyClash. Увійди в акаунт SpyClash, з яким оформлювалася купівля, або звернися до підтримки з кодом нижче."
+            )
+        case "NO_ACTIVE_SUBSCRIPTION":
+            purchaseResultMessage = text(
+                "Apple verified this purchase, but it does not provide active subscription access. Check the subscription status in your Apple account.",
+                "Apple подтвердила эту покупку, но активной подписки по ней нет. Проверь статус подписки в своём аккаунте Apple.",
+                "Apple verificó esta compra, pero no da acceso a una suscripción activa. Revisa el estado de la suscripción en tu cuenta Apple.",
+                "Apple підтвердила цю купівлю, але активної підписки за нею немає. Перевір статус підписки у своєму акаунті Apple."
+            )
+        default:
+            purchaseResultMessage = nil
+        }
+        if let purchaseResultMessage {
+            return "\(purchaseResultMessage)\n\(codeLabel): \(failure.supportCode)"
+        }
         let message: String
         switch failure.stage {
         case .purchaseEligibility:
@@ -604,7 +627,6 @@ struct LimitlessCopy {
             "Intenta restaurar las compras más tarde. Restaurar no vuelve a cobrar.",
             "Повтори відновлення покупок пізніше. Повторної оплати не буде."
         )
-        let codeLabel = text("Support code", "Код для поддержки", "Código para soporte", "Код для підтримки")
         return "\(message) \(guidance)\n\(codeLabel): \(failure.supportCode)"
     }
     var failed: String { text("The operation could not be verified. Retry or restore purchases. You will not be charged again by Restore.", "Не удалось подтвердить операцию. Повтори попытку или восстанови покупки. Восстановление не списывает оплату повторно.", "No se pudo verificar la operación. Reintenta o restaura las compras. Restaurar no vuelve a cobrar.", "Не вдалося підтвердити операцію. Повтори спробу або віднови покупки. Відновлення не списує оплату повторно.") }

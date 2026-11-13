@@ -38,6 +38,12 @@ struct AppStoreEntitlementSyncResponse: Decodable {
         StoreKitSubscriptionProduct.supports(entitlement.productID) &&
         (entitlement.productID == productID || submittedProductID == productID)
     }
+
+    // A verified historical purchase can be acknowledged without granting access.
+    // Only the purchase flow requires active access after that acknowledgement.
+    func requireActivePurchaseAccess() throws {
+        guard entitlement.grantsAccess else { throw AppStorePurchaseResultError.noActiveSubscription }
+    }
 }
 
 struct AppStoreEntitlement: Decodable {
@@ -306,7 +312,7 @@ final class StoreKitManager {
                 let response = try await persist(verification, generation: expected, origin: .purchase)
                 try requireScope(expected)
                 stage = .accessCheck
-                guard response.entitlement.grantsAccess else { throw MembershipError.verificationFailed }
+                try response.requireActivePurchaseAccess()
                 stage = .membershipRefresh
                 guard await membership.refresh(force: true), membership.hasAccess else { throw MembershipError.unavailable }
                 try requireScope(expected)

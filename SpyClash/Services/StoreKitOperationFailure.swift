@@ -26,6 +26,8 @@ enum StoreKitTransactionSource: String, Sendable {
 
 enum AppStoreDeliveryError: Error { case responseRejected }
 
+enum AppStorePurchaseResultError: Error { case noActiveSubscription }
+
 enum AppStorePurchasePreflightError: Error {
     case accessUnverified, alreadyActive, purchaseDisabled, paymentsRestricted, productUnavailable
 }
@@ -91,6 +93,7 @@ struct StoreKitOperationFailure: Error, Equatable, Sendable {
             }
         }
         if let server = error as? Base44Error {
+            if server.code == "purchase_owner_mismatch" { return "ACCOUNT_BINDING" }
             let status = server.statusCode.map { String($0) } ?? "UNKNOWN"
             // Never include arbitrary server messages or machine-code strings.
             let bindingBusy = server.code == "apple_account_binding_busy" ? "/BINDING_BUSY" : ""
@@ -107,6 +110,11 @@ struct StoreKitOperationFailure: Error, Equatable, Sendable {
         }
         if error is DecodingError { return "RESPONSE_DECODE" }
         if error is AppStoreDeliveryError { return "RESPONSE_REJECTED" }
+        if let purchaseResult = error as? AppStorePurchaseResultError {
+            switch purchaseResult {
+            case .noActiveSubscription: return "NO_ACTIVE_SUBSCRIPTION"
+            }
+        }
         if let membership = error as? MembershipError {
             switch membership {
             case .unavailable: return "ACCESS_UNAVAILABLE"

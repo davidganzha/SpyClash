@@ -1008,6 +1008,112 @@ final class MembershipTests: XCTestCase {
         XCTAssertFalse(response.entitlement.grantsAccess)
     }
 
+    func testVerifiedInactivePurchasesFinishOnceBeforeReportingNoActiveSubscription() async throws {
+        for (status, expiry) in [("expired", Date.distantPast), ("revoked", Date.distantFuture), ("active", Date.distantPast)] {
+            let client = AppStoreDeliveryTestClient()
+            var finishes = 0
+            client.handler = { _ in
+                XCTAssertEqual(finishes, 0, "Finish must wait for the canonical server acknowledgement.")
+                return AppStoreEntitlementSyncResponse(
+                    success: true, serverStatusVerified: true,
+                    entitlement: AppStoreEntitlement(productID: StoreKitManager.limitlessProductID, status: status, expiresAt: expiry)
+                )
+            }
+            let delivery = AppStoreTransactionDeliveryStore(client: client)
+            delivery.bind(MembershipScope(userID: "user", accessToken: "token"))
+            let response = try await delivery.deliver(
+                signedTransaction: "inactive-fixture-\(status)", productID: StoreKitManager.limitlessProductID,
+                finish: { finishes += 1 }
+            )
+            XCTAssertEqual(finishes, 1)
+            XCTAssertEqual(client.requests.count, 1)
+            XCTAssertFalse(response.entitlement.grantsAccess)
+            XCTAssertThrowsError(try response.requireActivePurchaseAccess()) { error in
+                let failure = StoreKitOperationFailure.capture(error, stage: .accessCheck, origin: .purchase)
+                XCTAssertEqual(failure.supportCode, "IAP-BUY-STATUS-NONE: NO_ACTIVE_SUBSCRIPTION")
+                XCTAssertEqual(failure.stage, .accessCheck)
+            }
+            XCTAssertEqual(finishes, 1, "Reporting inactive access must not redeliver or repeat a purchase.")
+        }
+        for status in ["active", "trialing", "grace_period"] {
+            let response = AppStoreEntitlementSyncResponse(
+                success: true, serverStatusVerified: true,
+                entitlement: AppStoreEntitlement(productID: StoreKitManager.limitlessProductID, status: status, expiresAt: .distantFuture)
+            )
+            XCTAssertNoThrow(try response.requireActivePurchaseAccess())
+        }
+    }
+
+    func testAccountBindingRejectionDoesNotFinishOrRevealServerDetails() async throws {
+        let client = AppStoreDeliveryTestClient()
+        client.handler = { _ in
+            throw Base44Error(message: "private-account-token", statusCode: 409, code: "purchase_owner_mismatch")
+        }
+        let delivery = AppStoreTransactionDeliveryStore(client: client)
+        delivery.bind(MembershipScope(userID: "user", accessToken: "token"))
+        var finishes = 0
+        do {
+            _ = try await delivery.deliver(
+                signedTransaction: "binding-fixture", productID: StoreKitManager.limitlessProductID,
+                finish: { finishes += 1 }
+            )
+            XCTFail("A rejected account binding must not acknowledge the transaction.")
+        } catch {
+            for origin: StoreKitOperationOrigin in [.purchase, .restore] {
+                let failure = StoreKitOperationFailure.capture(error, stage: .serverDelivery, origin: origin)
+                XCTAssertEqual(failure.reason, "ACCOUNT_BINDING")
+                XCTAssertEqual(failure.stage, .serverDelivery)
+                XCTAssertFalse(failure.supportCode.contains("private-account-token"))
+                XCTAssertFalse(failure.supportCode.contains("purchase_owner_mismatch"))
+                XCTAssertEqual(StoreKitOperationFailure.capture(failure, stage: .applePurchase, origin: origin), failure)
+            }
+        }
+        XCTAssertEqual(finishes, 0)
+        XCTAssertEqual(client.requests.count, 1)
+        for unrecognizedCode in ["purchase_owner_mismatch_private-token", "PURCHASE_OWNER_MISMATCH", "ACCOUNT_BINDING", "private-account-url"] {
+            let failure = StoreKitOperationFailure.capture(
+                Base44Error(message: "private-account-token", statusCode: 409, code: unrecognizedCode),
+                stage: .serverDelivery, origin: .purchase
+            )
+            XCTAssertEqual(failure.reason, "HTTP_409")
+        }
+        let busy = StoreKitOperationFailure.capture(
+            Base44Error(message: "private-account-token", statusCode: 503, code: "apple_account_binding_busy"),
+            stage: .serverDelivery, origin: .purchase
+        )
+        XCTAssertEqual(busy.reason, "HTTP_503/BINDING_BUSY")
+    }
+
+    func testBindingAndInactivePurchaseGuidanceIsLocalizedWithoutRestoreAsACure() {
+        let binding = StoreKitOperationFailure.capture(
+            Base44Error(message: "private-account-token", statusCode: 409, code: "purchase_owner_mismatch"),
+            stage: .serverDelivery, origin: .purchase
+        )
+        let inactive = StoreKitOperationFailure.capture(
+            AppStorePurchaseResultError.noActiveSubscription, stage: .accessCheck, origin: .purchase
+        )
+        let localized: [(AppLanguage, String, String, String)] = [
+            (.en, "could not be linked to the current SpyClash account", "does not provide active subscription access", "Try Restore"),
+            (.ru, "с текущим аккаунтом SpyClash", "активной подписки по ней нет", "Повтори восстановление"),
+            (.es, "a la cuenta actual de SpyClash", "no da acceso a una suscripción activa", "Intenta restaurar"),
+            (.uk, "з поточним акаунтом SpyClash", "активної підписки за нею немає", "Повтори відновлення")
+        ]
+        for (language, bindingText, inactiveText, restoreAdvice) in localized {
+            let copy = LimitlessCopy(language: language)
+            let bindingMessage = copy.operationFailed(binding)
+            let inactiveMessage = copy.operationFailed(inactive)
+            XCTAssertTrue(bindingMessage.contains(bindingText))
+            XCTAssertTrue(inactiveMessage.contains(inactiveText))
+            XCTAssertTrue(bindingMessage.contains(binding.supportCode))
+            XCTAssertTrue(inactiveMessage.contains(inactive.supportCode))
+            XCTAssertFalse(bindingMessage.contains(restoreAdvice))
+            XCTAssertFalse(inactiveMessage.contains(restoreAdvice))
+            XCTAssertFalse(bindingMessage.contains("private-account-token"))
+        }
+        XCTAssertTrue(LimitlessCopy(language: .en).operationFailed(binding).contains("contact support"))
+        XCTAssertTrue(LimitlessCopy(language: .en).operationFailed(inactive).contains("Apple verified this purchase"))
+    }
+
     func testLegacyAndMonthlyDeliveriesRemainSupportedIncludingCanonicalCrossgrades() async throws {
         let client = AppStoreDeliveryTestClient()
         let delivery = AppStoreTransactionDeliveryStore(client: client)

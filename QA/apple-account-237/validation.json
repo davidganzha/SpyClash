@@ -1,0 +1,30 @@
+{
+  "source_build": 237,
+  "ios_test_summary": {
+    "status": "SUCCEEDED",
+    "durationMs": 58528,
+    "counts": {
+      "passed": 72,
+      "failed": 0,
+      "skipped": 0
+    },
+    "target": "simulator"
+  },
+  "ios_test_artifacts": {
+    "buildLogPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/test_sim_2026-11-13T00-52-22-248Z_pid43205_2c9cd779.log",
+    "xcresultPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/result-bundles/test_sim_2026-11-13T00-52-22-249Z_pid43205_5328569b.xcresult",
+    "testProductsPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/test-products/test_sim_2026-11-13T00-52-22-249Z_pid43205_55fb675e.xctestproducts"
+  },
+  "native_billing_tests": {
+    "passed": 15,
+    "failed": 0,
+    "skipped": 0
+  },
+  "user_acceptance": {
+    "installed_build": "1.0.4 (232)",
+    "sign_in": "Apple",
+    "limitless_confirmed": true,
+    "game_center_shared_access": "not established"
+  },
+  "production_mutations": false
+}

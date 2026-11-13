@@ -21,6 +21,46 @@ test('native account gets gated free access even when legacy rollout flags are a
 test('editable provider metadata cannot bypass the legacy credential bridge',async()=>{const a=await fixture(false);let fetched=0;await assert.rejects(prepareMembershipExternal({actor:a,body:{action:'check'},config},{db,fetch:async()=>{fetched++;return Response.json({});}}),e=>e.code==='legacy_billing_unconfigured');assert.equal(fetched,0);});
 test('native memberships count durable charged AI reservations only',async()=>{const a=await fixture();for(const charged of [true,true,false])await db`insert into game_center_private.generation_requests(user_id,request_id,request_hash,usage_date,charged,state) values(${a.id},${crypto.randomUUID()},${'a'.repeat(64)},(clock_timestamp() at time zone 'UTC')::date,${charged},'pending')`;const m=await call(a,{action:'check'});assert.equal(m.ai_generations_today,2);assert.equal(m.ai_remaining,8);});
 test('verified main native purchase cannot be restored by a different Game Center account',async()=>{const a=await fixture(),b=await fixture(),purchase=await bought(a,{environment:'Production'});assert.equal((await call(a,{action:'check'})).active,true);const foreign=await prepareMembershipExternal({actor:b,body:purchase.body,config},{db,verify:purchase.verify});await assert.rejects(call(b,purchase.body,foreign),e=>e.code==='purchase_owner_mismatch');});
+test('preparing a new purchase cannot claim an older foreign chain before its first server sync; its owner can recover',async()=>{
+ const owner=await fixture(),other=await fixture();
+ const original=await call(owner,{action:'prepare'}),prepared=await call(other,{action:'prepare_purchase'});
+ assert.notEqual(original.app_account_token,prepared.app_account_token);
+ assert.equal((await call(other,{action:'prepare_purchase'})).app_account_token,prepared.app_account_token);
+ const body={action:'sync_transaction',signed_transaction:'verified-old-chain-fixture'.repeat(2)};
+ const transaction={productId:WEEKLY_PRODUCT,bundleId:'com.spyclash.ios',environment:'Sandbox',originalTransactionId:appleID(),
+   transactionId:appleID(),appAccountToken:original.app_account_token,expiresDate:Date.now()+3600000,signedDate:Date.now()};
+ const verify=async()=>({transaction,status:1,checkedAtMilliseconds:Date.now()});
+ // The verified Apple chain predates its first native entitlement sync.
+ assert.equal((await db`select 1 from app_private.entitlements where user_id in (${owner.id},${other.id})`).length,0);
+ const foreign=await prepareMembershipExternal({actor:other,body,config},{db,verify});
+ await assert.rejects(call(other,body,foreign),e=>e.status===409&&e.code==='purchase_owner_mismatch');
+ assert.equal((await call(other,{action:'check'})).active,false);
+ assert.equal((await db`select 1 from app_private.entitlements where user_id in (${owner.id},${other.id})`).length,0);
+ assert.equal((await db`select app_account_token from app_private.apple_accounts where user_id=${other.id}`)[0].app_account_token,prepared.app_account_token);
+ assert.equal((await call(owner,{action:'prepare_purchase'})).app_account_token,original.app_account_token);
+ const owned=await prepareMembershipExternal({actor:owner,body,config},{db,verify});
+ assert.equal((await call(owner,body,owned)).server_status_verified,true);
+ const restored=await prepareMembershipExternal({actor:owner,body,config},{db,verify});
+ assert.equal((await call(owner,body,restored)).server_status_verified,true);
+ assert.equal((await call(owner,{action:'check'})).active,true);
+ assert.equal((await call(other,{action:'check'})).active,false);
+ const rows=await db`select user_id from app_private.entitlements where user_id in (${owner.id},${other.id})`;
+ assert.deepEqual(rows.map(row=>row.user_id),[owner.id]);
+});
+test('a prepared native account cannot adopt a verified historical token missing from the billing registry',async()=>{
+ const actor=await fixture(),prepared=await call(actor,{action:'prepare_purchase'}),historicalToken=crypto.randomUUID();
+ assert.notEqual(historicalToken,prepared.app_account_token);
+ const body={action:'sync_transaction',signed_transaction:'verified-unknown-owner-fixture'.repeat(2)};
+ const transaction={productId:WEEKLY_PRODUCT,bundleId:'com.spyclash.ios',environment:'Sandbox',originalTransactionId:appleID(),
+   transactionId:appleID(),appAccountToken:historicalToken,expiresDate:Date.now()+3600000,signedDate:Date.now()};
+ assert.equal((await db`select 1 from app_private.apple_accounts where app_account_token=${historicalToken}`).length,0);
+ const evidence=await prepareMembershipExternal({actor,body,config},{db,verify:async()=>({transaction,status:1,checkedAtMilliseconds:Date.now()})});
+ await assert.rejects(call(actor,body,evidence),e=>e.status===409&&e.code==='purchase_owner_mismatch');
+ assert.equal((await call(actor,{action:'check'})).active,false);
+ assert.equal((await db`select 1 from app_private.entitlements where user_id=${actor.id}`).length,0);
+ assert.equal((await db`select 1 from app_private.apple_accounts where app_account_token=${historicalToken}`).length,0);
+ assert.equal((await db`select app_account_token from app_private.apple_accounts where user_id=${actor.id}`)[0].app_account_token,prepared.app_account_token);
+});
 test('canonical refresh reconciles expired owned subscription renewal and refund',async()=>{const a=await fixture(),purchase=await bought(a,{expires:Date.now()-60000,status:2});await stale(a);let reads=0;const input={actor:a,body:{service:'membership',action:'check'},config};const refreshed=await refreshNativeMembership(input,{db,verify:async()=>{reads++;return {transaction:{...purchase.transaction,expiresDate:Date.now()+3600000},status:1};}});assert.equal(refreshed.SPYCLASH_LIMITLESS_ENABLED,'true');assert.equal(reads,1);assert.equal((await call(a,{action:'check'})).active,true);await stale(a);await refreshNativeMembership({...input,body:{service:'legacy',action:'generate_word_pack'}},{db,verify:async()=>({transaction:{...purchase.transaction,expiresDate:Date.now()+3600000},status:5})});assert.equal((await call(a,{action:'check'})).active,false);});
 test('Apple outage fails closed without overwriting the last owned entitlement',async()=>{const a=await fixture();await bought(a);await stale(a);await assert.rejects(refreshNativeMembership({actor:a,body:{service:'profile',action:'update_profile',spy_card_theme:'blacksite'},config},{db,verify:async()=>{throw new Error('offline');}}),e=>e.code==='apple_status_unavailable'&&e.status===503&&e.retryable);assert.equal((await db`select active from app_private.entitlements where user_id=${a.id}`)[0].active,true);});
 test('refresh after concurrent account deletion cannot reactivate a purchase',async()=>{const a=await fixture(),purchase=await bought(a);await stale(a);await assert.rejects(refreshNativeMembership({actor:a,body:{service:'membership',action:'check'},config},{db,verify:async()=>{await db`update app_private.profiles set state='deleted' where user_id=${a.id}`;await db`update app_private.entitlements set active=false where user_id=${a.id}`;return {transaction:purchase.transaction,status:1};}}),e=>e.code==='account_unavailable');assert.equal((await db`select active from app_private.entitlements where user_id=${a.id}`)[0].active,false);});
