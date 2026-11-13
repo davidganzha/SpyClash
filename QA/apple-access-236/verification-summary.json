@@ -10,11 +10,15 @@
   "fullSourceTypecheck": "passed",
   "candidateTypecheck": "passed",
   "diagnosticTestsPassed": 10,
-  "deployed": false,
+  "deployed": true,
   "finalSessionWorkers": 2,
   "finalSessionPoolMaxPerWorker": 1,
   "finalConcurrentRequestsPassed": 234,
   "finalMaximumRequestMilliseconds": 2930,
   "runtime": "Supabase Edge Runtime 1.77.9 / Deno 2.1.4",
-  "exactProductionHangReproduced": false
+  "exactProductionHangReproduced": false,
+  "deployedVersion": 26,
+  "publicationReadbackExactMatch": true,
+  "scheduledMaintenanceStatus": 200,
+  "realUserPurchaseConfirmed": false
 }
