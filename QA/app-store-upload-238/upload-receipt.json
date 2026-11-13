@@ -1,0 +1,23 @@
+{
+  "uploaded_at_utc": "2026-11-13T02:23:29Z",
+  "app_id": "6793534085",
+  "bundle_id": "com.spyclash.ios",
+  "version": "1.0.4",
+  "build": "238",
+  "source_commit": "0f78ae222264e08d5dd122f69bae12a773f3f627",
+  "ipa_sha256": "aed443ff64d1580c1183c417a442498a7fa8fe77fac02b62a9f08cb59a4e50f4",
+  "ipa_bytes": 19085603,
+  "delivery_uuid": "0aa55760-da71-4622-a1b3-e3ecc9aa673f",
+  "upload_result": "succeeded, no errors",
+  "processing_state": "VALID",
+  "user_authorization": "Explicit approval in current chat to upload exact build 238",
+  "backend_changes": false,
+  "app_review_submission": false,
+  "public_release": false,
+  "testflight_promotion_requested": false,
+  "verified_at_utc": "2026-11-13T02:26:47.147487+00:00",
+  "apple_build_id": "0aa55760-da71-4622-a1b3-e3ecc9aa673f",
+  "build_audience": "APP_STORE_ELIGIBLE",
+  "internal_beta_state": "READY_FOR_BETA_TESTING",
+  "external_beta_state": "READY_FOR_BETA_SUBMISSION"
+}

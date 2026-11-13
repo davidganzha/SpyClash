@@ -1,0 +1,18 @@
+Running altool at path '/Applications/Xcode.app/Contents/SharedFrameworks/ContentDelivery.framework/Resources/altool'...
+
+2026-11-13 02:23:29.404  INFO: [ContentDelivery.Uploader.C18C20440]
+==========================================
+UPLOAD SUCCEEDED with no errors
+Delivery UUID: 0aa55760-da71-4622-a1b3-e3ecc9aa673f
+Transferred 19085603 bytes in 1.371 seconds (13.9MB/s, 111.367Mbps)
+==========================================
+{
+  "details" : {
+    "delivery-uuid" : "0aa55760-da71-4622-a1b3-e3ecc9aa673f",
+    "transferred" : "19085603 bytes in 1.371 seconds (13.9MB/s, 111.367Mbps)"
+  },
+  "os-version" : "Version 26.5.2 (Build 25F84)",
+  "success-message" : "No errors uploading archive at '/Users/davidganzha/Documents/SpyClash/output/AppStore-238-20261113/SpyClash-1.0.4-238.ipa'.",
+  "tool-path" : "/Applications/Xcode.app/Contents/SharedFrameworks/ContentDelivery.framework/Resources",
+  "tool-version" : "26.40.1 (174001)"
+}
