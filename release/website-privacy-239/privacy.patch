@@ -1,0 +1,20 @@
+--- a/src/pages/PrivacyPolicy.jsx
++++ b/src/pages/PrivacyPolicy.jsx
+@@ -14,7 +14,7 @@
+           <h1 style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 36, letterSpacing: 3, marginBottom: 8, color: "#fff" }}>
+             PRIVACY POLICY
+           </h1>
+-          <div style={{ color: "#444", fontSize: 11, letterSpacing: 2, marginBottom: 48 }}>Last updated: October 2026</div>
++          <div style={{ color: "#444", fontSize: 11, letterSpacing: 2, marginBottom: 48 }}>Last updated: November 2026</div>
+ 
+           <div style={{ display: "flex", flexDirection: "column", gap: 36 }}>
+             {[
+@@ -36,7 +36,7 @@
+               },
+               {
+                 title: "5. PRODUCT METRICS AND WEBSITE STORAGE",
+-                text: "SpyClash retains the limited account-linked product-interaction records described above for app functionality and feature-reliability analytics. The website uses local storage for language and authentication session state. Automatic Google Analytics and Base44 website-usage analytics are disabled in the release website; the native iOS app does not include Google Analytics, advertising, or cross-app tracking SDKs."
++                text: "SpyClash retains the limited account-linked product-interaction records described above for app functionality and feature-reliability analytics. The website uses local storage for language and authentication session state. Automatic third-party and platform website-usage analytics are disabled in the release website; the native iOS app includes Unity Ads for optional advertisements that earn an additional generation. We configure non-personalized ads and send denied-consent and opt-out signals before SDK initialization. This does not mean no data is collected. Unity may process coarse location, identifiers, purchases, interactions, advertising, usage, performance, and device data for advertising, analytics, and SDK functionality; ad reports may be used for support. SpyClash retains account-linked viewing attempts and reward confirmations to grant generations and prevent duplicate credits. We do not send Unity your words, roles, or room content. See https://unity.com/legal/game-player-and-app-user-privacy-policy and the ad privacy icon for Unity's practices and data controls. Active verified LIMITLESS provides generation without these advertisements."
+               },
+               {
+                 title: "6. CHILDREN'S PRIVACY",

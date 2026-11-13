@@ -1,0 +1,16 @@
+{
+  "target": "https://spyclash.com/privacypolicy",
+  "app_id": "69a0e57fa939f578082f8091",
+  "source_file": "src/pages/PrivacyPolicy.jsx",
+  "before_sha256": "01d4d0f1f1d58830a92721622871bea1a79e884dc4697251e0c73c9bdd8e6c6c",
+  "after_sha256": "bc9a604a2e16b85934a2a4717524f2f1264d64090cbafaad0db1a746a9bec19d",
+  "published_baseline_all_5_files_verified": true,
+  "rebuild_baseline_all_5_files_exact": true,
+  "scope": "Existing English policy section5 and revisiondate only",
+  "supersedes_unpublished_website_candidate": "36f61fbcb0dcb7090ed2add2bb30dedb153ab63f",
+  "published": false,
+  "archive_sha256": "3c7ddd90d0a90b94a02fd1a395b0efcf2fd45ae2d1d754fdca05e7ed8ae9132b",
+  "archive_bytes": 465348,
+  "archive_path": ".local/privacy238-live/site-deploy-239.tar.gz",
+  "independent_review": "Only section5/date and resulting asset filenames differ; all other compiled bytes preserved."
+}

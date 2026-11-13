@@ -1,0 +1,18 @@
+{
+  "baseline": {
+    "index.html": "cc1b88c104bfcfd770f3de59c31e764e112a066634f17a9c423988f5620113d9",
+    "manifest.json": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11",
+    "assets/bootstrap-8g2kJx7T.css": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5",
+    "assets/index-D_lZovGv.js": "a5de9bdadd67b18d305c43fe0b717d2f85461c46ca1fdbe4eea7827ec55ddf02",
+    "assets/bootstrap-Obo3117u.js": "7c553db88c918a63ee38bcabb83545ba6fbacb4f81dc687d8dbdc47e57f34bdf"
+  },
+  "candidate": {
+    "index.html": "627559d4313ff6f85604cc7ede6f7f8c6883662ad1133c31004950c440f45986",
+    "manifest.json": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11",
+    "assets/bootstrap-8g2kJx7T.css": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5",
+    "assets/bootstrap-CTjV6uxF.js": "4152376da27a77cc3b6d6b8f5fc2291be07b4cc54933dc35f85e1b7113488f9f",
+    "assets/index-CeFJNfyr.js": "d217ecb234dc908db75fc4c2bc68b26ac11bab88b1b38483a2b6ab6a60b15d2a"
+  },
+  "unchanged_prefix_chars": 828135,
+  "unchanged_suffix_chars": 733528
+}
