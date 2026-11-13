@@ -1,0 +1,267 @@
+[
+  {
+    "label": "before-en-reference",
+    "method": "GET",
+    "path": "/v1/appStoreVersionLocalizations/0beefb59-0a8f-440e-b9ca-4ae495353a84",
+    "started": "2026-11-13T10:18:11.183Z",
+    "completed": "2026-11-13T10:18:11.723Z",
+    "status": 200,
+    "resourceId": "0beefb59-0a8f-440e-b9ca-4ae495353a84"
+  },
+  {
+    "label": "before-monthly-version",
+    "method": "GET",
+    "path": "/v1/subscriptionVersions/ad15b177-6482-4129-9c47-3ebfafb0a633",
+    "started": "2026-11-13T10:18:11.178Z",
+    "completed": "2026-11-13T10:18:11.725Z",
+    "status": 200,
+    "resourceId": "ad15b177-6482-4129-9c47-3ebfafb0a633"
+  },
+  {
+    "label": "before-app-versions",
+    "method": "GET",
+    "path": "/v1/apps/6793534085/appStoreVersions?filter[platform]=IOS&limit=200",
+    "started": "2026-11-13T10:18:11.181Z",
+    "completed": "2026-11-13T10:18:11.727Z",
+    "status": 200
+  },
+  {
+    "label": "before-build",
+    "method": "GET",
+    "path": "/v1/builds/0aa55760-da71-4622-a1b3-e3ecc9aa673f?include=preReleaseVersion,app",
+    "started": "2026-11-13T10:18:11.181Z",
+    "completed": "2026-11-13T10:18:11.749Z",
+    "status": 200,
+    "resourceId": "0aa55760-da71-4622-a1b3-e3ecc9aa673f"
+  },
+  {
+    "label": "before-monthly",
+    "method": "GET",
+    "path": "/v1/subscriptions/6825982027?fields[subscriptions]=productId,state,subscriptionPeriod,reviewNote",
+    "started": "2026-11-13T10:18:11.129Z",
+    "completed": "2026-11-13T10:18:11.757Z",
+    "status": 200,
+    "resourceId": "6825982027"
+  },
+  {
+    "label": "before-group",
+    "method": "GET",
+    "path": "/v1/betaGroups/47a13858-b43b-44a1-bf3e-285722cec320?include=app",
+    "started": "2026-11-13T10:18:11.183Z",
+    "completed": "2026-11-13T10:18:11.810Z",
+    "status": 200,
+    "resourceId": "47a13858-b43b-44a1-bf3e-285722cec320"
+  },
+  {
+    "label": "before-monthly-locales",
+    "method": "GET",
+    "path": "/v1/subscriptionVersions/ad15b177-6482-4129-9c47-3ebfafb0a633/localizations",
+    "started": "2026-11-13T10:18:11.180Z",
+    "completed": "2026-11-13T10:18:11.987Z",
+    "status": 200
+  },
+  {
+    "label": "save-monthly-note",
+    "method": "PATCH",
+    "path": "/v1/subscriptions/6825982027",
+    "started": "2026-11-13T10:18:11.988Z",
+    "completed": "2026-11-13T10:18:12.155Z",
+    "status": 409,
+    "requestSHA256": "a358d7884dff1dae75c1ece0f0366416ca01b7e27ece5707353b14906d00feb0",
+    "errors": [
+      {
+        "code": "ENTITY_ERROR.ATTRIBUTE.NOT_ALLOWED",
+        "title": "An attribute in the provided entity is not allowed for this request",
+        "detail": "The attribute 'reviewNote' can not be included in a 'CREATE' operation"
+      }
+    ]
+  },
+  {
+    "label": "before-en-reference",
+    "method": "GET",
+    "path": "/v1/appStoreVersionLocalizations/0beefb59-0a8f-440e-b9ca-4ae495353a84",
+    "started": "2026-11-13T10:19:02.739Z",
+    "completed": "2026-11-13T10:19:03.190Z",
+    "status": 200,
+    "resourceId": "0beefb59-0a8f-440e-b9ca-4ae495353a84"
+  },
+  {
+    "label": "before-app-versions",
+    "method": "GET",
+    "path": "/v1/apps/6793534085/appStoreVersions?filter[platform]=IOS&limit=200",
+    "started": "2026-11-13T10:19:02.738Z",
+    "completed": "2026-11-13T10:19:03.209Z",
+    "status": 200
+  },
+  {
+    "label": "before-monthly-locales",
+    "method": "GET",
+    "path": "/v1/subscriptionVersions/ad15b177-6482-4129-9c47-3ebfafb0a633/localizations",
+    "started": "2026-11-13T10:19:02.738Z",
+    "completed": "2026-11-13T10:19:03.219Z",
+    "status": 200
+  },
+  {
+    "label": "before-build",
+    "method": "GET",
+    "path": "/v1/builds/0aa55760-da71-4622-a1b3-e3ecc9aa673f?include=preReleaseVersion,app",
+    "started": "2026-11-13T10:19:02.739Z",
+    "completed": "2026-11-13T10:19:03.261Z",
+    "status": 200,
+    "resourceId": "0aa55760-da71-4622-a1b3-e3ecc9aa673f"
+  },
+  {
+    "label": "before-group",
+    "method": "GET",
+    "path": "/v1/betaGroups/47a13858-b43b-44a1-bf3e-285722cec320?include=app",
+    "started": "2026-11-13T10:19:02.739Z",
+    "completed": "2026-11-13T10:19:03.297Z",
+    "status": 200,
+    "resourceId": "47a13858-b43b-44a1-bf3e-285722cec320"
+  },
+  {
+    "label": "before-monthly-version",
+    "method": "GET",
+    "path": "/v1/subscriptionVersions/ad15b177-6482-4129-9c47-3ebfafb0a633",
+    "started": "2026-11-13T10:19:02.737Z",
+    "completed": "2026-11-13T10:19:03.386Z",
+    "status": 200,
+    "resourceId": "ad15b177-6482-4129-9c47-3ebfafb0a633"
+  },
+  {
+    "label": "before-monthly",
+    "method": "GET",
+    "path": "/v1/subscriptions/6825982027?fields[subscriptions]=productId,state,subscriptionPeriod,reviewNote",
+    "started": "2026-11-13T10:19:02.709Z",
+    "completed": "2026-11-13T10:19:03.854Z",
+    "status": 200,
+    "resourceId": "6825982027"
+  },
+  {
+    "label": "create-monthly-uk",
+    "method": "POST",
+    "path": "/v2/subscriptionLocalizations",
+    "started": "2026-11-13T10:19:03.855Z",
+    "completed": "2026-11-13T10:19:04.040Z",
+    "status": 403,
+    "requestSHA256": "d1cca2dc10c36d072b40d971ea85b02361555cdd1982650f53b4ddf0730d62ba",
+    "errors": [
+      {
+        "code": "FORBIDDEN_ERROR",
+        "title": "This request is forbidden for security reasons",
+        "detail": "The API key in use does not allow this request"
+      }
+    ]
+  },
+  {
+    "label": "before-en-reference",
+    "method": "GET",
+    "path": "/v1/appStoreVersionLocalizations/0beefb59-0a8f-440e-b9ca-4ae495353a84",
+    "started": "2026-11-13T10:21:04.433Z",
+    "completed": "2026-11-13T10:21:04.930Z",
+    "status": 200,
+    "resourceId": "0beefb59-0a8f-440e-b9ca-4ae495353a84"
+  },
+  {
+    "label": "before-app-versions",
+    "method": "GET",
+    "path": "/v1/apps/6793534085/appStoreVersions?filter[platform]=IOS&limit=200",
+    "started": "2026-11-13T10:21:04.431Z",
+    "completed": "2026-11-13T10:21:04.943Z",
+    "status": 200
+  },
+  {
+    "label": "before-monthly-version",
+    "method": "GET",
+    "path": "/v1/subscriptionVersions/ad15b177-6482-4129-9c47-3ebfafb0a633",
+    "started": "2026-11-13T10:21:04.429Z",
+    "completed": "2026-11-13T10:21:04.952Z",
+    "status": 200,
+    "resourceId": "ad15b177-6482-4129-9c47-3ebfafb0a633"
+  },
+  {
+    "label": "before-monthly",
+    "method": "GET",
+    "path": "/v1/subscriptions/6825982027?fields[subscriptions]=productId,state,subscriptionPeriod,reviewNote",
+    "started": "2026-11-13T10:21:04.395Z",
+    "completed": "2026-11-13T10:21:04.975Z",
+    "status": 200,
+    "resourceId": "6825982027"
+  },
+  {
+    "label": "before-build",
+    "method": "GET",
+    "path": "/v1/builds/0aa55760-da71-4622-a1b3-e3ecc9aa673f?include=preReleaseVersion,app",
+    "started": "2026-11-13T10:21:04.432Z",
+    "completed": "2026-11-13T10:21:04.998Z",
+    "status": 200,
+    "resourceId": "0aa55760-da71-4622-a1b3-e3ecc9aa673f"
+  },
+  {
+    "label": "before-monthly-locales",
+    "method": "GET",
+    "path": "/v1/subscriptionVersions/ad15b177-6482-4129-9c47-3ebfafb0a633/localizations",
+    "started": "2026-11-13T10:21:04.430Z",
+    "completed": "2026-11-13T10:21:05.251Z",
+    "status": 200
+  },
+  {
+    "label": "before-group",
+    "method": "GET",
+    "path": "/v1/betaGroups/47a13858-b43b-44a1-bf3e-285722cec320?include=app",
+    "started": "2026-11-13T10:21:04.432Z",
+    "completed": "2026-11-13T10:21:05.300Z",
+    "status": 200,
+    "resourceId": "47a13858-b43b-44a1-bf3e-285722cec320"
+  },
+  {
+    "label": "create-app-version",
+    "method": "POST",
+    "path": "/v1/appStoreVersions",
+    "started": "2026-11-13T10:21:05.302Z",
+    "completed": "2026-11-13T10:21:05.491Z",
+    "status": 403,
+    "requestSHA256": "fb2e64e96a183b51050048043f36945be920d85a4cbcd2fb492113b45428999e",
+    "errors": [
+      {
+        "code": "FORBIDDEN_ERROR",
+        "title": "This request is forbidden for security reasons",
+        "detail": "The API key in use does not allow this request"
+      }
+    ]
+  },
+  {
+    "label": "groups-before-assignment",
+    "method": "GET",
+    "path": "/v1/betaGroups?filter[builds]=0aa55760-da71-4622-a1b3-e3ecc9aa673f&fields[betaGroups]=name,isInternalGroup&limit=200",
+    "started": "2026-11-13T10:24:58.479Z",
+    "completed": "2026-11-13T10:24:59.152Z",
+    "status": 200
+  },
+  {
+    "label": "assign-limitless-internal",
+    "method": "POST",
+    "path": "/v1/builds/0aa55760-da71-4622-a1b3-e3ecc9aa673f/relationships/betaGroups",
+    "started": "2026-11-13T10:24:59.153Z",
+    "completed": "2026-11-13T10:24:59.814Z",
+    "status": 204,
+    "requestSHA256": "8ef0e2c88bd7c13c8a75f0d52205f83993b2da59d515f326f9fc96f724874c25"
+  },
+  {
+    "label": "groups-after-assignment",
+    "method": "GET",
+    "path": "/v1/betaGroups?filter[builds]=0aa55760-da71-4622-a1b3-e3ecc9aa673f&fields[betaGroups]=name,isInternalGroup&limit=200",
+    "started": "2026-11-13T10:24:59.814Z",
+    "completed": "2026-11-13T10:25:00.363Z",
+    "status": 200
+  },
+  {
+    "label": "beta-after-assignment",
+    "method": "GET",
+    "path": "/v1/builds/0aa55760-da71-4622-a1b3-e3ecc9aa673f/buildBetaDetail",
+    "started": "2026-11-13T10:24:59.816Z",
+    "completed": "2026-11-13T10:25:00.852Z",
+    "status": 200,
+    "resourceId": "0aa55760-da71-4622-a1b3-e3ecc9aa673f"
+  }
+]

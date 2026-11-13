@@ -1,0 +1,19 @@
+{
+  "observedAt": "2026-11-13T10:25:00.852Z",
+  "buildId": "0aa55760-da71-4622-a1b3-e3ecc9aa673f",
+  "buildNumber": "238",
+  "assignedGroups": [
+    {
+      "id": "47a13858-b43b-44a1-bf3e-285722cec320",
+      "name": "LIMITLESS Internal QA",
+      "isInternalGroup": true
+    }
+  ],
+  "buildBetaDetail": {
+    "autoNotifyEnabled": true,
+    "internalBuildState": "IN_BETA_TESTING",
+    "externalBuildState": "READY_FOR_BETA_SUBMISSION"
+  },
+  "externalGroupsAdded": false,
+  "uploadedAgain": false
+}

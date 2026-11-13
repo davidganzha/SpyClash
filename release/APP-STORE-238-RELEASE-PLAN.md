@@ -4,6 +4,17 @@ This is a reviewable plan, not authorization. Every production operation needs
 fresh explicit confirmation in the current chat. Build, signing, validation,
 Git checkpoints and local tests do not constitute upload, activation or release.
 
+Execution update, 13 November 2026: build238 was uploaded and processed VALID;
+the separately approved three Supabase/four Base44 functions and two additive
+schemas are deployed. The draft1.0.4 and internal LIMITLESS QA assignment are
+prepared in App Store Connect. See `APP-STORE-238-UPLOAD.md`,
+`../QA/app-store-server-rollout-238/README.md` and `../QA/app-store-metadata-238/`.
+The actual published website required the corrected policy-only candidate in
+`website-privacy-239/README.md`, now published after approval. The earlier
+four-language website candidate below was not deployed. iOS binary238 is unchanged;
+239 is the scoped website-content source checkpoint. Activation and review gates
+below remain separate until their own receipts exist.
+
 ## Exact targets
 
 - App Store Connect app `6793534085`, bundle `com.spyclash.ios`.
@@ -15,8 +26,8 @@ Git checkpoints and local tests do not constitute upload, activation or release.
 - Base44 canonical app `69a0e57fa939f578082f8091`: reviewed
   `app-store-entitlement`, `generateWordPack`, `generationRewardAction`,
   `deleteAccount` and GenerationRewardEnrollment schema only.
-- Public privacy page: `https://spyclash.com/privacypolicy`, reviewed website
-  candidate commit `36f61fbc`. No other website feature change is included.
+- Public privacy page: `https://spyclash.com/privacypolicy`, corrected actual-live
+  candidate in `website-privacy-239/`. No other website feature change is included.
 
 ## Server preparation and rollout
 

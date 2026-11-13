@@ -1,0 +1,46 @@
+{
+  "operation": "local metadata payload preparation only",
+  "createdAt": "2026-11-13T10:14:44.346748+00:00",
+  "files": [
+    {
+      "path": "01-monthly-review-note.json",
+      "sha256": "b776aee5958fc36ca2298622d64c26286af40d60ee13e6082022793ab2b4da36"
+    },
+    {
+      "path": "02-monthly-uk-localization.json",
+      "sha256": "98971ab406acecd8885ed9f3ddd1da7072286594dffd9d1c69747dda7f2dde7f"
+    },
+    {
+      "path": "03-app-version-1.0.4.json",
+      "sha256": "578957824eb9be2cb256c8d137f5bdddd5781762abafaaf703155d374eb2199d"
+    },
+    {
+      "path": "04-app-en-localization-create.template.json",
+      "sha256": "37421636ca6789f8632bbef95537fa0c3525b4891e4eac052ecbe464ae2d7fe8"
+    },
+    {
+      "path": "04-app-en-localization-patch.template.json",
+      "sha256": "3176ff6d53e8bba417bc64b04a3c04b2ea74174539b42aa8a05555724156caec"
+    },
+    {
+      "path": "05-review-screenshot-reservation.template.json",
+      "sha256": "94bdff67ab163382ec7b49c6d2788d4cffa93b0490e79c7aebd803f505eb22e3"
+    },
+    {
+      "path": "06-review-screenshot-commit.template.json",
+      "sha256": "f911e565b4680fdfef313c7211b50084774768ccf99252dc8aff74fccc2c7242"
+    },
+    {
+      "path": "07-testflight-limitless-internal-group.json",
+      "sha256": "b8d544a4ad3880d72dc8a49216d82b37d8be799c371b32b9ac87f7bacb1cce94"
+    },
+    {
+      "path": "README.md",
+      "sha256": "2827e37975f09eed7af0688174dea711427c2eb090ab3c9210537b14979029fd"
+    },
+    {
+      "path": "asc-readback-status.json",
+      "sha256": "bfbe147e20ab8f1b716b0fca4d5dfe179e5f40b0359123431b187316fb912a31"
+    }
+  ]
+}

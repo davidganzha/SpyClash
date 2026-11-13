@@ -1,0 +1,60 @@
+{
+  "checked_at": "2026-11-13T10:25:37.245833+00:00",
+  "read_only": true,
+  "app_id": "69a0e57fa939f578082f8091",
+  "functions": {
+    "app-store-entitlement": {
+      "files": 16,
+      "exact_manifest_match": true,
+      "entry_matches": true,
+      "automations_preserved": true
+    },
+    "generateWordPack": {
+      "files": 18,
+      "exact_manifest_match": true,
+      "entry_matches": true,
+      "automations_preserved": true
+    },
+    "generationRewardAction": {
+      "files": 9,
+      "exact_manifest_match": true,
+      "entry_matches": true,
+      "automations_preserved": true
+    },
+    "deleteAccount": {
+      "files": 15,
+      "exact_manifest_match": true,
+      "entry_matches": true,
+      "automations_preserved": true
+    }
+  },
+  "total_functions": 22,
+  "unrelated_function_bundles_preserved": 18,
+  "unrelated_function_bundles_changed": [],
+  "total_schemas": 29,
+  "existing_schemas_preserved": 28,
+  "new_schema_exact_source_match": true,
+  "new_schema_names": [
+    "GenerationRewardEnrollment"
+  ],
+  "website_publish_metadata_unchanged": true,
+  "website_publish_fields_compared": [
+    "logo_url",
+    "social_image_url",
+    "imported_repo_url",
+    "figma_source_url",
+    "github_repo_url",
+    "is_unpublished",
+    "screenshot_url",
+    "preview_screenshot_url",
+    "wix_metasite_published",
+    "wix_payments_app_url",
+    "shopify_shop_domain",
+    "shopify_claim_url_expires_at",
+    "last_unpublish_occurrence_id",
+    "environment_url"
+  ],
+  "no_function_invocations_or_mutations": true,
+  "all_functions_share_latest_recorded_deployment_id": true,
+  "deployment_id_note": "Live backend-functions reports one shared deployment ID across all22 functions, matching the final deleteAccount deployment receipt. Function code, entrypoints, automations and connector requirements were compared independently of this changing app-level ID."
+}

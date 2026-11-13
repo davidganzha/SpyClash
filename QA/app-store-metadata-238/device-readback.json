@@ -1,0 +1,11 @@
+{
+  "checked_at": "2026-11-13T10:31:25Z",
+  "bundle_id": "com.spyclash.ios",
+  "marketing_version": "1.0.4",
+  "installed_build": "238",
+  "method": "devicectl device info apps, exact bundle filter",
+  "user_reported_display_price": "USD2.99 per month",
+  "purchase_verified": false,
+  "monthly_restore_verified": false,
+  "review_screenshot_obtained": false
+}

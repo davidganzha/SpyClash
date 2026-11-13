@@ -1,0 +1,15 @@
+{
+  "target": "rewarded-generation-ssv",
+  "project_id": "bbkfsgnordtdiblgdzkg",
+  "version": 4,
+  "files": 11,
+  "verify_jwt": false,
+  "ezbr_sha256": "b05d063c9313eef3f7cb93057b0fef6dc8359d4d34126eb6bf529beae69b8712",
+  "exact_file_readback": true,
+  "flags_or_secrets_changed": false,
+  "at": "2026-11-13 10:15:07 UTC",
+  "operation": "deploy_edge_function",
+  "previous_version": 3,
+  "candidate_manifest": "QA/app-store-complete-238/rewards/supabase-rewarded-generation-ssv-manifest.json",
+  "candidate_manifest_sha256": "fc97e8e26e9a52fc675b6448286584e758546618b999435b869ffb57b12115e2"
+}

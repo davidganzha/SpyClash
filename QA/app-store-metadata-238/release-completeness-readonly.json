@@ -1,0 +1,27 @@
+{
+  "observedAt": "2026-11-13T10:32:22.569017+00:00",
+  "reviewContact": {
+    "allRequiredContactFieldsPresent": true,
+    "sameAsLive103": true,
+    "demoAccountRequired": true,
+    "oldNotesSHA256": "1f9f23b94083b441a980bc0a89d571fb4c875e17920a93ef4d63b48a549d3ee9",
+    "oldNotesVersionStale": true,
+    "oldNotesPeriodStale": true,
+    "demoCredentialPresenceCheckedWithoutPrintingOrRetainingValues": true,
+    "demoAccountNamePresent": true,
+    "demoAccountPasswordPresent": true
+  },
+  "listingScreenshots": {
+    "count": 5,
+    "allComplete": true,
+    "sameFilenamesSizesChecksumsAndStatesAs103": true
+  },
+  "ageRating": {
+    "draftId": "08a99022-5f91-48eb-bde3-bd658f2c860e",
+    "draftAdvertising": false,
+    "liveAdvertising": false,
+    "proposalOnlyAdvertisingTrue": true,
+    "otherAnswersUnchanged": true
+  },
+  "noWritesPerformedDuringThisAudit": true
+}

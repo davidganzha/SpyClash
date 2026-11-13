@@ -1,0 +1,34 @@
+{
+  "observedAt": "2026-11-13T10:22:12.695872+00:00",
+  "method": "Approved fields saved through current signed-in Apple UI after API key permission/attribute rejections",
+  "subscriptionId": "6825982027",
+  "reviewNoteExactMatch": true,
+  "reviewNote": "LIMITLESS Monthly is an auto-renewable subscription for one month. In the app, sign in, open the LIMITLESS subscription screen from the profile, and tap Subscribe. The app displays StoreKit's localized price and monthly period. Use Restore Purchases on the same screen to restore an existing entitlement. Existing weekly subscriptions are still recognized and are not converted by this update. Paid access is granted only after server verification. The subscription provides unlimited AI word-pack generation, avatar and Spycard customization, full match history and advanced statistics. The base party game remains available without subscribing. Optional rewarded ads are for extra free-account generations; LIMITLESS does not require them.",
+  "localizations": [
+    {
+      "id": "cd1bec50-2b7a-476d-9922-2ac217b52190",
+      "name": "SpyClash LIMITLESS на місяць",
+      "locale": "uk",
+      "description": "Безлімітні AI-слова та преміальні теми SpyClash."
+    },
+    {
+      "id": "ad0e55cb-46f7-483b-9da8-e2df7e42cff2",
+      "name": "SpyClash LIMITLESS mensual",
+      "locale": "es-ES",
+      "description": "Palabras IA ilimitadas y todos los temas premium."
+    },
+    {
+      "id": "6029a078-e66e-4e9c-b18e-5fcd60993bda",
+      "name": "SpyClash LIMITLESS на месяц",
+      "locale": "ru",
+      "description": "Безлимитные AI-слова и премиальные темы SpyClash."
+    },
+    {
+      "id": "2a9df28a-63cd-4493-9019-8aca331311d6",
+      "name": "SpyClash LIMITLESS Monthly",
+      "locale": "en-US",
+      "description": "Unlimited AI words and all premium SpyClash themes."
+    }
+  ],
+  "noReviewSubmission": true
+}

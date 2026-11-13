@@ -1,0 +1,15 @@
+{
+  "checked_at": "2026-11-13T10:26:31.197775+00:00",
+  "project_id": "bbkfsgnordtdiblgdzkg",
+  "read_only": true,
+  "presence": {
+    "UNITY_ADS_S2S_SECRET": false,
+    "UNITY_ADS_GAME_ID": false,
+    "UNITY_ADS_REWARDED_PLACEMENT_ID": false,
+    "SPYCLASH_REWARDED_AD_PROVIDER": false,
+    "SPYCLASH_LIMITLESS_APPLE_MONTHLY_PURCHASE_ENABLED": false
+  },
+  "rewarded_generation_flag_matches_false": true,
+  "unchanged_from_pre_rollout_audit": true,
+  "secret_values_or_digests_recorded": false
+}

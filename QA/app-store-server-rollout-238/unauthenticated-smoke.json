@@ -1,0 +1,36 @@
+{
+  "at": "2026-11-13T10:17:03.202855+00:00",
+  "tests": [
+    {
+      "function": "app-services",
+      "method": "GET",
+      "authenticated": false,
+      "http_status": 401,
+      "expected_status": 401,
+      "matches_expected": true,
+      "code": "UNAUTHORIZED_NO_AUTH_HEADER",
+      "meaning": "JWT gateway rejects absent authorization"
+    },
+    {
+      "function": "full-game-core",
+      "method": "GET",
+      "authenticated": false,
+      "http_status": 401,
+      "expected_status": 401,
+      "matches_expected": true,
+      "code": "UNAUTHORIZED_NO_AUTH_HEADER",
+      "meaning": "JWT gateway rejects absent authorization"
+    },
+    {
+      "function": "rewarded-generation-ssv",
+      "method": "GET",
+      "authenticated": false,
+      "http_status": 400,
+      "expected_status": 400,
+      "matches_expected": true,
+      "code": "invalid_reward_signature",
+      "meaning": "public callback runtime rejects missing provider signature"
+    }
+  ],
+  "account_or_provider_mutations": false
+}

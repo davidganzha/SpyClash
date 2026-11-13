@@ -1,0 +1,14 @@
+{
+  "at": "2026-11-13T10:10:41.723082+00:00",
+  "project_id": "bbkfsgnordtdiblgdzkg",
+  "name": "rewarded_generation_enrollment",
+  "source": "experiments/supabase-game-core/supabase/migrations/20261111184822_rewarded_generation_enrollment.sql",
+  "source_sha256": "4e83b4bb81db338d5331b7134f8a2964110c51afbff5476b4d048a847b2c3536",
+  "apply_success": true,
+  "table": "game_center_private.generation_reward_enrollments",
+  "rls_enabled": true,
+  "anon_allowed": false,
+  "authenticated_allowed": false,
+  "flags_or_secrets_changed": false,
+  "applied_version": "20261113101004"
+}

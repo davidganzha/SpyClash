@@ -1,0 +1,18 @@
+{
+  "data": {
+    "type": "subscriptionLocalizations",
+    "attributes": {
+      "locale": "uk",
+      "name": "SpyClash LIMITLESS на місяць",
+      "description": "Безлімітні AI-слова та преміальні теми SpyClash."
+    },
+    "relationships": {
+      "version": {
+        "data": {
+          "type": "subscriptionVersions",
+          "id": "ad15b177-6482-4129-9c47-3ebfafb0a633"
+        }
+      }
+    }
+  }
+}

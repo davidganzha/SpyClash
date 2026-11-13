@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-13T10:13:34.644087+00:00",
+  "app_id": "69a0e57fa939f578082f8091",
+  "function": "app-store-entitlement",
+  "http_status": 200,
+  "deployment_status": "deployed",
+  "deployment_id": "cb4d4755a9234470845f6eda5e6848f7",
+  "entrypoint": "base44/functions/app-store-entitlement/entry.ts",
+  "files": 16,
+  "exact_file_readback": true,
+  "automations_preserved": true,
+  "candidate_manifest": "QA/app-store-complete-238/rewards/base44-app-store-entitlement-manifest.json",
+  "candidate_manifest_sha256": "fd7df904bb029213d75b3e63046c7dfbc46d6a55d674ce61ef64994ff2074980",
+  "flags_or_secrets_changed": false
+}

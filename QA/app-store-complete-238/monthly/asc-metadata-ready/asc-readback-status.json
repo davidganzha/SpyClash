@@ -1,0 +1,178 @@
+{
+  "observedAt": "2026-11-13T10:14:44.341549+00:00",
+  "currentReadbackAvailable": true,
+  "agreementBrowserReadback": {
+    "correctTeamConfirmed": true,
+    "programLicenseIssued": "2026-10-29",
+    "programLicenseAccepted": "2026-11-13",
+    "paidAppsStatus": "Active",
+    "paidAppsPeriod": [
+      "2026-10-26",
+      "2027-07-21"
+    ],
+    "freeAppsStatus": "Active",
+    "freeAppsPeriod": [
+      "2026-11-13",
+      "2027-07-21"
+    ],
+    "appsAgreementWarningAfterReload": false
+  },
+  "monthly": {
+    "id": "6825982027",
+    "name": "SpyClash LIMITLESS Monthly",
+    "productId": "com.spyclash.ios.limitless.monthly",
+    "state": "MISSING_METADATA",
+    "subscriptionPeriod": "ONE_MONTH",
+    "reviewNote": null,
+    "subscriptionVersion": {
+      "type": "subscriptionVersions",
+      "id": "ad15b177-6482-4129-9c47-3ebfafb0a633",
+      "attributes": {
+        "version": 1,
+        "state": "PREPARE_FOR_SUBMISSION"
+      },
+      "relationships": {
+        "image": {
+          "links": {
+            "self": "https://api.appstoreconnect.apple.com/v1/subscriptionVersions/ad15b177-6482-4129-9c47-3ebfafb0a633/relationships/image",
+            "related": "https://api.appstoreconnect.apple.com/v1/subscriptionVersions/ad15b177-6482-4129-9c47-3ebfafb0a633/image"
+          }
+        },
+        "images": {
+          "links": {
+            "self": "https://api.appstoreconnect.apple.com/v1/subscriptionVersions/ad15b177-6482-4129-9c47-3ebfafb0a633/relationships/images",
+            "related": "https://api.appstoreconnect.apple.com/v1/subscriptionVersions/ad15b177-6482-4129-9c47-3ebfafb0a633/images"
+          }
+        },
+        "localizations": {
+          "links": {
+            "self": "https://api.appstoreconnect.apple.com/v1/subscriptionVersions/ad15b177-6482-4129-9c47-3ebfafb0a633/relationships/localizations",
+            "related": "https://api.appstoreconnect.apple.com/v1/subscriptionVersions/ad15b177-6482-4129-9c47-3ebfafb0a633/localizations"
+          }
+        }
+      },
+      "links": {
+        "self": "https://api.appstoreconnect.apple.com/v1/subscriptionVersions/ad15b177-6482-4129-9c47-3ebfafb0a633"
+      }
+    },
+    "localizations": [
+      {
+        "id": "ad0e55cb-46f7-483b-9da8-e2df7e42cff2",
+        "name": "SpyClash LIMITLESS mensual",
+        "locale": "es-ES",
+        "description": "Palabras IA ilimitadas y todos los temas premium."
+      },
+      {
+        "id": "6029a078-e66e-4e9c-b18e-5fcd60993bda",
+        "name": "SpyClash LIMITLESS на месяц",
+        "locale": "ru",
+        "description": "Безлимитные AI-слова и премиальные темы SpyClash."
+      },
+      {
+        "id": "2a9df28a-63cd-4493-9019-8aca331311d6",
+        "name": "SpyClash LIMITLESS Monthly",
+        "locale": "en-US",
+        "description": "Unlimited AI words and all premium SpyClash themes."
+      }
+    ],
+    "reviewScreenshot": null,
+    "usaPrice": "2.99",
+    "availableInNewTerritories": true,
+    "subscriptionGroupId": "22256419",
+    "groupVersionState": "APPROVED"
+  },
+  "appVersion104Exists": false,
+  "build238": {
+    "id": "0aa55760-da71-4622-a1b3-e3ecc9aa673f",
+    "processingState": "VALID",
+    "buildAudienceType": "APP_STORE_ELIGIBLE",
+    "preReleaseTrain": {
+      "version": "1.0.4",
+      "platform": "IOS"
+    },
+    "internalBuildState": "READY_FOR_BETA_TESTING",
+    "externalBuildState": "READY_FOR_BETA_SUBMISSION",
+    "autoNotifyEnabled": true,
+    "assignedBetaGroups": []
+  },
+  "availableInternalGroups": [
+    {
+      "id": "47a13858-b43b-44a1-bf3e-285722cec320",
+      "name": "LIMITLESS Internal QA",
+      "hasAccessToAllBuilds": false
+    },
+    {
+      "id": "f41d2529-7451-4605-857b-d257d34df23b",
+      "name": "Supabase Main Internal QA",
+      "hasAccessToAllBuilds": false
+    }
+  ],
+  "noMutationsPerformed": true,
+  "snapshots": [
+    {
+      "name": "monthly",
+      "observedAt": "2026-11-13T10:12:42.863Z",
+      "sha256": "a1051d7de3b2e2f7304fde2509a131aa499f1151a0f4567349784d48d3b81871"
+    },
+    {
+      "name": "monthly-versions",
+      "observedAt": "2026-11-13T10:12:03.311Z",
+      "sha256": "e1fe939ffc064ac8a2c3d90d08c824c92911661d33bdc51b7f33d21a60748b48"
+    },
+    {
+      "name": "monthly-version-localizations",
+      "observedAt": "2026-11-13T10:12:03.557Z",
+      "sha256": "6bd7a44a9322227aadce9c9081f3b2accc090198430af9f7b96cc693477bf5fc"
+    },
+    {
+      "name": "monthly-review-screenshot",
+      "observedAt": "2026-11-13T10:12:42.207Z",
+      "sha256": "109c6e2c8a3bcf2460901a1a31de4473c64b51582e75196e429ccfc4380a7570"
+    },
+    {
+      "name": "monthly-us-price",
+      "observedAt": "2026-11-13T10:12:42.462Z",
+      "sha256": "476f01babebe33187d13bb65b1b9161e04f830b3ee8f451cd66c583c05dfaccf"
+    },
+    {
+      "name": "monthly-availability",
+      "observedAt": "2026-11-13T10:13:35.811Z",
+      "sha256": "18b179fcfd784ef8973bc21a65546ecf426d26d60e3904e51c2a265cc610912e"
+    },
+    {
+      "name": "subscription-group-versions",
+      "observedAt": "2026-11-13T10:13:11.364Z",
+      "sha256": "e597165b2fad81a302e7471cccc365d7cf4e54371ed6f0764191272357f19aae"
+    },
+    {
+      "name": "app-versions",
+      "observedAt": "2026-11-13T10:12:03.275Z",
+      "sha256": "84e15d6dc31458699a2599cdad95f60ba4e05d6da3a434961de21a629028a747"
+    },
+    {
+      "name": "build238",
+      "observedAt": "2026-11-13T10:12:03.408Z",
+      "sha256": "232a813fa369ecd99d9b8758251c6186c425a8976ba8e906d2165de8a6a4b281"
+    },
+    {
+      "name": "app-review-submissions",
+      "observedAt": "2026-11-13T10:12:03.872Z",
+      "sha256": "49a1bc1ae1998ef461d03a518f284eba0e89fbb491eedae9270aa2d4e85a0fcb"
+    },
+    {
+      "name": "app-beta-groups",
+      "observedAt": "2026-11-13T10:13:11.526Z",
+      "sha256": "25fd8ace691c9ca370940e8ee09a96e6747d8eee644951ae5fc5b9e7ab74da70"
+    },
+    {
+      "name": "build238-beta-groups",
+      "observedAt": "2026-11-13T10:13:43.291Z",
+      "sha256": "dd461a908779dcf62973acda411c3a2365f574b74c068ae65ca564976c60bc6e"
+    },
+    {
+      "name": "build238-beta-detail",
+      "observedAt": "2026-11-13T10:13:11.546Z",
+      "sha256": "9d8f69033d0372e5e97bf6d5cbb1789fbbd27ed43826b6cf545caf5a45cb82d4"
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "observedAt": "2026-11-13T10:26:39.473979+00:00",
+  "appId": "6793534085",
+  "appVersion": {
+    "id": "a29db5e9-0922-42cf-b084-e5bf5c51b348",
+    "versionString": "1.0.4",
+    "state": "PREPARE_FOR_SUBMISSION",
+    "releaseType": "MANUAL",
+    "buildId": "0aa55760-da71-4622-a1b3-e3ecc9aa673f",
+    "buildNumber": "238",
+    "englishLocaleId": "17da1775-51b7-4762-b32d-110f37434fca",
+    "description": "Someone in the room is bluffing. Can your team find them before they uncover the secret?\n\nSpyClash is a social deduction party game for friends. Play together in the same private room from iPhone or a web browser, or pass one iPhone around for a complete local match.\n\nTWO WAYS TO INTERROGATE\n• Questions: ask, answer, and watch for contradictions without revealing too much.\n• Associations: give one clue at a time and identify the player who does not know the word.\n\nBUILT FOR THE WHOLE GROUP\n• Create or join private rooms with a short code or QR invite.\n• Run ready checks, secret role reveals, timed rounds, accusations, voting, and rematches.\n• Play locally on one device when everyone is in the same room.\n• Add friends by Spy ID and compare competitive results on the leaderboard.\n\nMAKE EVERY MISSION YOURS\nCreate, edit, and save custom word packs. Generate fresh themes and word pools with AI when you need a new challenge. SpyClash is available in English, Spanish, Russian, and Ukrainian.\n\nFREE TO PLAY, OPTIONAL LIMITLESS\nThe base game is free. LIMITLESS is an optional monthly auto-renewable subscription that unlocks unlimited daily AI word generation, additional avatar and Spycard customization, full match history, and advanced statistics. Existing weekly subscriptions remain supported. Free accounts receive three AI word-pack generations each day and can choose to watch a rewarded ad for one additional generation. Active LIMITLESS members can generate without these ads.\n\nPayment is charged to your Apple account after confirmation. The subscription renews automatically unless cancelled at least 24 hours before the current period ends. Manage or cancel your subscription in your Apple account settings. Deleting your SpyClash account does not cancel your Apple subscription.\n\nPrivacy Policy: https://spyclash.com/privacypolicy\nTerms of Use (Apple Standard EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/",
+    "whatsNew": "New ways to mix up your next match, a clearer game introduction, and compact in-game controls. Explore 50 searchable theme ideas for your word packs. LIMITLESS now offers a monthly subscription, with improved purchase and restore handling. Free players can earn extra AI generations through optional ads. Includes improvements to invitations, room synchronization and game stability.",
+    "otherEnglishFieldsPreserved": true
+  },
+  "monthly": {
+    "id": "6825982027",
+    "productId": "com.spyclash.ios.limitless.monthly",
+    "period": "ONE_MONTH",
+    "state": "MISSING_METADATA",
+    "reviewNoteExactApprovedMatch": true,
+    "reviewNote": "LIMITLESS Monthly is an auto-renewable subscription for one month. In the app, sign in, open the LIMITLESS subscription screen from the profile, and tap Subscribe. The app displays StoreKit's localized price and monthly period. Use Restore Purchases on the same screen to restore an existing entitlement. Existing weekly subscriptions are still recognized and are not converted by this update. Paid access is granted only after server verification. The subscription provides unlimited AI word-pack generation, avatar and Spycard customization, full match history and advanced statistics. The base party game remains available without subscribing. Optional rewarded ads are for extra free-account generations; LIMITLESS does not require them.",
+    "locales": [
+      {
+        "id": "cd1bec50-2b7a-476d-9922-2ac217b52190",
+        "name": "SpyClash LIMITLESS на місяць",
+        "locale": "uk",
+        "description": "Безлімітні AI-слова та преміальні теми SpyClash."
+      },
+      {
+        "id": "ad0e55cb-46f7-483b-9da8-e2df7e42cff2",
+        "name": "SpyClash LIMITLESS mensual",
+        "locale": "es-ES",
+        "description": "Palabras IA ilimitadas y todos los temas premium."
+      },
+      {
+        "id": "6029a078-e66e-4e9c-b18e-5fcd60993bda",
+        "name": "SpyClash LIMITLESS на месяц",
+        "locale": "ru",
+        "description": "Безлимитные AI-слова и премиальные темы SpyClash."
+      },
+      {
+        "id": "2a9df28a-63cd-4493-9019-8aca331311d6",
+        "name": "SpyClash LIMITLESS Monthly",
+        "locale": "en-US",
+        "description": "Unlimited AI words and all premium SpyClash themes."
+      }
+    ],
+    "existingLocalesPreserved": true,
+    "reviewScreenshot": null,
+    "otherProductSettingsPreserved": true,
+    "USAPrice": "2.99",
+    "priceScheduleUnchanged": true
+  },
+  "weeklyUnchanged": true,
+  "internalTestFlight": {
+    "observedAt": "2026-11-13T10:25:00.852Z",
+    "buildId": "0aa55760-da71-4622-a1b3-e3ecc9aa673f",
+    "buildNumber": "238",
+    "assignedGroups": [
+      {
+        "id": "47a13858-b43b-44a1-bf3e-285722cec320",
+        "name": "LIMITLESS Internal QA",
+        "isInternalGroup": true
+      }
+    ],
+    "buildBetaDetail": {
+      "autoNotifyEnabled": true,
+      "internalBuildState": "IN_BETA_TESTING",
+      "externalBuildState": "READY_FOR_BETA_SUBMISSION"
+    },
+    "externalGroupsAdded": false,
+    "uploadedAgain": false
+  },
+  "inheritedAppListingScreenshots": {
+    "setCount": 1,
+    "screenshotCount": 5,
+    "states": [
+      "COMPLETE",
+      "COMPLETE",
+      "COMPLETE",
+      "COMPLETE",
+      "COMPLETE"
+    ]
+  },
+  "reviewSubmissions": {
+    "count": 4,
+    "states": [
+      "COMPLETE",
+      "COMPLETE",
+      "COMPLETE",
+      "COMPLETE"
+    ],
+    "newSubmissionCreated": false
+  },
+  "remaining": [
+    "Genuine monthly paywall review screenshot",
+    "App privacy label reconciliation and separate approval to publish",
+    "Device acceptance of the238 monthly subscription and integrated release"
+  ],
+  "publicReleasePerformed": false,
+  "draftRewardCopyDoesNotEstablishActivation": true
+}

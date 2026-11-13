@@ -1,0 +1,25 @@
+{
+  "data": {
+    "type": "appStoreVersions",
+    "attributes": {
+      "platform": "IOS",
+      "versionString": "1.0.4",
+      "releaseType": "MANUAL",
+      "copyright": "2026 David Ganzha"
+    },
+    "relationships": {
+      "app": {
+        "data": {
+          "type": "apps",
+          "id": "6793534085"
+        }
+      },
+      "build": {
+        "data": {
+          "type": "builds",
+          "id": "0aa55760-da71-4622-a1b3-e3ecc9aa673f"
+        }
+      }
+    }
+  }
+}

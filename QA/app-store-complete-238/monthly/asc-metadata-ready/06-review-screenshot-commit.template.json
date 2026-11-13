@@ -1,0 +1,10 @@
+{
+  "data": {
+    "type": "subscriptionAppStoreReviewScreenshots",
+    "id": "${SCREENSHOT_RESERVATION_ID}",
+    "attributes": {
+      "uploaded": true,
+      "sourceFileChecksum": "${ACTUAL_PNG_MD5}"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "data": {
+    "type": "appStoreVersionLocalizations",
+    "attributes": {
+      "locale": "en-US",
+      "description": "Someone in the room is bluffing. Can your team find them before they uncover the secret?\n\nSpyClash is a social deduction party game for friends. Play together in the same private room from iPhone or a web browser, or pass one iPhone around for a complete local match.\n\nTWO WAYS TO INTERROGATE\n• Questions: ask, answer, and watch for contradictions without revealing too much.\n• Associations: give one clue at a time and identify the player who does not know the word.\n\nBUILT FOR THE WHOLE GROUP\n• Create or join private rooms with a short code or QR invite.\n• Run ready checks, secret role reveals, timed rounds, accusations, voting, and rematches.\n• Play locally on one device when everyone is in the same room.\n• Add friends by Spy ID and compare competitive results on the leaderboard.\n\nMAKE EVERY MISSION YOURS\nCreate, edit, and save custom word packs. Generate fresh themes and word pools with AI when you need a new challenge. SpyClash is available in English, Spanish, Russian, and Ukrainian.\n\nFREE TO PLAY, OPTIONAL LIMITLESS\nThe base game is free. LIMITLESS is an optional monthly auto-renewable subscription that unlocks unlimited daily AI word generation, additional avatar and Spycard customization, full match history, and advanced statistics. Existing weekly subscriptions remain supported. Free accounts receive three AI word-pack generations each day and can choose to watch a rewarded ad for one additional generation. Active LIMITLESS members can generate without these ads.\n\nPayment is charged to your Apple account after confirmation. The subscription renews automatically unless cancelled at least 24 hours before the current period ends. Manage or cancel your subscription in your Apple account settings. Deleting your SpyClash account does not cancel your Apple subscription.\n\nPrivacy Policy: https://spyclash.com/privacypolicy\nTerms of Use (Apple Standard EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/",
+      "keywords": "party,deduction,multiplayer,word,detective,bluff,guessing,friends,pass-and-play,online",
+      "marketingUrl": "https://spyclash.com/",
+      "supportUrl": "https://spyclash.com/support",
+      "whatsNew": "New ways to mix up your next match, a clearer game introduction, and compact in-game controls. Explore 50 searchable theme ideas for your word packs. LIMITLESS now offers a monthly subscription, with improved purchase and restore handling. Free players can earn extra AI generations through optional ads. Includes improvements to invitations, room synchronization and game stability."
+    },
+    "relationships": {
+      "appStoreVersion": {
+        "data": {
+          "type": "appStoreVersions",
+          "id": "${APP_VERSION_ID_FROM_CREATE_OR_READBACK}"
+        }
+      }
+    }
+  }
+}

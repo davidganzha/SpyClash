@@ -1,0 +1,23 @@
+{
+  "checked_at": "2026-11-13T10:33:41.181222+00:00",
+  "user_override": "Refill only; user will submit. Prior automatic send approval revoked.",
+  "form_ready": true,
+  "fields": {
+    "url": "https://support-ads.unity.com/s/ContactUs",
+    "all_five_fields_retained_exactly": true,
+    "categories": [
+      "Unity Ads Monetization",
+      "Technical issue",
+      "S2S Redeem Callbacks",
+      "Other"
+    ],
+    "validation_errors": []
+  },
+  "subject": "Enable signed rewarded S2S callbacks \u2014 SpyClash iOS, Game ID 800429660",
+  "draft_body_sha256": "2056523554224362817b99f542fcd091978c4a2927c872d0c2254eded7bea070",
+  "submit_clicked_after_override": false,
+  "captcha_interaction_after_override": false,
+  "case_created_confirmed": false,
+  "previous_submission_status": "Unconfirmed: no new case ID or confirmation observed before override. Existing visible case00944732 was the older payout request.",
+  "unity_ui_actions_stopped": true
+}

@@ -1,0 +1,31 @@
+{
+  "checked_at": "2026-11-13T10:20:23.375Z",
+  "project_id": "bbkfsgnordtdiblgdzkg",
+  "independent_reader": "root",
+  "functions": [
+    {
+      "name": "app-services",
+      "version": 27,
+      "status": "ACTIVE",
+      "verify_jwt": true,
+      "ezbr_sha256": "9a01260f9942e5019492439a0ae8cec5fe82c9fcb6ef22dd4bf43b8aab997a75",
+      "files": 84
+    },
+    {
+      "name": "full-game-core",
+      "version": 17,
+      "status": "ACTIVE",
+      "verify_jwt": true,
+      "ezbr_sha256": "8cfded5737870a951e99188d21aaa6e0bec9350500e740974bee5b3f36b3d125",
+      "files": 51
+    },
+    {
+      "name": "rewarded-generation-ssv",
+      "version": 4,
+      "status": "ACTIVE",
+      "verify_jwt": false,
+      "ezbr_sha256": "b05d063c9313eef3f7cb93057b0fef6dc8359d4d34126eb6bf529beae69b8712",
+      "files": 11
+    }
+  ]
+}

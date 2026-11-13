@@ -1,0 +1,17 @@
+{
+  "data": {
+    "type": "subscriptionAppStoreReviewScreenshots",
+    "attributes": {
+      "fileName": "limitless-monthly-238.png",
+      "fileSize": "${ACTUAL_UNALTERED_PNG_BYTE_COUNT_INTEGER}"
+    },
+    "relationships": {
+      "subscription": {
+        "data": {
+          "type": "subscriptions",
+          "id": "6825982027"
+        }
+      }
+    }
+  }
+}

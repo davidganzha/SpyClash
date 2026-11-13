@@ -1,0 +1,26 @@
+{
+  "method": "Current signed-in App Store Connect UI, exact scoped fields only",
+  "reason": "API key rejected localization/app-version creation and API rejected reviewNote attribute; same approved fields saved through normal UI",
+  "operations": [
+    {
+      "action": "Save monthly reviewNote",
+      "resourceId": "6825982027",
+      "approvedPayloadSHA256": "b776aee5958fc36ca2298622d64c26286af40d60ee13e6082022793ab2b4da36",
+      "confirmedBy": "monthly-final GET exact match"
+    },
+    {
+      "action": "Create Ukrainian monthly localization",
+      "resourceId": "cd1bec50-2b7a-476d-9922-2ac217b52190",
+      "approvedPayloadSHA256": "98971ab406acecd8885ed9f3ddd1da7072286594dffd9d1c69747dda7f2dde7f",
+      "confirmedBy": "monthly-locales-after-ui GET exact match"
+    },
+    {
+      "action": "Create draft1.0.4, select238, preserve MANUAL release, save approved English fields",
+      "resourceId": "a29db5e9-0922-42cf-b084-e5bf5c51b348",
+      "confirmedBy": "app-version-final, app-version-build-final, app-version-locales-final GET exact comparisons"
+    }
+  ],
+  "clickedAddForReview": false,
+  "clickedRelease": false,
+  "changedOtherGroups": false
+}

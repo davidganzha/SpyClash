@@ -1,0 +1,69 @@
+{
+  "createdAt": "2026-11-13T10:39:28.154201+00:00",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "d8e4d9ca3ed006e7e34392ec3ac5d699d33401dbca18bed743030bef0a5fd3f6"
+    },
+    {
+      "path": "age-rating-advertising-proposal.json",
+      "sha256": "bf3f7f97542f9dbce4e73a2aa51d24c4904c99c4e27bf00e6c051a1e3d8684ad"
+    },
+    {
+      "path": "app-review-notes-proposal.json",
+      "sha256": "fdeb17e42a8c416265df50dfcc9efce279b52ee929e2f2346a8773832636887f"
+    },
+    {
+      "path": "authorization-scope.json",
+      "sha256": "73f9ca45dc96e930d5d189766b6cfeb7a289d2f687206b93cb073b4cccf36a41"
+    },
+    {
+      "path": "demo-credential-presence.json",
+      "sha256": "61fbe80281925021d97f63a0d8f8132244d694495484eb9d650680e3cc097c37"
+    },
+    {
+      "path": "device-readback.json",
+      "sha256": "f8d4137095e40b3550a7578d2f51e54b7d9db1347b7f96d0380a08cec6d95734"
+    },
+    {
+      "path": "internal-testflight-readback.json",
+      "sha256": "7b7f7bb126542a5b045d3483dc04204605d83409f7c62efb5486c58b191a4ace"
+    },
+    {
+      "path": "monthly-ui-readback.json",
+      "sha256": "f8daca946e656018ce6c3bdceb093d82a4dad597251baee9fd032e83e63872a4"
+    },
+    {
+      "path": "privacy-and-review-diff.md",
+      "sha256": "c1e74c96c6a03104d88af1e1a29138a8312f84d84ae8cbb5b517a67270253632"
+    },
+    {
+      "path": "privacy-current-ui.json",
+      "sha256": "9518f1b2d052fafcd2ab2e9cc0eecc40f96b8c1dc6f0d57c01455c460f88d12e"
+    },
+    {
+      "path": "privacy-label-proposal.json",
+      "sha256": "007a8b40eaa725f64f883dcbe68990560323f3577df0e75ececcddce8e3cf4c1"
+    },
+    {
+      "path": "readback.json",
+      "sha256": "a401e2287659bb9b4b7c063ad492b08e931d557fc219388e7a10d9fae789a7b6"
+    },
+    {
+      "path": "receipts.json",
+      "sha256": "92592ec23413ba12b7b74ba78394151a4eb38e8b8eba75769d4679264512848c"
+    },
+    {
+      "path": "release-completeness-readonly.json",
+      "sha256": "fffc360b1db45827e23596ffd3cb81440a2325519d3e07e63d826912210594be"
+    },
+    {
+      "path": "shipped238-privacy-manifests.json",
+      "sha256": "819b3b95c95fefa1e3e027e91d56562993d493c42e22163aceb957295e41a99c"
+    },
+    {
+      "path": "ui-save-receipts.json",
+      "sha256": "18c90bcd363b4b8f1ea308ff713f98c06dc6daa6b7a4a0bcb5cd3bf6ba86abb9"
+    }
+  ]
+}

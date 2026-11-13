@@ -1,0 +1,363 @@
+{
+  "operation": "Read-only audit; proposed label changes have NOT been saved or published",
+  "appId": "6793534085",
+  "currentPublishedCategoryCount": 11,
+  "noSeparateDraftShown": true,
+  "current": [
+    {
+      "type": "PurchaseHistory",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality"
+      ]
+    },
+    {
+      "type": "EmailAddress",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality"
+      ]
+    },
+    {
+      "type": "Name",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality"
+      ]
+    },
+    {
+      "type": "Contacts",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality"
+      ]
+    },
+    {
+      "type": "UserID",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality",
+        "Analytics"
+      ]
+    },
+    {
+      "type": "GameplayContent",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality"
+      ]
+    },
+    {
+      "type": "OtherUserContent",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality",
+        "Analytics"
+      ]
+    },
+    {
+      "type": "DeviceID",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality"
+      ]
+    },
+    {
+      "type": "ProductInteraction",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality",
+        "Analytics"
+      ]
+    },
+    {
+      "type": "OtherDataTypes",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality"
+      ]
+    },
+    {
+      "type": "OtherDiagnosticData",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality"
+      ]
+    }
+  ],
+  "targetShipped238Manifest": [
+    {
+      "type": "PurchaseHistory",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality",
+        "ThirdPartyAdvertising",
+        "Analytics"
+      ]
+    },
+    {
+      "type": "EmailAddress",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality"
+      ]
+    },
+    {
+      "type": "Name",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality"
+      ]
+    },
+    {
+      "type": "Contacts",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality"
+      ]
+    },
+    {
+      "type": "UserID",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "Analytics",
+        "AppFunctionality"
+      ]
+    },
+    {
+      "type": "GameplayContent",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality"
+      ]
+    },
+    {
+      "type": "OtherUserContent",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "Analytics",
+        "AppFunctionality"
+      ]
+    },
+    {
+      "type": "DeviceID",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality",
+        "ThirdPartyAdvertising",
+        "Analytics"
+      ]
+    },
+    {
+      "type": "ProductInteraction",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "Analytics",
+        "AppFunctionality",
+        "ThirdPartyAdvertising"
+      ]
+    },
+    {
+      "type": "OtherDataTypes",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality",
+        "ThirdPartyAdvertising",
+        "Analytics"
+      ]
+    },
+    {
+      "type": "OtherDiagnosticData",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality"
+      ]
+    },
+    {
+      "type": "CoarseLocation",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "ThirdPartyAdvertising",
+        "Analytics"
+      ]
+    },
+    {
+      "type": "AdvertisingData",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "ThirdPartyAdvertising",
+        "Analytics"
+      ]
+    },
+    {
+      "type": "OtherUsageData",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "ThirdPartyAdvertising",
+        "Analytics"
+      ]
+    },
+    {
+      "type": "PerformanceData",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality",
+        "Analytics"
+      ]
+    },
+    {
+      "type": "CustomerSupport",
+      "linked": false,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality"
+      ]
+    }
+  ],
+  "addCategories": [
+    {
+      "type": "CoarseLocation",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "ThirdPartyAdvertising",
+        "Analytics"
+      ]
+    },
+    {
+      "type": "AdvertisingData",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "ThirdPartyAdvertising",
+        "Analytics"
+      ]
+    },
+    {
+      "type": "OtherUsageData",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "ThirdPartyAdvertising",
+        "Analytics"
+      ]
+    },
+    {
+      "type": "PerformanceData",
+      "linked": true,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality",
+        "Analytics"
+      ]
+    },
+    {
+      "type": "CustomerSupport",
+      "linked": false,
+      "tracking": false,
+      "purposes": [
+        "AppFunctionality"
+      ]
+    }
+  ],
+  "expandPurposes": [
+    {
+      "type": "PurchaseHistory",
+      "beforePurposes": [
+        "AppFunctionality"
+      ],
+      "afterPurposes": [
+        "AppFunctionality",
+        "ThirdPartyAdvertising",
+        "Analytics"
+      ],
+      "addedPurposes": [
+        "ThirdPartyAdvertising",
+        "Analytics"
+      ]
+    },
+    {
+      "type": "DeviceID",
+      "beforePurposes": [
+        "AppFunctionality"
+      ],
+      "afterPurposes": [
+        "AppFunctionality",
+        "ThirdPartyAdvertising",
+        "Analytics"
+      ],
+      "addedPurposes": [
+        "ThirdPartyAdvertising",
+        "Analytics"
+      ]
+    },
+    {
+      "type": "ProductInteraction",
+      "beforePurposes": [
+        "AppFunctionality",
+        "Analytics"
+      ],
+      "afterPurposes": [
+        "Analytics",
+        "AppFunctionality",
+        "ThirdPartyAdvertising"
+      ],
+      "addedPurposes": [
+        "ThirdPartyAdvertising"
+      ]
+    },
+    {
+      "type": "OtherDataTypes",
+      "beforePurposes": [
+        "AppFunctionality"
+      ],
+      "afterPurposes": [
+        "AppFunctionality",
+        "ThirdPartyAdvertising",
+        "Analytics"
+      ],
+      "addedPurposes": [
+        "ThirdPartyAdvertising",
+        "Analytics"
+      ]
+    }
+  ],
+  "preserveExistingLinkedValues": true,
+  "allTrackingFlagsRemainFalse": true,
+  "privacyURLUnchanged": "https://spyclash.com/privacypolicy",
+  "limitations": [
+    "Manifest and static configuration are not a network-level measurement",
+    "Bundled Google SDK tracking-capable declarations remain vendor-owned; Google request path is disabled by shipped provider=unity",
+    "Unity denied-consent/nonbehavioral configuration is set before initialization; tracking is not enabled"
+  ],
+  "primarySources": [
+    "https://developer.apple.com/app-store/app-privacy-details/",
+    "https://docs.unity.com/en-us/ads-ios/4.21.0/privacy/developer-consent/disclosures/apple-privacy-survey"
+  ]
+}

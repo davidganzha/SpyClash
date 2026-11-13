@@ -1,0 +1,15 @@
+{
+  "target": "app-services",
+  "project_id": "bbkfsgnordtdiblgdzkg",
+  "version": 27,
+  "files": 84,
+  "verify_jwt": true,
+  "ezbr_sha256": "9a01260f9942e5019492439a0ae8cec5fe82c9fcb6ef22dd4bf43b8aab997a75",
+  "exact_file_readback": true,
+  "flags_or_secrets_changed": false,
+  "at": "2026-11-13 10:14:41 UTC",
+  "operation": "deploy_edge_function",
+  "previous_version": 26,
+  "candidate_manifest": "QA/app-store-complete-238/rewards/supabase-app-services-manifest.json",
+  "candidate_manifest_sha256": "2c140c02fd95643314ebb7436dde2184a65a5b6e5fe89063f1199ae41be31418"
+}

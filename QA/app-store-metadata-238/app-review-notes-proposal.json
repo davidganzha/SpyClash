@@ -1,0 +1,21 @@
+{
+  "operation": "Proposal only; no App Store write performed",
+  "target": {
+    "type": "appStoreReviewDetails",
+    "id": "808627a0-5949-4c3f-9038-c45ed18fe1ee"
+  },
+  "approvedScopeToRequest": "Apply only the following two replacements to the freshly read existing notes; preserve all other content privately.",
+  "replacements": [
+    {
+      "before": "SpyClash 1.0.3 (200) adds optional Game Center account sign-in.",
+      "after": "SpyClash 1.0.4 (238) includes optional Game Center account sign-in."
+    },
+    {
+      "before": "The optional weekly LIMITLESS subscription remains available from the lightning tab or Profile > LIMITLESS. The subscription screen includes Restore Purchases and links to Terms and Privacy. The base game remains free.",
+      "after": "New LIMITLESS checkout uses the optional monthly auto-renewable subscription, available from the lightning tab or Profile > LIMITLESS. Existing weekly subscriptions remain supported and can be restored. The subscription screen shows StoreKit's localized price and monthly period and includes Restore Purchases and links to Terms and Privacy. The base game remains free."
+    }
+  ],
+  "fullInheritedNotesExcludedFromRepository": true,
+  "privatePayloadLocation": ".local/asc-metadata-238/app-review-notes-proposal.private.json",
+  "guard": "Read the latest notes privately and require each old fragment exactly once before replacement; do not print or commit the remaining inherited notes."
+}

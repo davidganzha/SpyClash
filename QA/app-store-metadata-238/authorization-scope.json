@@ -1,0 +1,26 @@
+{
+  "executedAt": "2026-11-13T10:21:05.301Z",
+  "authorization": "Current-chat explicit approval relayed by root immediately before this execution",
+  "appId": "6793534085",
+  "monthlyProductId": "6825982027",
+  "subscriptionVersion": "ad15b177-6482-4129-9c47-3ebfafb0a633",
+  "buildId": "0aa55760-da71-4622-a1b3-e3ecc9aa673f",
+  "buildNumber": "238",
+  "internalGroupId": "47a13858-b43b-44a1-bf3e-285722cec320",
+  "allowed": [
+    "Save monthly reviewNote",
+    "Add Ukrainian monthly localization",
+    "Create draft IOS1.0.4 MANUAL with already uploaded238",
+    "Save approved English draft description and whatsNew preserving other fields",
+    "Assign238 only to existing LIMITLESS Internal QA"
+  ],
+  "excluded": [
+    "App Review submission",
+    "Public release",
+    "External beta distribution",
+    "Other beta groups",
+    "Weekly subscription or price changes",
+    "Review screenshot upload",
+    "Agreement acceptance"
+  ]
+}
