@@ -23,7 +23,7 @@ const name='spyclash_rewards_'+crypto.randomUUID().replaceAll('-','');
 await admin.unsafe('create database '+name);
 url.pathname='/'+name;
 const db=postgres(url.href,{max:15,onnotice:()=>{}});
-const config={SPYCLASH_REWARDED_GENERATION_ENABLED:'true',ADMOB_REWARDED_AD_UNIT_ID:'ca-app-pub-1234567890123456/1234567890',
+const config:Record<string,string>={SPYCLASH_REWARDED_GENERATION_ENABLED:'true',ADMOB_REWARDED_AD_UNIT_ID:'ca-app-pub-1234567890123456/1234567890',
   APP_NATIVE_GAME_CENTER_AI_ENABLED:'true',APP_NATIVE_GAME_CENTER_AI_PROVIDER:'openai',OPENAI_API_KEY:'local-fixture-only'};
 let checks=0;
 const check=async(name:string,run:()=>Promise<void>)=>{await run();checks++;console.log('PASS '+name);};
@@ -385,7 +385,7 @@ try{
   });
   await check('membership reports the enrolled allowance and confirmed bonus balance without changing old-account access',async()=>{
     const a=await actor(),old=await actor(false),c={...unityConfig,APP_BILLING_PROVIDER:'native-game-center'};
-    const membership=async(who:any,settings=c)=>(await app(who,{service:'membership',action:'check'},settings)).body;
+    const membership=async(who:any,settings:Record<string,string>=c)=>(await app(who,{service:'membership',action:'check'},settings)).body;
     assert.equal((await membership(old)).benefits.ai_generations_daily_limit,10);
     assert.equal((await membership(old)).ai_remaining,10);
     const initial=await membership(a);assert.equal(initial.benefits.ai_generations_daily_limit,3);assert.equal(initial.ai_remaining,3);
@@ -426,6 +426,30 @@ try{
       const a=await actor(false);const result=await app(a,{service:'generation_rewards',action:'status',...fields},c);
       assert.equal(result.body.enabled,false);const [{count}]=await db`select count(*)::int as count from game_center_private.generation_reward_enrollments where user_id=${a.id}`;assert.equal(count,0);
     }
+  });
+  await check('Unity pilot confines enrollment, quota and signed credit spending to the authenticated native account',async()=>{
+    const pilot=await actor(false),other=await actor(false);
+    const c={...unityConfig,SPYCLASH_REWARDED_GENERATION_ENABLED:'false',
+      SPYCLASH_REWARDED_GENERATION_PILOT_USER_IDS:' , '+pilot.id+' ,',APP_BILLING_PROVIDER:'native-game-center'};
+    const body={service:'generation_rewards',action:'status',supported_reward_provider:'unity',client_build:238,user_id:pilot.id};
+    assert.equal((await app(other,body,c)).body.enabled,false);
+    assert.equal((await app(pilot,body,{...c,UNITY_ADS_S2S_SECRET:''})).body.enabled,false);
+    assert.equal((await app(pilot,body,c)).body.free_remaining,3);
+    assert.equal((await app(other,{service:'membership',action:'check'},c)).body.benefits.ai_generations_daily_limit,10);
+    for(let i=0;i<4;i++)assert.equal((await generate(other,crypto.randomUUID(),provider,c)).status,200);
+    for(let i=0;i<3;i++)assert.equal((await generate(pilot,crypto.randomUUID(),provider,c)).status,200);
+    assert.equal((await generate(pilot,crypto.randomUUID(),provider,c)).status,429);
+    const attempt=await prepare(pilot,crypto.randomUUID(),c),url=unityURL(attempt);
+    for(let i=0;i<2;i++){
+      const response=await unityGateway(new Request(url));
+      assert.equal(response.status,200);assert.equal(await response.text(),'1');
+    }
+    assert.equal((await app(pilot,{service:'membership',action:'check'},c)).body.ai_remaining,1);
+    assert.equal((await generate(pilot,crypto.randomUUID(),provider,c)).status,200);
+    assert.equal((await generate(pilot,crypto.randomUUID(),provider,c)).status,429);
+    const off={...c,SPYCLASH_REWARDED_GENERATION_PILOT_USER_IDS:''};
+    assert.equal((await app(pilot,body,off)).body.enabled,false);
+    assert.equal((await app(pilot,{service:'membership',action:'check'},off)).body.benefits.ai_generations_daily_limit,10);
   });
   await check('enrollment table has RLS and no client grants',async()=>{
     const [row]=await db`select relrowsecurity from pg_class where oid='game_center_private.generation_reward_enrollments'::regclass`;assert.equal(row.relrowsecurity,true);

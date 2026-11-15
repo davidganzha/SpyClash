@@ -1,5 +1,8 @@
 # SpyClash 1.0.4 (238) — prepared release sequence
 
+Current release preparation, including the Unity response and account-scoped
+pilot packages, is in [the 15 November preflight](APP-STORE-240-PREFLIGHT.md).
+
 This is a reviewable plan, not authorization. Every production operation needs
 fresh explicit confirmation in the current chat. Build, signing, validation,
 Git checkpoints and local tests do not constitute upload, activation or release.

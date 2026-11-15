@@ -1,0 +1,56 @@
+{
+  "supabase/app-services": {
+    "files": 84,
+    "preserved": 82,
+    "changed": {
+      "app-services/membership.ts": {
+        "before": "e393397fb6ded2d55ee2a6fae64ee8acd00fc5d9fb69e896e90bb0386ef03735",
+        "after": "04a6e7b88d1ae72a7e7b691d6eda952ea41f0a89735e53416897c3ec85df4279"
+      },
+      "app-services/generation-reward-ledger.ts": {
+        "before": "6e9992aecbfec67500ed5bc5b8046703ce3e4890e595dcbf969630230d64b023",
+        "after": "c920338a97e55428bd6153476e31eb4b1d45a46c747ea53b85aa0c8b653fec96"
+      }
+    }
+  },
+  "base44/generateWordPack": {
+    "files": 18,
+    "preserved": 15,
+    "changed": {
+      "base44/functions/generateWordPack/generation-rewards.ts": {
+        "before": "ccf451fbd45071a27fd6d46f8df05d7c38eee7c9eff8a67a215ba322c13ac686",
+        "after": "3617bff81037925c4c75e4c53e4dd99e2bb65cc5376fe93db3a3459b7a23317e"
+      },
+      "base44/functions/generateWordPack/membership.ts": {
+        "before": "c0ca269c61ef4df2a65646c4d8c0b033a06e218d6f44d6b3c2dc98ccd6090df4",
+        "after": "505a252c4b7c5a2eedb0dd21ed7bc44b40e062d4ba8ca2a84a61a6304eacbf5f"
+      },
+      "base44/functions/generateWordPack/entry.ts": {
+        "before": "9966215596f6c1d2a3c89659ee4a07ef77fde33d99db2aaaa27e67f5fa91bd27",
+        "after": "1281b1c312c4797124695e381966a31ca201e8cea41b3cb3cde68e85447f9c4f"
+      }
+    }
+  },
+  "base44/generationRewardAction": {
+    "files": 9,
+    "preserved": 8,
+    "changed": {
+      "base44/functions/generationRewardAction/generation-rewards.ts": {
+        "before": "ccf451fbd45071a27fd6d46f8df05d7c38eee7c9eff8a67a215ba322c13ac686",
+        "after": "3617bff81037925c4c75e4c53e4dd99e2bb65cc5376fe93db3a3459b7a23317e"
+      }
+    }
+  },
+  "website": {
+    "unchanged_live_files": {
+      "index.html": "627559d4313ff6f85604cc7ede6f7f8c6883662ad1133c31004950c440f45986",
+      "manifest.json": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11",
+      "assets/bootstrap-8g2kJx7T.css": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5",
+      "assets/bootstrap-CTjV6uxF.js": "4152376da27a77cc3b6d6b8f5fc2291be07b4cc54933dc35f85e1b7113488f9f",
+      "assets/index-CeFJNfyr.js": "d217ecb234dc908db75fc4c2bc68b26ac11bab88b1b38483a2b6ab6a60b15d2a"
+    },
+    "app_ads_sha256": "41ba67e783b3d7183b32cee67391cb06f5c610860cb83d6f3f248ac03b2956dc",
+    "archive": ".local/app-store-preflight-240/site-deploy-240.tar.gz",
+    "archive_sha256": "e68d3c95a64ed2799a016bfa84d1f5082fcdd17f42119782e063a0e7bff909e0"
+  }
+}

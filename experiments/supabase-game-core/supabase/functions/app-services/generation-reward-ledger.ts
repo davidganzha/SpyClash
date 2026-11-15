@@ -4,7 +4,12 @@ import {nativeGameCenterHasMembership} from './native-game-center.ts';
 
 export type RewardConfig=Record<string,string|undefined>;
 export const REWARDED_AI_DAILY_LIMIT=3;
-export const rewardedGenerationEnabled=(config:RewardConfig)=>config.SPYCLASH_REWARDED_GENERATION_ENABLED==='true';
+export function rewardedGenerationEnabled(config:RewardConfig,userID?:string):boolean {
+  if(config.SPYCLASH_REWARDED_GENERATION_ENABLED==='true')return true;
+  const pilotIDs=config.SPYCLASH_REWARDED_GENERATION_PILOT_USER_IDS;
+  return Boolean(userID&&pilotIDs?.split(',').some(id=>id.trim()===userID)&&
+    rewardedAdUnit(config)?.startsWith('unity:'));
+}
 /** Pass only the authenticated, server-owned account ID. This test capability
  * never enables the generation quota or changes membership benefits. */
 export function isGenerationRewardTester(config:RewardConfig,userID:string):boolean {
@@ -22,12 +27,12 @@ export function rewardedAdUnit(config:RewardConfig):string|null {
 /** This persisted account decision is consulted for every generation, including
  * requests from downgraded clients. Caller holds the account/quota lock. */
 export async function rewardedGenerationEnabledForUser(tx:any,userID:string,config:RewardConfig):Promise<boolean>{
-  if(!rewardedGenerationEnabled(config))return false;
+  if(!rewardedGenerationEnabled(config,userID))return false;
   const [row]=await tx`select user_id from game_center_private.generation_reward_enrollments where user_id=${userID}`;
   return Boolean(row);
 }
 export async function enrollRewardGeneration(tx:any,userID:string,body:Record<string,any>,config:RewardConfig){
-  if(!rewardedGenerationEnabled(config)||body.supported_reward_provider!=='unity'||!Number.isSafeInteger(body.client_build)
+  if(!rewardedGenerationEnabled(config,userID)||body.supported_reward_provider!=='unity'||!Number.isSafeInteger(body.client_build)
     ||body.client_build<228||body.client_build>2147483647||!rewardedAdUnit(config)?.startsWith('unity:'))return;
   await tx`insert into game_center_private.generation_reward_enrollments(user_id,provider,client_build)
     values(${userID},'unity',${body.client_build}) on conflict(user_id) do nothing`;

@@ -21,7 +21,7 @@ function enabled() {
   resetFixture();
   entity("GenerationRewardEnrollment").rows.push({id: "enrollment-fixture", user_id: fixture.user.id, provider: "unity", client_build: 228, enrolled_at: new Date().toISOString()});
   for (const [key, value] of Object.entries({SPYCLASH_REWARDED_GENERATION_ENABLED: "true", SPYCLASH_REWARDED_AD_PROVIDER: "unity", UNITY_ADS_GAME_ID: "800429660", UNITY_ADS_REWARDED_PLACEMENT_ID: "BP_Rewarded_iOS", UNITY_ADS_S2S_SECRET: secret})) Deno.env.set(key, value);
-  for (const key of ["SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS", "SPYCLASH_OPENAI_API_KEY", "OPENAI_API_KEY"]) Deno.env.delete(key);
+  for (const key of ["SPYCLASH_REWARDED_GENERATION_TEST_USER_IDS", "SPYCLASH_REWARDED_GENERATION_PILOT_USER_IDS", "SPYCLASH_OPENAI_API_KEY", "OPENAI_API_KEY"]) Deno.env.delete(key);
 }
 function signed(token: string, oid = crypto.randomUUID(), extra: Record<string, string> = {}) {
   const fields = {provider: "unity", game_id: "800429660", placement_id: "BP_Rewarded_iOS", sid: token, oid, ...extra};
@@ -115,6 +115,43 @@ Deno.test("Base44 supported capability cannot enroll before rollout and secure c
     enabled();entity("GenerationRewardEnrollment").rows=[];change();
     assert(!(await reward({action:"status",supported_reward_provider:"unity",client_build:228})).value.enabled);
     assert(entity("GenerationRewardEnrollment").rows.length===0);
+  }
+});
+Deno.test("Base44 pilot uses the normal signed reward path only for the authenticated pilot account", async () => {
+  enabled();
+  entity("GenerationRewardEnrollment").rows = [];
+  const pilot = fixture.user;
+  const configKey = "SPYCLASH_REWARDED_GENERATION_PILOT_USER_IDS";
+  const status = {action: "status", supported_reward_provider: "unity", client_build: 238, user_id: pilot.id};
+  Deno.env.set("SPYCLASH_REWARDED_GENERATION_ENABLED", "false");
+  Deno.env.set(configKey, " , " + pilot.id + ", ");
+  try {
+    fixture.user = {id: "ordinary-account", email: "other@example.test"};
+    assert(!(await reward(status)).value.enabled);
+    assert(entity("GenerationRewardEnrollment").rows.length === 0);
+    for (let i = 0; i < 4; i++) assert((await generate()).status === 200);
+
+    fixture.user = pilot;
+    Deno.env.delete("UNITY_ADS_S2S_SECRET");
+    assert(!(await reward(status)).value.enabled);
+    Deno.env.set("UNITY_ADS_S2S_SECRET", secret);
+    assert((await reward(status)).value.free_remaining === 3);
+    await exhaust();
+    const denied = await generate();
+    assert(denied.status === 429 && denied.value.ai_limit === 3);
+    const attempt = await prepare();
+    const url = signed(attempt.server_id);
+    for (let i = 0; i < 2; i++) {
+      const response = await captured[1](new Request(url));
+      assert(response.status === 200 && await response.text() === "1");
+    }
+    assert((await reward(status)).value.bonus_credits === 1);
+    assert((await generate()).status === 200);
+    assert((await generate()).status === 429);
+    Deno.env.delete(configKey);
+    assert(!(await reward(status)).value.enabled);
+  } finally {
+    Deno.env.delete(configKey);
   }
 });
 Deno.test("Base44 enrollment reconciles lost persistence acknowledgement and remains one row", async () => {

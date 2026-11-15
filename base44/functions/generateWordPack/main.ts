@@ -120,6 +120,7 @@ async function reserveGenerationQuota(
   store: any,
   userId: string,
   tier: MembershipTier,
+  rewarded: boolean,
   guard: GenerationWriteGuard,
 ): Promise<QuotaReservation> {
   // CASADA has no daily allowance to reserve. Avoid turning a legacy quota
@@ -140,7 +141,7 @@ async function reserveGenerationQuota(
       0,
     );
     const usedBefore = totalQuotaUsage(records);
-    if (!canGenerate(tier, usedBefore)) {
+    if (!canGenerate(tier, usedBefore, rewarded)) {
       return { allowed: false, usedBefore, usedAfter: usedBefore };
     }
 
@@ -420,7 +421,7 @@ Deno.serve(async (req) => {
     }
 
     const requestID = optionalRequestID(body?.request_id);
-    const rewardedRolloutEnabled = rewardedGenerationEnabled();
+    const rewardedRolloutEnabled = rewardedGenerationEnabled(user.id);
     // Legacy clients do not send request_id. Keep their explicit Regenerate
     // behavior fresh instead of unexpectedly replaying a cached pack.
     const preferFresh = body?.prefer_fresh === true || requestID === null;
@@ -602,7 +603,7 @@ Deno.serve(async (req) => {
                 status: membership.active ? "active" : "inactive",
                 providers: membership.providers,
                 benefits: membership.benefits,
-                ...generationUsageMetadata(membership.tier, generationCount),
+                ...generationUsageMetadata(membership.tier, generationCount, rewardedEnabled),
               });
             }
           } catch (error) {
@@ -629,7 +630,7 @@ Deno.serve(async (req) => {
           // already started. A held bonus is not a new quota-denial event.
           const mayHaveStarted = priorOperations.some((row: { state?: unknown }) => row.state !== "prepared");
           const freeUsed = await currentGenerationCount(quotaStore, user.id);
-          if (!mayHaveStarted && !canGenerate(membership.tier, freeUsed) &&
+          if (!mayHaveStarted && !canGenerate(membership.tier, freeUsed, rewardedEnabled) &&
               await availableRewardCredits(rewardStore, user.id) === 0) {
             return Response.json({
               error: "Daily AI generation limit reached. Watch an ad for one additional generation or try again tomorrow.",
@@ -637,7 +638,7 @@ Deno.serve(async (req) => {
               active: false, tier: "free", protocol: membership.protocol,
               status: "inactive", providers: membership.providers,
               benefits: membership.benefits,
-              ...generationUsageMetadata(membership.tier, freeUsed),
+              ...generationUsageMetadata(membership.tier, freeUsed, rewardedEnabled),
             }, { status: 429 });
           }
         }
@@ -671,6 +672,7 @@ Deno.serve(async (req) => {
               quotaStore,
               user.id,
               membership.tier,
+              rewardedEnabled,
               guard,
             );
             if (!reservation.allowed && rewardedEnabled && requestID) {
@@ -699,6 +701,7 @@ Deno.serve(async (req) => {
           const usage = generationUsageMetadata(
             membership.tier,
             reservation.usedBefore,
+            rewardedEnabled,
           );
 
           if (!reservation.allowed) {
@@ -1018,7 +1021,7 @@ Deno.serve(async (req) => {
             status: membership.active ? "active" : "inactive",
             providers: membership.providers,
             benefits: membership.benefits,
-            ...generationUsageMetadata(membership.tier, generationCount),
+            ...generationUsageMetadata(membership.tier, generationCount, rewardedEnabled),
           });
         };
 
@@ -1069,7 +1072,7 @@ Deno.serve(async (req) => {
             status: membership.active ? "active" : "inactive",
             providers: membership.providers,
             benefits: membership.benefits,
-            ...generationUsageMetadata(membership.tier, generationCount),
+            ...generationUsageMetadata(membership.tier, generationCount, rewardedEnabled),
           });
         } finally {
           if (!preserveSharedLease) await sharedAccess?.release();

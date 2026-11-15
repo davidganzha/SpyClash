@@ -109,7 +109,7 @@ export async function checkMembership(ctx: AppContext) {
   const native = ctx.config.APP_BILLING_PROVIDER === NATIVE_GAME_CENTER_BILLING;
   const [usage] = native ? await ctx.tx`select count(*)::integer as total from game_center_private.generation_requests where user_id=${ctx.actor.id} and usage_date=(${ctx.now}::timestamptz at time zone 'UTC')::date and charged` : [];
   const used = native ? Number(usage?.total || 0) : null;
-  const rewards = native && rewardedGenerationEnabled(ctx.config) ? await nativeRewardStatus(ctx.tx,ctx.actor.id,ctx.config) : undefined;
+  const rewards = native && rewardedGenerationEnabled(ctx.config,ctx.actor.id) ? await nativeRewardStatus(ctx.tx,ctx.actor.id,ctx.config) : undefined;
   const dailyLimit = rewards?.enabled ? rewards.daily_limit : 10;
   const remaining = rewards?.enabled ? (rewards.free_remaining || 0) + rewards.bonus_credits : Math.max(0,dailyLimit-(used || 0));
   return {active,tier:active?'limitless':'free',status:active?'active':'inactive',protocol:'limitless',providers,

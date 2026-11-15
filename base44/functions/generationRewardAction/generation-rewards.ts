@@ -1,9 +1,12 @@
 import { quotaKey, totalQuotaUsage } from "./quota.ts";
 
 export const REWARDED_FREE_DAILY_LIMIT = 3;
-export function rewardedGenerationEnabled(): boolean {
+export function rewardedGenerationEnabled(userID?: string): boolean {
   try {
-    return Deno.env.get("SPYCLASH_REWARDED_GENERATION_ENABLED") === "true";
+    if (Deno.env.get("SPYCLASH_REWARDED_GENERATION_ENABLED") === "true") return true;
+    const pilotIDs = Deno.env.get("SPYCLASH_REWARDED_GENERATION_PILOT_USER_IDS");
+    return Boolean(userID && pilotIDs?.split(",").some(id => id.trim() === userID) &&
+      configuredRewardAdUnit()?.startsWith("unity:"));
   } catch {
     return false;
   }
@@ -45,7 +48,7 @@ export function configuredRewardAdUnit(): string | null {
  * Supported clients may opt into the restrictive new policy, but omitting their
  * capability later cannot restore legacy access. Caller holds the user lease. */
 export async function rewardedGenerationEnabledForUser(store: any, userID: string): Promise<boolean> {
-  if (!rewardedGenerationEnabled()) return false;
+  if (!rewardedGenerationEnabled(userID)) return false;
   const rows = await store.filter({ user_id: userID }, "created_date", 2, 0);
   if (rows.length > 1) throw new GenerationRewardError("reward_enrollment_unavailable", "Generation access could not be verified.", 503);
   return rows.length === 1;
@@ -53,7 +56,7 @@ export async function rewardedGenerationEnabledForUser(store: any, userID: strin
 export async function enrollRewardGeneration(input: {
   store: any; guard: RewardWriteGuard; userID: string; supportedProvider: unknown; clientBuild: unknown;
 }): Promise<void> {
-  if (!rewardedGenerationEnabled() || input.supportedProvider !== "unity" ||
+  if (!rewardedGenerationEnabled(input.userID) || input.supportedProvider !== "unity" ||
       !Number.isSafeInteger(input.clientBuild) || Number(input.clientBuild) < 228 || Number(input.clientBuild) > 2147483647 ||
       !configuredRewardAdUnit()?.startsWith("unity:")) return;
   if (await rewardedGenerationEnabledForUser(input.store, input.userID)) return;

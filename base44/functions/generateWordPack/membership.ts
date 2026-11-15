@@ -197,9 +197,10 @@ function recordFreshness(item: EntitlementRecord): number {
 export function generationUsageMetadata(
   tier: MembershipTier,
   usedToday: number,
+  rewarded = rewardedGenerationEnabled(),
 ) {
   const limit = tier === "free"
-    ? (rewardedGenerationEnabled() ? REWARDED_FREE_DAILY_LIMIT : LEGACY_FREE_BENEFITS.ai_generations_daily_limit)
+    ? (rewarded ? REWARDED_FREE_DAILY_LIMIT : LEGACY_FREE_BENEFITS.ai_generations_daily_limit)
     : null;
   return {
     ai_limit: limit,
@@ -209,6 +210,10 @@ export function generationUsageMetadata(
   };
 }
 
-export function canGenerate(tier: MembershipTier, usedToday: number): boolean {
-  return tier === "limitless" || usedToday < (rewardedGenerationEnabled() ? REWARDED_FREE_DAILY_LIMIT : 10);
+export function canGenerate(
+  tier: MembershipTier,
+  usedToday: number,
+  rewarded = rewardedGenerationEnabled(),
+): boolean {
+  return tier === "limitless" || usedToday < (rewarded ? REWARDED_FREE_DAILY_LIMIT : 10);
 }
