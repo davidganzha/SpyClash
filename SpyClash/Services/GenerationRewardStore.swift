@@ -188,7 +188,9 @@ final class GenerationRewardStore {
             if result.state == "earned" {
                 setPending(nil); notice = .earned
             } else if ["expired", "cancelled", "rejected"].contains(result.state) {
-                setPending(nil); notice = .unavailable
+                let completedViewing = isAwaitingReward
+                setPending(nil)
+                notice = completedViewing ? .unconfirmed : .unavailable
             } else if isAwaitingReward { notice = .confirming }
         } catch {
             // The persisted attempt is retried on activation, not by asking the

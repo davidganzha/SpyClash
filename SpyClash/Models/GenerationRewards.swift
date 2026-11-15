@@ -96,7 +96,7 @@ struct GenerationRewardClaim: Decodable {
 }
 
 enum GenerationRewardNotice: Equatable {
-    case unavailable, incomplete, confirming, earned, limitReached
+    case unavailable, incomplete, confirming, unconfirmed, earned, limitReached
 }
 
 struct GenerationRewardCopy {
@@ -126,7 +126,8 @@ struct GenerationRewardCopy {
         switch notice {
         case .unavailable: text("An ad isn't available right now. You can keep playing with saved words.", "Сейчас реклама недоступна. Можно продолжить игру с готовыми словами.", "Ahora no hay anuncios disponibles. Puedes seguir jugando con palabras guardadas.", "Зараз реклама недоступна. Можна продовжити гру з готовими словами.")
         case .incomplete: text("The ad wasn't completed. No generation was added or spent.", "Просмотр не завершён. Генерации не начислены и не списаны.", "El anuncio no se completó. No se añadió ni gastó ninguna generación.", "Перегляд не завершено. Генерації не нараховані й не списані.")
-        case .confirming: text("Confirming your bonus. It will appear automatically; you don't need to watch again.", "Подтверждаем бонус. Он появится автоматически — повторно смотреть рекламу не нужно.", "Confirmando tu bono. Aparecerá automáticamente; no necesitas ver otro anuncio.", "Підтверджуємо бонус. Він з’явиться автоматично — повторно дивитися рекламу не потрібно.")
+        case .confirming: text("Waiting for ad confirmation. Your bonus will be added automatically if the confirmation arrives.", "Ждём подтверждение просмотра. Если оно придёт, бонус добавится автоматически.", "Esperando la confirmación del anuncio. Si llega, el bono se añadirá automáticamente.", "Чекаємо на підтвердження перегляду. Якщо воно надійде, бонус додасться автоматично.")
+        case .unconfirmed: text("We couldn't confirm the ad view. No bonus was added.", "Подтверждение просмотра не получено. Бонус не начислен.", "No pudimos confirmar la visualización del anuncio. No se añadió ningún bono.", "Не вдалося підтвердити перегляд. Бонус не нараховано.")
         case .earned: text("+1 generation is ready.", "+1 генерация доступна.", "+1 generación disponible.", "+1 генерація доступна.")
         case .limitReached: text("Your free generations for today are used. Watch an ad for one more, or use a saved pack.", "Бесплатные генерации на сегодня закончились. Посмотри рекламу для ещё одной или выбери готовый набор.", "Has usado las generaciones gratis de hoy. Mira un anuncio para obtener otra o usa un paquete guardado.", "Безкоштовні генерації на сьогодні закінчилися. Переглянь рекламу для ще однієї або обери готовий набір.")
         }

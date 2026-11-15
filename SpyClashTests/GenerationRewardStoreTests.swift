@@ -62,6 +62,24 @@ final class GenerationRewardStoreTests: XCTestCase {
         XCTAssertNil(store.pendingAttemptID)
     }
 
+    func testExpiredCompletedViewingExplainsMissingRewardAndAllowsRetry() async {
+        let client = RewardClientMock(status: empty), ads = RewardAdMock()
+        let store = GenerationRewardStore(client: client, ads: ads, defaults: storage(), sleep: { _ in throw CancellationError() })
+        store.bind(owner)
+        _ = await store.refresh()
+        await store.watch()
+        XCTAssertEqual(store.notice, .confirming)
+
+        client.claimState = "expired"
+        await store.recoverPending()
+        XCTAssertEqual(store.notice, .unconfirmed)
+        XCTAssertEqual(store.snapshot?.bonusCredits, 0)
+        XCTAssertNil(store.pendingAttemptID)
+        XCTAssertFalse(store.isAwaitingReward)
+        XCTAssertTrue(store.canWatch)
+        XCTAssertEqual(ads.presentCount, 1)
+    }
+
     func testServerConfirmationBeforeAdDismissalDoesNotRecreatePendingReward() async throws {
         let client = RewardClientMock(status: empty), ads = RewardAdMock()
         var dismiss: CheckedContinuation<Bool, Error>?
