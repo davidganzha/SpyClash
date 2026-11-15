@@ -1,5 +1,9 @@
 # SpyClash 1.0.4 release preparation — 15 November 2026
 
+See the [15 November activation receipt](UNITY-ADS-241-ACTIVATION.md) for
+the completed production deployment and global rewarded flag. The rest of
+this document records the pre-activation checks and the Apple review plan.
+
 App Store Connect lists iOS 1.0.4 as `PREPARE_FOR_SUBMISSION` with manual
 release and build 238 attached. Apple has processed build 238 as `VALID`.
 The exported IPA matches the upload hash and passes the signed release
