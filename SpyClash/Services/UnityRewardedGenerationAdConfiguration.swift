@@ -6,8 +6,14 @@ struct UnityRewardedGenerationAdConfiguration {
     let gameID: String
     let adUnitID: String
     let isConfigured: Bool
+    let usesTestAds: Bool
 
     init(infoDictionary: [String: Any]) {
+#if SPYCLASH_SUPABASE_PUBLIC && SPYCLASH_UNITY_TESTFLIGHT_QA && !DEBUG
+        usesTestAds = true
+#else
+        usesTestAds = false
+#endif
         gameID = (infoDictionary["SpyClashUnityGameID"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         adUnitID = (infoDictionary["SpyClashUnityRewardedAdUnitID"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let validGame = gameID.range(of: #"^[0-9]{1,32}$"#, options: .regularExpression) != nil
@@ -17,9 +23,8 @@ struct UnityRewardedGenerationAdConfiguration {
         let testMode = Self.flag(infoDictionary["SpyClashUnityTestMode"])
         isConfigured = Self.flag(infoDictionary["SpyClashAdsEnabled"]) == true
             && (infoDictionary["SpyClashRewardedAdProvider"] as? String) == "unity"
-            && validGame && validUnit && testMode == false
-        // A missing, malformed or unresolved test-mode setting fails closed.
-        // Viewing-only Debug experiments use UnityAdsTestPresenter separately.
+            && validGame && validUnit && testMode == usesTestAds
+        // The compiled QA intent must match the archive's test-mode setting.
     }
 
     func permits(_ attempt: GenerationRewardAttempt) -> Bool {

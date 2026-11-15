@@ -120,7 +120,7 @@ final class UnityRewardedGenerationAdPresenter: NSObject {
         UnityAds.setNonBehavioral(true)
         initializationIsPending = true
         let sdkConfiguration = UADSInitializationConfigurationBuilder(gameId: configuration.gameID)
-            .with(testMode: false)
+            .with(testMode: configuration.usesTestAds)
             .build()
         UnityAds.initialize(sdkConfiguration) { [weak self] error in
             // Copy only Sendable values from the SDK callback before hopping.
