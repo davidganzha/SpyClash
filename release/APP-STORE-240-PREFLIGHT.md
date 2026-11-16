@@ -18,6 +18,21 @@ credentials are populated. The current review instructions still need the
 billing and version updates. The draft age-rating declaration currently
 answers `advertising=false`.
 
+## Supabase monthly checkout activation — 16 November 2026
+
+After a TestFlight 242 attempt returned HTTP 503 before StoreKit checkout,
+Supabase readback confirmed the general purchase flag was enabled and the
+monthly checkout flag was absent. The targeted local test passed for
+monthly checkout and older weekly clients.
+
+With explicit approval, set
+`SPYCLASH_LIMITLESS_APPLE_MONTHLY_PURCHASE_ENABLED=true` in Supabase
+`bbkfsgnordtdiblgdzkg`. Readback verified the new value and matched the
+other 38 settings. `app-services` v31 is active with JWT verification and
+the v30 code bundle hash. Repository checkpoint 244 records the server
+configuration change. TestFlight 242 can retry on the installed build.
+Purchase, entitlement and restore are pending device verification.
+
 ## Unity and the signed callback
 
 [Unity ticket 00945449](https://support-ads.unity.com/s/cases?id=500Qv00000lpu0RIAQ)
@@ -87,9 +102,9 @@ checks. The connected iPhones were unavailable during this preparation.
    text and check the Unity crawler. Inspect the existing redirect if it
    takes precedence over the new file.
 3. Capture the genuine build 238 LIMITLESS screen after the monthly price
-   loads. Upload it to subscription `6825982027` after approval. Enable
-   `SPYCLASH_LIMITLESS_APPLE_MONTHLY_PURCHASE_ENABLED=true` in the approved
-   backends for TestFlight QA. Keep legacy weekly ownership and restore paths.
+   loads. Upload it to subscription `6825982027` after approval. Supabase
+   monthly checkout is enabled as recorded above. Base44 checkout requires
+   a separately approved activation for legacy sign-in testing.
 4. On TestFlight 238, verify a non-LIMITLESS pilot account on each supported
    backend starts with three daily generations, receives one credit after
    a genuine completed Unity viewing and spends it once. Check a non-pilot
