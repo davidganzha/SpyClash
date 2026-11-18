@@ -3729,10 +3729,10 @@ final class AppState: NSObject {
             try await self.client.resendOTP(email: email)
             try self.requireCurrentAuthentication(attemptID)
             self.authNotice = switch self.language {
-            case .en: "A new verification code has been sent."
-            case .ru: "Новый код подтверждения отправлен."
-            case .es: "Se ha enviado un código de verificación nuevo."
-            case .uk: "Новий код підтвердження надіслано."
+            case .en: "New code request accepted. Check your inbox."
+            case .ru: "Запрос на новый код принят. Проверь почту."
+            case .es: "Solicitud de nuevo código aceptada. Revisa tu correo."
+            case .uk: "Запит на новий код прийнято. Перевір пошту."
             }
             HapticManager.shared.fire(.notification(.success))
         }

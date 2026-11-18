@@ -311,6 +311,63 @@ final class AppleAuthenticationOwnershipTests: XCTestCase {
         XCTAssertNil(state.authError)
     }
 
+    func testCompactOTPRecoveryControlsRemainScrollable() async throws {
+        let state = makeState()
+        state.language = .ru
+        state.authPhase = .otp(email: "synthetic@example.test")
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let scene = try XCTUnwrap(scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first)
+        let previousKeyWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let host = UIHostingController(rootView: AuthView()
+            .spyInterfaceScale()
+            .environment(state)
+            .transaction { $0.disablesAnimations = true }
+            .frame(width: 320, height: 568))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+            previousKeyWindow?.makeKey()
+        }
+
+        func verticalScrollView(in view: UIView) -> UIScrollView? {
+            if let scroll = view as? UIScrollView,
+               scroll.contentSize.height > scroll.bounds.height + 5 {
+                return scroll
+            }
+            return view.subviews.lazy.compactMap { verticalScrollView(in: $0) }.first
+        }
+
+        var renderedScroll: UIScrollView?
+        for _ in 0..<20 {
+            try await Task.sleep(for: .milliseconds(50))
+            host.view.layoutIfNeeded()
+            renderedScroll = verticalScrollView(in: host.view)
+            if renderedScroll != nil { break }
+        }
+        let scroll = try XCTUnwrap(renderedScroll, "Compact OTP must scroll to its recovery and login controls")
+        XCTAssertLessThanOrEqual(scroll.bounds.width, 320)
+        XCTAssertLessThanOrEqual(scroll.bounds.height, 568)
+        let bottom = scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom
+        XCTAssertGreaterThan(bottom, 0)
+        scroll.setContentOffset(CGPoint(x: 0, y: bottom), animated: false)
+        try await Task.sleep(for: .milliseconds(600))
+        host.view.layoutIfNeeded()
+        XCTAssertEqual(scroll.contentOffset.y, bottom, accuracy: 1)
+        XCTAssertEqual(state.authPhase, .otp(email: "synthetic@example.test"))
+        XCTAssertNil(state.user)
+
+        let screenshot = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        let attachment = XCTAttachment(data: try XCTUnwrap(screenshot.pngData()), uniformTypeIdentifier: "public.png")
+        attachment.name = "Compact-OTP-recovery-controls-scrolled-to-bottom"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     func testRenderedAppleFailureAlertShowsCompleteCodeAndActionsAfterToastExpires() async throws {
         let state = makeState()
         let previousLanguage = state.language

@@ -8,12 +8,8 @@ struct UnityRewardedGenerationAdConfiguration {
     let isConfigured: Bool
     let usesTestAds: Bool
 
-    init(infoDictionary: [String: Any]) {
-#if SPYCLASH_SUPABASE_PUBLIC && SPYCLASH_UNITY_TESTFLIGHT_QA && !DEBUG
-        usesTestAds = true
-#else
-        usesTestAds = false
-#endif
+    init(infoDictionary: [String: Any], usesTestAds: Bool = Self.buildUsesTestAds) {
+        self.usesTestAds = usesTestAds
         gameID = (infoDictionary["SpyClashUnityGameID"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         adUnitID = (infoDictionary["SpyClashUnityRewardedAdUnitID"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let validGame = gameID.range(of: #"^[0-9]{1,32}$"#, options: .regularExpression) != nil
@@ -23,8 +19,9 @@ struct UnityRewardedGenerationAdConfiguration {
         let testMode = Self.flag(infoDictionary["SpyClashUnityTestMode"])
         isConfigured = Self.flag(infoDictionary["SpyClashAdsEnabled"]) == true
             && (infoDictionary["SpyClashRewardedAdProvider"] as? String) == "unity"
-            && validGame && validUnit && testMode == usesTestAds
-        // The compiled QA intent must match the archive's test-mode setting.
+            && validGame && validUnit && testMode == usesTestAds && !usesTestAds
+        // Unity sends S2S rewards only for live ads. Test creatives must not
+        // offer generation credits or enroll an account into the live quota.
     }
 
     func permits(_ attempt: GenerationRewardAttempt) -> Bool {
@@ -45,6 +42,14 @@ struct UnityRewardedGenerationAdConfiguration {
             }
         }
         return value as? Bool
+    }
+
+    private static var buildUsesTestAds: Bool {
+#if SPYCLASH_SUPABASE_PUBLIC && SPYCLASH_UNITY_TESTFLIGHT_QA && !DEBUG
+        true
+#else
+        false
+#endif
     }
 
     static var current: Self { Self(infoDictionary: Bundle.main.infoDictionary ?? [:]) }

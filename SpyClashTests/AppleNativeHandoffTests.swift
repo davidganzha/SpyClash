@@ -340,6 +340,34 @@ final class AppleNativeHandoffTests: XCTestCase {
         }
     }
 
+    func testSSOErrorDiagnosticIdentifiesOnlyTheFixedAppRouteAndKeepsItBlocked() throws {
+        let secret = "synthetic-private-error-value"
+        let path = "/api/apps/69a0e57fa939f578082f8091/auth/sso/auth-error"
+        for host in ["spyclash.com", "app.base44.com"] {
+            let url = try XCTUnwrap(URL(string: "https://\(host)\(path)?reason=\(secret)"))
+            let diagnostic = AppleNativeHandoffDiagnostic(response: nil, destination: url, redirectCount: 6)
+            let failure = AppleNativeHandoffError.validation(.navigationDocument).withDiagnostic(diagnostic)
+
+            XCTAssertEqual(diagnostic.endpoint, .ssoError)
+            XCTAssertEqual(failure.diagnosticIdentifier, "SCA177-H34-r6-s0-cN-uSE-q10-pN-fN")
+            XCTAssertFalse(AppleSessionCompletionSession.permitsSessionDocument(url))
+            for forbidden in [secret, host, path, "reason"] {
+                XCTAssertFalse(failure.localizedDescription.contains(forbidden))
+            }
+        }
+        for raw in [
+            "https://spyclash.com/api/apps/another-app/auth/sso/auth-error",
+            "https://spyclash.com\(path)/extra",
+            "https://foreign.invalid\(path)",
+            "https://spyclash.com.evil.invalid\(path)"
+        ] {
+            let url = try XCTUnwrap(URL(string: raw))
+            let diagnostic = AppleNativeHandoffDiagnostic(response: nil, destination: url, redirectCount: 6)
+            XCTAssertNotEqual(diagnostic.endpoint, .ssoError)
+            XCTAssertFalse(AppleSessionCompletionSession.permitsSessionDocument(url))
+        }
+    }
+
     func testCancelledCompletionCannotReturnCapturedTokenOrDiagnosticInsteadOfCancellation() async throws {
         let server = try AppleHandoffLoopbackServer(location: base + "?auth_provider=apple&access_token=synthetic")
         let url = try await server.start()

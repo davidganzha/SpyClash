@@ -42,6 +42,19 @@ final class UnityRewardedGenerationAdConfigurationTests: XCTestCase {
         XCTAssertFalse(UnityRewardedGenerationAdConfiguration(infoDictionary: missing).isConfigured)
     }
 
+    func testTestCreativeBuildCannotOfferServerConfirmedGenerationRewards() {
+        var qa = info
+        qa["SpyClashUnityTestMode"] = "YES"
+        let config = UnityRewardedGenerationAdConfiguration(infoDictionary: qa, usesTestAds: true)
+
+        XCTAssertTrue(config.usesTestAds)
+        XCTAssertFalse(config.isConfigured)
+        XCTAssertFalse(config.permits(attempt()))
+
+        qa["SpyClashUnityTestMode"] = "NO"
+        XCTAssertFalse(UnityRewardedGenerationAdConfiguration(infoDictionary: qa, usesTestAds: true).isConfigured)
+    }
+
     func testUnityProviderCannotAccidentallyInitializeGoogleSampleOrOwnedUnits() {
         var candidate = info
         candidate["GADApplicationIdentifier"] = RewardedGenerationAdConfiguration.testAppID

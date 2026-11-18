@@ -23,15 +23,22 @@ struct AuthView: View {
     var body: some View {
         ZStack {
             SpyBackground()
-            VStack(spacing: 24) {
-                header
-                SpyPanel(motionDelay: 0.25) {
-                    form
+            GeometryReader { geometry in
+                ScrollView {
+                    VStack(spacing: 24) {
+                        header
+                        SpyPanel(motionDelay: 0.25) {
+                            form
+                        }
+                        .padding(.horizontal, 20)
+                        footerSwitch
+                    }
+                    .padding(.vertical, 28)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: geometry.size.height)
                 }
-                .padding(.horizontal, 20)
-                footerSwitch
+                .scrollBounceBehavior(.basedOnSize)
             }
-            .padding(.vertical, 28)
 
             if let stage = displayedAppleAuthStage {
                 AppleAuthCinematicOverlay(stage: stage)
@@ -310,6 +317,27 @@ struct AuthView: View {
                     .buttonStyle(SpyWebPressStyle())
                     .disabled(appState.isBusy || seconds > 0)
                     .accessibilityIdentifier("auth.resendCode")
+                }
+                VStack(spacing: 8) {
+                    Text(copy.otpExistingAccountHelp)
+                        .font(SpyTheme.micro)
+                        .foregroundStyle(SpyTheme.muted)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button {
+                        email = lockedEmail
+                        appState.authError = nil
+                        appState.authNotice = nil
+                        move(to: .forgotPassword(email: lockedEmail))
+                    } label: {
+                        Text(copy.forgotPassphrase)
+                            .font(SpyTheme.micro)
+                            .foregroundStyle(SpyTheme.red)
+                            .frame(maxWidth: .infinity, minHeight: 34)
+                    }
+                    .buttonStyle(SpyWebPressStyle())
+                    .disabled(appState.isBusy)
+                    .accessibilityIdentifier("auth.recoverAccount")
                 }
 
             case .forgotPassword(let lockedEmail):

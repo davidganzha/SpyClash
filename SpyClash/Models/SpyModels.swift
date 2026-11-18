@@ -271,7 +271,8 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 passwordSubtitle: "One final step",
                 registerEmailSubtitle: "Create credentials to enter the game",
                 registerPasswordSubtitle: "Choose a secure key",
-                otpSubtitlePrefix: "Transmission sent to",
+                otpSubtitlePrefix: "Verification code for",
+                otpExistingAccountHelp: "If you already have an account with this email, sign in or reset your password.",
                 forgotPasswordEmptySubtitle: "Request a secure reset link",
                 forgotPasswordPrefix: "Recovery link for",
                 resetEmailSentPrefix: "Recovery link sent to",
@@ -336,7 +337,8 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 passwordSubtitle: "Un último paso",
                 registerEmailSubtitle: "Crea tus credenciales para entrar al juego",
                 registerPasswordSubtitle: "Elige una clave segura",
-                otpSubtitlePrefix: "Transmisión enviada a",
+                otpSubtitlePrefix: "Código de verificación para",
+                otpExistingAccountHelp: "Si ya tienes una cuenta con este correo, inicia sesión o restablece tu contraseña.",
                 forgotPasswordEmptySubtitle: "Solicita un enlace seguro de recuperación",
                 forgotPasswordPrefix: "Enlace de recuperación para",
                 resetEmailSentPrefix: "Enlace de recuperación enviado a",
@@ -401,7 +403,8 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 passwordSubtitle: "Последний шаг",
                 registerEmailSubtitle: "Создай доступ, чтобы войти в игру",
                 registerPasswordSubtitle: "Выбери надежный ключ",
-                otpSubtitlePrefix: "Код отправлен на",
+                otpSubtitlePrefix: "Код подтверждения для",
+                otpExistingAccountHelp: "Если аккаунт с этой почтой уже существует, войди или восстанови пароль.",
                 forgotPasswordEmptySubtitle: "Запроси безопасную ссылку восстановления",
                 forgotPasswordPrefix: "Ссылка восстановления для",
                 resetEmailSentPrefix: "Ссылка восстановления отправлена на",
@@ -466,7 +469,8 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 passwordSubtitle: "Останній крок",
                 registerEmailSubtitle: "Створи облікові дані, щоб увійти в гру",
                 registerPasswordSubtitle: "Обери надійний пароль",
-                otpSubtitlePrefix: "Код надіслано на",
+                otpSubtitlePrefix: "Код підтвердження для",
+                otpExistingAccountHelp: "Якщо акаунт із цією поштою вже існує, увійди або віднови пароль.",
                 forgotPasswordEmptySubtitle: "Запроси безпечне посилання для відновлення",
                 forgotPasswordPrefix: "Посилання для відновлення для",
                 resetEmailSentPrefix: "Посилання для відновлення надіслано на",
@@ -2253,6 +2257,7 @@ struct AuthCopy: Hashable {
     let registerEmailSubtitle: String
     let registerPasswordSubtitle: String
     let otpSubtitlePrefix: String
+    let otpExistingAccountHelp: String
     let forgotPasswordEmptySubtitle: String
     let forgotPasswordPrefix: String
     let resetEmailSentPrefix: String

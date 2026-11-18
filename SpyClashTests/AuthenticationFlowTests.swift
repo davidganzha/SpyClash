@@ -128,6 +128,7 @@ final class AuthenticationFlowTests: XCTestCase {
         let client = client()
         let store = AuthenticationMemoryStore(token: nil)
         let state = state(client: client, store: store)
+        state.language = .en
         requestHandler = { request in
             XCTAssertTrue(["reset-password-request", "reset-password", "resend-otp"].contains(request.request.url?.lastPathComponent ?? ""))
             request.respond(status: 200, body: "{}")
@@ -143,7 +144,7 @@ final class AuthenticationFlowTests: XCTestCase {
         await state.resendVerificationCode(email: "owner@example.test")
         if case .otp(let email) = state.authPhase { XCTAssertEqual(email, "owner@example.test") }
         else { XCTFail("Resending OTP changed the verification phase") }
-        XCTAssertNotNil(state.authNotice)
+        XCTAssertEqual(state.authNotice, "New code request accepted. Check your inbox.")
         XCTAssertNil(state.authError)
         XCTAssertNil(state.user)
         XCTAssertNil(client.currentAccessToken)

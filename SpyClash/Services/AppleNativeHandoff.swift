@@ -65,7 +65,7 @@ enum AppleNativeHandoffFailureCode: String, Equatable, Sendable {
 struct AppleNativeHandoffDiagnostic: Equatable, Sendable {
     enum Content: String, Sendable { case html = "H", json = "J", other = "O", absent = "N" }
     enum Endpoint: String, Sendable {
-        case bootstrap = "NB", authorize = "AU", broker = "BR", ssoLogin = "SL", ssoCallback = "SC"
+        case bootstrap = "NB", authorize = "AU", broker = "BR", ssoLogin = "SL", ssoCallback = "SC", ssoError = "SE"
         case appleCallback = "AC", legacyCallback = "LC", otherTrusted = "OT", unknown = "UN"
     }
     enum Provider: String, Sendable { case apple = "A", google = "G", other = "O", absent = "N" }
@@ -138,6 +138,7 @@ struct AppleNativeHandoffDiagnostic: Equatable, Sendable {
                 }
             } else if path == "/api/apps/69a0e57fa939f578082f8091/auth/sso/login" { endpoint = .ssoLogin }
             else if path == "/api/apps/69a0e57fa939f578082f8091/auth/sso/callback" { endpoint = .ssoCallback }
+            else if path == "/api/apps/69a0e57fa939f578082f8091/auth/sso/auth-error" { endpoint = .ssoError }
             else { endpoint = .otherTrusted }
         } else { endpoint = .unknown }
     }
