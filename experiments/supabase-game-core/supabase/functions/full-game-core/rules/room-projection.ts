@@ -1,3 +1,4 @@
+import { projectedRoomGenerationAd } from "./room-generation-ad.ts";
 import { fanSettings, isFanMode } from "./fan-mode-policy.ts";
 import {
   classifyObjectionableMaterial,
@@ -264,6 +265,7 @@ export function projectRoomForClient(
     replay_source_match_id: clean(room.replay_source_match_id),
     code: clean(room.code),
     host_email: clean(room.host_email),
+    room_generation_ad: projectedRoomGenerationAd(room),
     status: clean(room.status || "waiting"),
     ...(viewerMaySeeReplayEligibility
       ? { replay_eligible_player_emails: replayEligibleEmails }

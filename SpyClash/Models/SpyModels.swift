@@ -3824,6 +3824,7 @@ struct GameRoom: Codable, Identifiable, Hashable {
     var viewerMembershipID: String? = nil
     var code: String
     var hostEmail: String?
+    var roomGenerationAd: RoomGenerationAdOffer? = nil
     var matchID: String?
     var status: String?
     var players: [Player]?
@@ -4104,6 +4105,7 @@ struct GameRoom: Codable, Identifiable, Hashable {
         case viewerMembershipID = "viewer_membership_id"
         case code
         case hostEmail = "host_email"
+        case roomGenerationAd = "room_generation_ad"
         case matchID = "match_id"
         case status
         case players

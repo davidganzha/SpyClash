@@ -107,6 +107,11 @@ struct GenerationRewardCopy {
     var title: String { text("YOUR OWN THEMES", "ТВОИ ТЕМЫ", "TUS PROPIOS TEMAS", "ТВОЇ ТЕМИ") }
     var watch: String { text("Watch an ad → +1 generation", "Посмотреть рекламу → +1 генерация", "Ver anuncio → +1 generación", "Переглянути рекламу → +1 генерація") }
     var preparing: String { text("Preparing the ad…", "Подготавливаем рекламу…", "Preparando el anuncio…", "Готуємо рекламу…") }
+    var daily: String { text("Daily generations", "Генерации на сегодня", "Generaciones diarias", "Генерації на сьогодні") }
+    var bonusBalance: String { text("Bonus reserve", "Бонусный запас", "Reserva extra", "Бонусний запас") }
+    var watchAction: String { text("Watch ad", "Смотреть рекламу", "Ver anuncio", "Переглянути рекламу") }
+    var offerTerms: String { text("Finish the video to earn one generation. Keep it until you use it.", "Досмотри ролик, чтобы получить ещё одну генерацию. Она сохранится до использования.", "Completa el vídeo para ganar una generación. Guárdala hasta que la uses.", "Додивись ролик, щоб отримати ще одну генерацію. Вона збережеться до використання.") }
+    var rewardTitle: String { text("Generation unlocked", "Генерация получена", "Generación desbloqueada", "Генерацію отримано") }
     var testWatch: String { text("Test an ad → +1 generation", "Проверить рекламу → +1 генерация", "Probar anuncio → +1 generación", "Перевірити рекламу → +1 генерація") }
     var testTitle: String { text("AD TEST", "ПРОВЕРКА РЕКЛАМЫ", "PRUEBA DE ANUNCIO", "ПЕРЕВІРКА РЕКЛАМИ") }
     var testDisclosure: String { text("Ad test for this account. Free generations and LIMITLESS access stay unchanged. The bonus appears after server confirmation.", "Тест рекламы для этого аккаунта. Бесплатные генерации и LIMITLESS не меняются. Бонус появится после подтверждения сервера.", "Prueba de anuncio para esta cuenta. Las generaciones gratis y LIMITLESS no cambian. El bono aparece tras la confirmación del servidor.", "Тест реклами для цього акаунта. Безкоштовні генерації та LIMITLESS не змінюються. Бонус з’явиться після підтвердження сервера.") }
@@ -120,7 +125,7 @@ struct GenerationRewardCopy {
     func bonus(_ count: Int) -> String { text("Additional generations: \(count)", "Дополнительных генераций: \(count)", "Generaciones adicionales: \(count)", "Додаткових генерацій: \(count)") }
     func reset(_ date: Date) -> String {
         let time = date.formatted(date: .omitted, time: .shortened)
-        return text("Free generations renew at \(time).", "Бесплатные генерации обновятся в \(time).", "Las generaciones gratis se renuevan a las \(time).", "Безкоштовні генерації оновляться о \(time).")
+        return text("Resets at \(time).", "Обновление в \(time).", "Se renueva a las \(time).", "Оновлення о \(time).")
     }
     func notice(_ notice: GenerationRewardNotice) -> String {
         switch notice {

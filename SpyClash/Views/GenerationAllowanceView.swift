@@ -5,6 +5,7 @@ import SwiftUI
 struct GenerationAllowanceView: View {
     @Environment(AppState.self) private var appState
     var isGenerating = false
+    var roomID: String? = nil
     @State private var watchTask: Task<Void, Never>?
     @State private var showLimitless = false
 
@@ -16,60 +17,69 @@ struct GenerationAllowanceView: View {
             if let status = store.snapshot, store.showsTestAdControls {
                 testAdControls(status)
             } else if let status = store.snapshot, status.enabled {
-                VStack(alignment: .leading, spacing: 10) {
-                    if status.unlimited {
-                        Label(copy.unlimited, systemImage: "infinity")
-                            .foregroundStyle(SpyTheme.green)
-                    } else {
-                        Text(copy.free(status.freeRemaining ?? 0, limit: status.dailyLimit))
-                            .accessibilityIdentifier("generation.freeRemaining")
-                        if status.bonusCredits > 0 {
-                            Text(copy.bonus(status.bonusCredits))
-                                .foregroundStyle(SpyTheme.green)
-                                .accessibilityIdentifier("generation.bonusCredits")
-                        }
-                        if let reset = status.resetsAt {
-                            Text(copy.reset(reset)).font(SpyTheme.micro).foregroundStyle(SpyTheme.muted)
-                        }
+                if status.unlimited {
+                    Label(copy.unlimited, systemImage: "infinity")
+                        .font(SpyTheme.gameFont(size: 15, relativeTo: .subheadline))
+                        .foregroundStyle(SpyTheme.text)
+                } else {
+                    VStack(alignment: .leading, spacing: 12) {
+                        GenerationBalanceReadout(status: status, language: appState.language)
                         if status.needsReward {
-                            Text(copy.disclosure).font(SpyTheme.mono).foregroundStyle(SpyTheme.muted)
                             if store.isAwaitingReward {
                                 Label(copy.notice(.confirming), systemImage: "clock")
-                                    .font(SpyTheme.mono).foregroundStyle(SpyTheme.amber)
+                                    .foregroundStyle(SpyTheme.amber)
                             } else if status.adAvailable && RewardedGenerationAdPresenter.shared.isConfigured {
                                 Button {
                                     watchTask?.cancel()
-                                    watchTask = Task { await store.watch() }
+                                    watchTask = Task { await appState.watchGenerationRewardAd(roomID: roomID) }
                                 } label: {
-                                    Label(store.isWatching ? copy.preparing : copy.watch, systemImage: "play.rectangle")
-                                        .frame(maxWidth: .infinity)
-                                        .fixedSize(horizontal: false, vertical: true)
+                                    HStack(spacing: 10) {
+                                        Image(systemName: "play.fill")
+                                        Text(copy.watchAction)
+                                            .font(SpyTheme.gameFont(size: 19, weight: .bold, relativeTo: .headline))
+                                        Spacer(minLength: 4)
+                                        Text("+1")
+                                            .font(SpyTheme.brandFont(size: 25))
+                                            .monospacedDigit()
+                                    }
+                                    .padding(.horizontal, 15)
+                                    .frame(minHeight: 48)
+                                    .foregroundStyle(.white)
+                                    .background(SpyTheme.redDeep, in: CutCornerShape(cut: 9))
+                                    .contentShape(Rectangle())
                                 }
-                                .buttonStyle(SpyButtonStyle(variant: .outline))
+                                .buttonStyle(SpyWebPressStyle())
                                 .disabled(isGenerating || !store.canWatch)
+                                .accessibilityLabel(copy.watch)
                                 .accessibilityIdentifier("generation.watchAd")
-                            } else {
-                                Text(copy.notice(.unavailable)).font(SpyTheme.mono).foregroundStyle(SpyTheme.muted)
+                                Text(copy.offerTerms)
+                                    .foregroundStyle(SpyTheme.bodyText)
+                            } else if store.notice != .unavailable {
+                                Text(copy.notice(.unavailable))
+                                    .foregroundStyle(SpyTheme.bodyText)
                             }
                             if appState.membership.canPurchase {
-                                Button("LIMITLESS") { showLimitless = true }
-                                    .buttonStyle(SpyButtonStyle(variant: .outline))
-                                    .disabled(store.isWatching)
+                                Button { showLimitless = true } label: {
+                                    Label("LIMITLESS", systemImage: "infinity")
+                                        .font(SpyTheme.brandFont(size: 19))
+                                        .frame(maxWidth: .infinity, minHeight: 44)
+                                }
+                                .buttonStyle(SpyWebPressStyle())
+                                .disabled(store.isWatching)
                             }
-                            Text(copy.alternative).font(SpyTheme.micro).foregroundStyle(SpyTheme.muted)
                         }
-                        if let notice = store.notice, notice != .confirming || !status.needsReward {
-                            Text(copy.notice(notice)).font(SpyTheme.mono)
-                                .foregroundStyle(notice == .earned ? SpyTheme.green : SpyTheme.muted)
+                        if let notice = store.notice,
+                           notice != .earned, notice != .limitReached,
+                           notice != .confirming || !status.needsReward {
+                            Text(copy.notice(notice))
+                                .foregroundStyle(SpyTheme.bodyText)
                                 .accessibilityIdentifier("generation.notice")
                         }
                     }
+                    .font(SpyTheme.gameFont(size: 15, relativeTo: .subheadline))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 6)
                 }
-                .font(SpyTheme.mono)
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(SpyTheme.panel, in: CutCornerShape(cut: 10))
-                .overlay(CutCornerShape(cut: 10).stroke(SpyTheme.stroke, lineWidth: 1))
             }
         }
     }
@@ -94,6 +104,7 @@ struct GenerationAllowanceView: View {
             allowanceContent
 #endif
         }
+        .preference(key: GenerationPresentationSource.self, value: true)
         .task(id: appState.membershipScope) {
             appState.bindMembershipAccount()
             _ = await store.refresh()
@@ -131,7 +142,7 @@ struct GenerationAllowanceView: View {
                         .frame(maxWidth: .infinity)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .buttonStyle(SpyButtonStyle(variant: .outline))
+                .buttonStyle(SpyButtonStyle(variant: .outline, labelFont: SpyTheme.gameFont(size: 15, weight: .bold, relativeTo: .subheadline)))
                 .disabled(isGenerating || !store.canWatchTestAd)
                 .accessibilityIdentifier("generation.watchTestAd")
             }
@@ -141,7 +152,7 @@ struct GenerationAllowanceView: View {
                     .accessibilityIdentifier("generation.notice")
             }
         }
-        .font(SpyTheme.mono)
+        .font(SpyTheme.gameFont(size: 15, relativeTo: .subheadline))
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(SpyTheme.panel, in: CutCornerShape(cut: 10))
@@ -187,7 +198,7 @@ private struct SimulatorSampleAdTestControl: View {
                     .frame(maxWidth: .infinity)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .buttonStyle(SpyButtonStyle(variant: .outline))
+            .buttonStyle(SpyButtonStyle(variant: .outline, labelFont: SpyTheme.gameFont(size: 15, weight: .bold, relativeTo: .subheadline)))
             .disabled(!canWatch)
             .accessibilityIdentifier("generation.watchSampleAd")
             if let notice {
@@ -196,7 +207,7 @@ private struct SimulatorSampleAdTestControl: View {
                     .accessibilityIdentifier("generation.sampleAdNotice")
             }
         }
-        .font(SpyTheme.mono)
+        .font(SpyTheme.gameFont(size: 15, relativeTo: .subheadline))
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(SpyTheme.panel, in: CutCornerShape(cut: 10))
@@ -258,6 +269,7 @@ struct AdvertisingPrivacyButton: View {
                 }
             } label: {
                 Label(GenerationRewardCopy(language: appState.language).privacy, systemImage: "hand.raised")
+                    .font(SpyTheme.gameFont(size: 17))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 12)
             }
@@ -276,14 +288,14 @@ struct GenerationRewardsPreview: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     SpyWordmark(fontSize: 30)
-                    Text("ТВОИ ТЕМЫ").font(.title2.bold())
+                    Text("ТВОИ ТЕМЫ").font(SpyTheme.gameFont(size: 24, weight: .bold, relativeTo: .title2))
                     Text("Тестовая реклама Google · локальная проверка. Настоящие генерации и аккаунты не изменяются.")
-                        .font(.footnote).foregroundStyle(SpyTheme.muted)
+                        .font(SpyTheme.gameFont(size: 14, relativeTo: .footnote)).foregroundStyle(SpyTheme.muted)
                     GenerationAllowanceView()
                     Button("Сгенерировать тестовый набор") {
                         _ = appState.generationRewards.consumePreviewGeneration()
                     }
-                    .buttonStyle(SpyButtonStyle(variant: .outline))
+                    .buttonStyle(SpyButtonStyle(variant: .outline, labelFont: SpyTheme.gameFont(size: 15, weight: .bold, relativeTo: .subheadline)))
                     .disabled(appState.generationRewards.isWatching)
                     .accessibilityIdentifier("generation.previewGenerate")
                     AdvertisingPrivacyButton()

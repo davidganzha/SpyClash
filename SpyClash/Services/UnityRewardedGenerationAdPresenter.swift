@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OSLog
 import UIKit
 @preconcurrency import UnityAds
 
@@ -33,7 +34,7 @@ enum UnityRewardedGenerationAdError: LocalizedError {
 @Observable
 final class UnityRewardedGenerationAdPresenter: NSObject {
     enum Status: Equatable {
-        case idle, initializing, loading, presenting, completed, skipped, cancelled
+        case idle, initializing, loading, ready, presenting, completed, skipped, cancelled
         case failed(String)
     }
 
@@ -44,9 +45,17 @@ final class UnityRewardedGenerationAdPresenter: NSObject {
     @ObservationIgnored private var initializedForRewards = false
     @ObservationIgnored private var initializationIsPending = false
     @ObservationIgnored private var operation: Operation?
-    @ObservationIgnored private var timeoutTask: Task<Void, Never>?
+    @ObservationIgnored private var preparationID: UUID?
+    @ObservationIgnored private var loadingID: UUID?
+    @ObservationIgnored private var cachedAd: UADSRewardedAd?
+    @ObservationIgnored private var cachedAt: Date?
+    @ObservationIgnored private var lastPreparationFailure: Date?
+    @ObservationIgnored private var preparationTimeoutTask: Task<Void, Never>?
+    @ObservationIgnored private var presentationTask: Task<Void, Never>?
     @ObservationIgnored private var navigationTask: Task<Void, Never>?
     @ObservationIgnored private var backgroundObserver: (any NSObjectProtocol)?
+    @ObservationIgnored private var nextTrace: PresentationTrace?
+    private static let logger = Logger(subsystem: "com.spyclash.ios", category: "RewardedAds")
 
     init(configuration: UnityRewardedGenerationAdConfiguration = .current) {
         self.configuration = configuration
@@ -55,15 +64,55 @@ final class UnityRewardedGenerationAdPresenter: NSObject {
     }
 
     var isConfigured: Bool { configuration.isConfigured }
+    var isPresentingAd: Bool { operation?.phase == .presenting }
+
+    func beginPresentationTrace() {
+        let cache = cachedAd != nil && cachedAt.map { Date().timeIntervalSince($0) < 120 } == true
+            ? "ready" : (preparationID != nil ? "loading" : "cold")
+        nextTrace = PresentationTrace(tappedAt: ProcessInfo.processInfo.systemUptime, cache: cache)
+    }
+
+    /// Preloading carries no player identifier and creates no reward attempt.
+    /// The SDK request is shared with a later explicit viewing.
+    func preload() {
+        guard isConfigured, UIApplication.shared.applicationState == .active, !isBusy else { return }
+        if let lastPreparationFailure, Date().timeIntervalSince(lastPreparationFailure) < 15 { return }
+        prepareAd()
+    }
 
     /// A true result means reward confirmation should be polled, not granted.
     func present(attempt: GenerationRewardAttempt, onEarned: @escaping @MainActor () -> Void) async throws -> Bool {
-        guard configuration.permits(attempt) else {
+        try await present(attempt: attempt, onPhaseChanged: { _ in }, beforePresentation: {}, onEarned: onEarned)
+    }
+
+    func present(
+        attempt: GenerationRewardAttempt,
+        onPhaseChanged: @escaping @MainActor (GenerationRewardPresentationPhase) -> Void,
+        beforePresentation: @escaping @MainActor () async throws -> Void,
+        onEarned: @escaping @MainActor () -> Void
+    ) async throws -> Bool {
+        guard configuration.permits(attempt), let serverID = attempt.serverID else {
             throw UnityRewardedGenerationAdError.unavailable
         }
-        guard !isBusy else {
-            throw UnityRewardedGenerationAdError.alreadyPresenting
-        }
+        return try await present(serverID: serverID, onPhaseChanged: onPhaseChanged,
+                                 beforePresentation: beforePresentation, onStarted: {}, onEarned: onEarned)
+    }
+
+    /// A guest viewing has no server capability and cannot credit any account.
+    func presentGuest(onStarted: @escaping @MainActor () -> Void) async throws -> Bool {
+        guard isConfigured else { throw UnityRewardedGenerationAdError.unavailable }
+        return try await present(serverID: nil, onPhaseChanged: { _ in },
+                                 beforePresentation: {}, onStarted: onStarted, onEarned: {})
+    }
+
+    private func present(
+        serverID: String?,
+        onPhaseChanged: @escaping @MainActor (GenerationRewardPresentationPhase) -> Void,
+        beforePresentation: @escaping @MainActor () async throws -> Void,
+        onStarted: @escaping @MainActor () -> Void,
+        onEarned: @escaping @MainActor () -> Void
+    ) async throws -> Bool {
+        guard !isBusy else { throw UnityRewardedGenerationAdError.alreadyPresenting }
         try Task.checkCancellation()
         guard UIApplication.shared.applicationState == .active,
               let presenter = Self.visiblePresenter() else {
@@ -71,17 +120,21 @@ final class UnityRewardedGenerationAdPresenter: NSObject {
         }
 
         let id = UUID()
+        let trace = nextTrace ?? PresentationTrace(tappedAt: ProcessInfo.processInfo.systemUptime, cache: "untracked")
+        nextTrace = nil
         let cancellation = UnityGenerationCancellation()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                operation = Operation(id: id, presenter: presenter, attempt: attempt, onEarned: onEarned, cancellation: cancellation, continuation: continuation)
+                operation = Operation(id: id, presenter: presenter, serverID: serverID,
+                                      onPhaseChanged: onPhaseChanged, beforePresentation: beforePresentation,
+                                      onStarted: onStarted, onEarned: onEarned, trace: trace,
+                                      cancellation: cancellation, continuation: continuation)
                 isBusy = true
+                onPhaseChanged(.preparing)
                 observePendingPresentation(id)
-                initializeSDK(id)
+                prepareAd()
             }
         } onCancel: { [weak self] in
-            // Mark synchronously so an already queued SDK callback cannot show
-            // before the actor processes this cancellation handler's task.
             cancellation.cancel()
             Task { @MainActor in
                 guard self?.operation?.id == id else { return }
@@ -90,31 +143,36 @@ final class UnityRewardedGenerationAdPresenter: NSObject {
         }
     }
 
-    /// The screen calls this on navigation away. A visible SDK ad retains control
-    /// of its dismissal; cancellation never closes it or releases its delegate.
+    /// A visible SDK ad retains control of its dismissal and delegate.
     func cancelPendingPresentation() {
         guard let operation, operation.phase != .presenting else { return }
         finish(operation.id, result: .failure(CancellationError()))
     }
 
-    private func initializeSDK(_ id: UUID) {
-        do { try validatePendingOperation(id) }
-        catch { finish(id, result: .failure(error)); return }
-        if initializedForRewards {
-            loadRewardedAd(id)
+    private func prepareAd() {
+        if let cachedAd, let cachedAt, Date().timeIntervalSince(cachedAt) < 120 {
+            if let operation { schedulePresentation(cachedAd, operationID: operation.id) }
             return
         }
-
+        cachedAd = nil
+        cachedAt = nil
+        guard preparationID == nil else { return }
+        let id = UUID()
+        preparationID = id
+        preparationTimeoutTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: .seconds(30)) } catch { return }
+            guard self?.preparationID == id else { return }
+            self?.preparationFailed(UnityRewardedGenerationAdError.timedOut)
+        }
+        if initializedForRewards { loadRewardedAd(id); return }
         setStatus(.initializing)
-        startTimeout(id, phase: .initializing)
-        // A timed-out/cancelled caller does not restart an SDK initialization
-        // still in flight. A new explicit request can wait for the same result.
+        // Unity offers no cancellation API for initialization. A later caller
+        // joins its result, including after an earlier caller's bounded wait.
         guard !initializationIsPending else { return }
         guard !UnityAds.isInitialized() else {
-            finish(id, result: .failure(UnityRewardedGenerationAdError.incompatibleInitialization))
+            preparationFailed(UnityRewardedGenerationAdError.incompatibleInitialization)
             return
         }
-
         UnityAds.setUserConsent(false)
         UnityAds.setUserOptOut(true)
         UnityAds.setNonBehavioral(true)
@@ -123,64 +181,93 @@ final class UnityRewardedGenerationAdPresenter: NSObject {
             .with(testMode: configuration.usesTestAds)
             .build()
         UnityAds.initialize(sdkConfiguration) { [weak self] error in
-            // Copy only Sendable values from the SDK callback before hopping.
             let failure = error.map { "\($0.code): \($0.message)" }
             Task { @MainActor in
                 guard let self else { return }
                 self.initializationIsPending = false
                 self.initializedForRewards = failure == nil
-                guard let current = self.operation, current.phase == .initializing else { return }
+                guard let current = self.preparationID else { return }
                 if let failure {
-                    self.finish(current.id, result: .failure(UnityRewardedGenerationAdError.initializationFailed(failure)))
+                    self.preparationFailed(UnityRewardedGenerationAdError.initializationFailed(failure))
                 } else {
-                    self.loadRewardedAd(current.id)
+                    self.loadRewardedAd(current)
                 }
             }
         }
     }
 
     private func loadRewardedAd(_ id: UUID) {
-        do { try validatePendingOperation(id) }
-        catch { finish(id, result: .failure(error)); return }
-        operation?.phase = .loading
+        guard preparationID == id, loadingID == nil else { return }
+        loadingID = id
         setStatus(.loading)
-        startTimeout(id, phase: .loading)
-        let loadConfiguration = UADSLoadConfigurationBuilder(placementId: configuration.adUnitID).build()
-        UADSRewardedAd.load(loadConfiguration) { [weak self] ad, error in
+        let config = UADSLoadConfigurationBuilder(placementId: configuration.adUnitID).build()
+        UADSRewardedAd.load(config) { [weak self] ad, error in
             let failure = error.map { "\($0.code): \($0.message)" }
             let transfer = UnityGenerationLoadedAdTransfer(ad)
             Task { @MainActor in
-                guard let self, self.operation?.id == id, self.operation?.phase == .loading else { return }
+                guard let self, self.preparationID == id, self.loadingID == id else { return }
+                self.loadingID = nil
                 if let failure {
-                    self.finish(id, result: .failure(UnityRewardedGenerationAdError.loadFailed(failure)))
+                    self.preparationFailed(UnityRewardedGenerationAdError.loadFailed(failure))
                 } else if let ad = transfer.ad {
-                    self.showRewardedAd(ad, operationID: id)
+                    self.preparationID = nil
+                    self.preparationTimeoutTask?.cancel()
+                    self.preparationTimeoutTask = nil
+                    self.lastPreparationFailure = nil
+                    self.cachedAd = ad
+                    self.cachedAt = Date()
+                    let adID = ObjectIdentifier(ad)
+                    ad.onAdExpired = { [weak self] _ in
+                        Task { @MainActor in
+                            guard let self, self.cachedAd.map(ObjectIdentifier.init) == adID else { return }
+                            self.cachedAd = nil
+                            self.cachedAt = nil
+                        }
+                    }
+                    self.setStatus(.ready)
+                    if let current = self.operation { self.schedulePresentation(ad, operationID: current.id) }
                 } else {
-                    self.finish(id, result: .failure(UnityRewardedGenerationAdError.loadFailed("No ad was returned.")))
+                    self.preparationFailed(UnityRewardedGenerationAdError.loadFailed("No ad was returned."))
                 }
             }
         }
     }
 
-    private func showRewardedAd(_ ad: UADSRewardedAd, operationID id: UUID) {
-        do { try validatePendingOperation(id) }
-        catch { finish(id, result: .failure(error)); return }
-        guard let operation, let presenter = operation.presenter, let serverID = operation.attempt.serverID else { return }
+    private func preparationFailed(_ error: Error) {
+        preparationID = nil
+        loadingID = nil
+        preparationTimeoutTask?.cancel()
+        preparationTimeoutTask = nil
+        lastPreparationFailure = Date()
+        setStatus(.failed(error.localizedDescription))
+        if let current = operation, current.phase != .presenting {
+            finish(current.id, result: .failure(error))
+        }
+    }
 
-        timeoutTask?.cancel()
-        timeoutTask = nil
-        navigationTask?.cancel()
-        navigationTask = nil
-        operation.ad = ad
-        operation.phase = .presenting
-        setStatus(.presenting)
-        // Mark the request as presenting before entering SDK code. From here to
-        // its terminal callback, only the SDK can dismiss its own screen.
-        let show = UADSShowConfigurationBuilder()
-            .with(viewController: presenter)
-            .with(customRewardString: serverID)
-            .build()
-        ad.show(show, delegate: self)
+    private func schedulePresentation(_ ad: UADSRewardedAd, operationID id: UUID) {
+        guard let current = operation, current.id == id, current.phase == .preparing else { return }
+        cachedAd = nil
+        cachedAt = nil
+        ad.onAdExpired = nil
+        current.ad = ad
+        current.phase = .readyToPresent
+        presentationTask = Task { @MainActor [weak self] in
+            do {
+                try await current.beforePresentation()
+                try self?.validatePendingOperation(id)
+                guard let self, let operation = self.operation, operation.id == id,
+                      let presenter = operation.presenter else { return }
+                self.navigationTask?.cancel()
+                self.navigationTask = nil
+                operation.phase = .presenting
+                operation.onPhaseChanged(.presenting)
+                self.setStatus(.presenting)
+                let builder = UADSShowConfigurationBuilder().with(viewController: presenter)
+                let show = operation.serverID.map { builder.with(customRewardString: $0).build() } ?? builder.build()
+                ad.show(show, delegate: self)
+            } catch { self?.finish(id, result: .failure(error)) }
+        }
     }
 
     private func validatePendingOperation(_ id: UUID) throws {
@@ -216,21 +303,11 @@ final class UnityRewardedGenerationAdPresenter: NSObject {
         }
     }
 
-    private func startTimeout(_ id: UUID, phase: Operation.Phase) {
-        timeoutTask?.cancel()
-        timeoutTask = Task { @MainActor [weak self] in
-            do { try await Task.sleep(for: .seconds(30)) }
-            catch { return }
-            guard let self, self.operation?.id == id, self.operation?.phase == phase else { return }
-            self.finish(id, result: .failure(UnityRewardedGenerationAdError.timedOut))
-        }
-    }
-
     private func finish(_ id: UUID, result: Result<Bool, Error>) {
         guard let current = operation, current.id == id else { return }
         operation = nil
-        timeoutTask?.cancel()
-        timeoutTask = nil
+        presentationTask?.cancel()
+        presentationTask = nil
         navigationTask?.cancel()
         navigationTask = nil
         if let backgroundObserver { NotificationCenter.default.removeObserver(backgroundObserver) }
@@ -269,23 +346,42 @@ final class UnityRewardedGenerationAdPresenter: NSObject {
         return visible
     }
 
+    private struct PresentationTrace {
+        let tappedAt: TimeInterval
+        let cache: String
+    }
+
     @MainActor
     private final class Operation {
-        enum Phase { case initializing, loading, presenting }
+        enum Phase { case preparing, readyToPresent, presenting }
         let id: UUID
-        let attempt: GenerationRewardAttempt
+        let serverID: String?
+        let onPhaseChanged: @MainActor (GenerationRewardPresentationPhase) -> Void
+        let beforePresentation: @MainActor () async throws -> Void
+        let onStarted: @MainActor () -> Void
         let onEarned: @MainActor () -> Void
+        let trace: PresentationTrace
+        var didLogShowStart = false
         var didReceiveReward = false
         weak var presenter: UIViewController?
         let cancellation: UnityGenerationCancellation
         let continuation: CheckedContinuation<Bool, Error>
-        var phase: Phase = .initializing
+        var phase: Phase = .preparing
         var ad: UADSRewardedAd?
 
-        init(id: UUID, presenter: UIViewController, attempt: GenerationRewardAttempt, onEarned: @escaping @MainActor () -> Void, cancellation: UnityGenerationCancellation, continuation: CheckedContinuation<Bool, Error>) {
+        init(id: UUID, presenter: UIViewController, serverID: String?,
+             onPhaseChanged: @escaping @MainActor (GenerationRewardPresentationPhase) -> Void,
+             beforePresentation: @escaping @MainActor () async throws -> Void,
+             onStarted: @escaping @MainActor () -> Void,
+             onEarned: @escaping @MainActor () -> Void, trace: PresentationTrace,
+             cancellation: UnityGenerationCancellation, continuation: CheckedContinuation<Bool, Error>) {
             self.id = id
-            self.attempt = attempt
+            self.serverID = serverID
+            self.onPhaseChanged = onPhaseChanged
+            self.beforePresentation = beforePresentation
+            self.onStarted = onStarted
             self.onEarned = onEarned
+            self.trace = trace
             self.presenter = presenter
             self.cancellation = cancellation
             self.continuation = continuation
@@ -297,7 +393,13 @@ extension UnityRewardedGenerationAdPresenter: UADSRewardedShowDelegate {
     nonisolated func showDidStart(_ unityAd: UADSRewardedAd) {
         let adID = ObjectIdentifier(unityAd)
         Task { @MainActor [weak self] in
-            guard let self, self.presentingOperation(for: adID) != nil else { return }
+            guard let self, let current = self.presentingOperation(for: adID) else { return }
+            if !current.didLogShowStart {
+                current.didLogShowStart = true
+                let elapsed = Int((ProcessInfo.processInfo.systemUptime - current.trace.tappedAt) * 1_000)
+                Self.logger.notice("unity_show_started elapsed_ms=\(elapsed, privacy: .public) cache=\(current.trace.cache, privacy: .public)")
+            }
+            current.onStarted()
             self.setStatus(.presenting)
         }
     }

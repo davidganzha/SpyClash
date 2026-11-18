@@ -327,6 +327,10 @@ struct AppShellView: View {
                 appState.openMainTab(tab)
             }
         )
+        // Mounted tabs retain their views. Use the visible route and waiting
+        // room, so generator typography cannot change headers on other screens.
+        let usesGameHeaderTypography = appState.shellRoute == .main
+            && contentTab == .game && appState.activeRoom?.normalizedStatus == "waiting"
         let shouldShowShellChrome = !appState.isShellChromeSuppressed
         let isOnlineIntro = contentTab == .game && appState.activeRoom?.normalizedStatus == "roulette"
         let shouldShowDock = (
@@ -434,6 +438,7 @@ struct AppShellView: View {
                         communityAttentionCount: communityAttention.totalCount,
                         notificationUnreadCount: appState.notificationInbox.unread.total
                     )
+                        .spyGameTypography(usesGameHeaderTypography)
                         .opacity(shouldShowShellChrome ? 1 : 0)
                         .offset(y: shouldShowShellChrome || isOnlineIntro ? 0 : -140)
                         .allowsHitTesting(shouldShowShellChrome)
@@ -3463,6 +3468,7 @@ private struct WebHeaderHomeButton: View {
 
 private struct WebCommandMenuPanel: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.spyUsesGameTypography) private var usesGameTypography
 
     let progress: CGFloat
     let communityAttentionCount: Int
@@ -3614,7 +3620,9 @@ private struct WebCommandMenuPanel: View {
                     .frame(width: 28, alignment: .leading)
 
                 Text(title)
-                    .font(.system(size: 13 * InterfacePreferences.shared.settings.labelSize.scale, weight: .regular, design: .monospaced))
+                    .font(usesGameTypography
+                          ? SpyTheme.gameFont(size: 13, relativeTo: .subheadline)
+                          : .system(size: 13 * InterfacePreferences.shared.settings.labelSize.scale, weight: .regular, design: .monospaced))
                     .tracking(3)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
@@ -3646,7 +3654,9 @@ private struct WebCommandMenuPanel: View {
     private var languageFooter: some View {
         HStack(spacing: 8) {
             Text(localized(en: "LANGUAGE", ru: "ЯЗЫК", es: "IDIOMA", uk: "МОВА"))
-                .font(.system(size: 10, weight: .regular, design: .monospaced))
+                .font(usesGameTypography
+                      ? SpyTheme.gameFont(size: 10, relativeTo: .caption2)
+                      : .system(size: 10, weight: .regular, design: .monospaced))
                 .tracking(2)
                 .foregroundStyle(Color(red: 68 / 255, green: 68 / 255, blue: 68 / 255))
                 .lineLimit(1)
@@ -3694,7 +3704,9 @@ private struct WebCommandMenuPanel: View {
             }
         } label: {
             Text(language.shortCode)
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .font(usesGameTypography
+                      ? SpyTheme.gameFont(size: 11, weight: .bold, relativeTo: .caption)
+                      : .system(size: 11, weight: .bold, design: .monospaced))
                 .tracking(1)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
@@ -3739,10 +3751,13 @@ private struct WebCommandMenuPanel: View {
 
 private struct SpyAppVersionMark: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.spyUsesGameTypography) private var usesGameTypography
 
     var body: some View {
         Text(SpyClashRelease.headerVersionLabel)
-            .font(.system(size: 9, weight: .bold, design: .monospaced))
+            .font(usesGameTypography
+                  ? SpyTheme.brandFont(size: 9)
+                  : .system(size: 9, weight: .bold, design: .monospaced))
             .tracking(2.1)
             .foregroundStyle(Color.white.opacity(0.46))
             .accessibilityLabel(versionAccessibilityLabel)
@@ -3827,6 +3842,7 @@ private struct CommunityAttentionSnapshot: Equatable {
 
 private struct CommunityAttentionBadge: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.spyUsesGameTypography) private var usesGameTypography
 
     let count: Int
     var compact = false
@@ -3836,7 +3852,9 @@ private struct CommunityAttentionBadge: View {
 
     var body: some View {
         Text(count > 99 ? "99+" : "\(count)")
-            .font(.system(size: prominent ? min(prominentFontSize, 18) : (compact ? 9 : 10), weight: prominent ? .bold : .black, design: .monospaced))
+            .font(usesGameTypography
+                  ? SpyTheme.brandFont(size: prominent ? min(prominentFontSize, 18) : (compact ? 9 : 10))
+                  : .system(size: prominent ? min(prominentFontSize, 18) : (compact ? 9 : 10), weight: prominent ? .bold : .black, design: .monospaced))
             .foregroundStyle(.white)
             .lineLimit(1)
             .minimumScaleFactor(prominent ? 1 : 0.72)

@@ -52,6 +52,7 @@ struct WordPacksView: View {
                 applySavedPack(savedPack)
             }
             .spyGlobalToastLayer()
+            .generationPresentationLayer()
             .spyInterfaceScale()
         }
         .overlay {

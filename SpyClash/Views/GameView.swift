@@ -2301,6 +2301,7 @@ struct GameView: View {
 
     private var productionBody: some View {
         rootWithRoomKickConfirmation
+        .modifier(RoomGenerationAdGuestPresentation())
         .disabled(activeDetectiveVoteCancellationPresentation != nil)
         .allowsHitTesting(activeDetectiveVoteCancellationPresentation == nil)
         .accessibilityHidden(activeDetectiveVoteCancellationPresentation != nil)
@@ -4723,7 +4724,7 @@ struct GameView: View {
                     )
                     Spacer()
                     Text(localized(en: "AI INTEL", ru: "AI INTEL", es: "IA INTEL", uk: "AI-РОЗВІДКА"))
-                        .font(.system(size: 10, weight: .black, design: .default))
+                        .font(SpyTheme.gameFont(size: 10, weight: .black))
                         .tracking(0.02)
                         .foregroundStyle(SpyTheme.dim)
                         .spyFitted(scale: 0.62, alignment: .trailing)
@@ -4750,7 +4751,7 @@ struct GameView: View {
 
                 if roomHasCustomTheme && roomHasGeneratedTheme {
                     Text(roomAIWarning)
-                        .font(.system(size: 9, weight: .bold, design: .default))
+                        .font(SpyTheme.gameFont(size: 9, weight: .bold))
                         .tracking(0.02)
                         .foregroundStyle(SpyTheme.dim)
                         .lineSpacing(2)
@@ -4776,6 +4777,7 @@ struct GameView: View {
             .animation(.smooth(duration: 0.28), value: roomHasGeneratedTheme)
             .animation(.smooth(duration: 0.28), value: roomGeneratedPack)
         }
+        .spyGameTypography()
     }
 
     private func onlineGuestIntelPanel(_ room: GameRoom) -> some View {
@@ -4790,13 +4792,13 @@ struct GameView: View {
                 if roomHasAuthoritativeLobbySelection(room) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text((room.lobbySourceName?.nilIfBlank ?? room.lobbyTheme?.nilIfBlank ?? copy.waitingForHost).uppercased())
-                            .font(.system(size: 14, weight: .black, design: .monospaced))
+                            .font(SpyTheme.gameFont(size: 14, weight: .black))
                             .foregroundStyle(.white)
                             .fixedSize(horizontal: false, vertical: true)
                             .contentTransition(.opacity)
                         if let category = room.lobbyCategory?.nilIfBlank {
                             Text(category.uppercased())
-                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .font(SpyTheme.gameFont(size: 9, weight: .bold))
                                 .foregroundStyle(SpyTheme.dim)
                                 .contentTransition(.opacity)
                         }
@@ -4808,10 +4810,10 @@ struct GameView: View {
                         SpySpinner(size: 18, accent: SpyTheme.red)
                         VStack(alignment: .leading, spacing: 4) {
                             Text(copy.waitingForHost)
-                                .font(.system(size: 11, weight: .black, design: .monospaced))
+                                .font(SpyTheme.gameFont(size: 11, weight: .black))
                                 .foregroundStyle(SpyTheme.muted)
                             Text(copy.waitingForHostSignal)
-                                .font(.system(size: 10, weight: .semibold, design: .default))
+                                .font(SpyTheme.gameFont(size: 10, weight: .semibold))
                                 .foregroundStyle(SpyTheme.dim)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -4824,6 +4826,7 @@ struct GameView: View {
             remoteLobbyUpdateAnimation(for: room),
             value: presentationSnapshot
         )
+        .spyGameTypography()
     }
 
     @ViewBuilder
@@ -4834,6 +4837,7 @@ struct GameView: View {
                     Task { await beginReadyCheck(room) }
                 } label: {
                     SpyActionLabel(title: copy.readyCheckAction, systemImage: "checkmark.seal", tracking: 0.02, lines: 2)
+                        .spyGameTypography()
                 }
                 .buttonStyle(SpyButtonStyle(variant: .outline))
                 .disabled(isStarting || !lobbySetupCanAdvance(room))
@@ -4847,10 +4851,10 @@ struct GameView: View {
                             SpySpinner(size: 18, accent: SpyTheme.red)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(copy.waitingForHost)
-                                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                                    .font(SpyTheme.gameFont(size: 11, weight: .black))
                                     .foregroundStyle(SpyTheme.muted)
                                 Text(copy.minimumOperatives(room.playersList.count))
-                                    .font(.system(size: 9, weight: .semibold, design: .default))
+                                    .font(SpyTheme.gameFont(size: 9, weight: .semibold))
                                     .foregroundStyle(SpyTheme.dim)
                             }
                             Spacer()
@@ -4867,6 +4871,7 @@ struct GameView: View {
                     systemImage: "chevron.left",
                     tracking: 0.02
                 )
+                .spyGameTypography()
             }
             .buttonStyle(SpyButtonStyle(variant: .ghost))
             .accessibilityIdentifier("onlineRoom.leave")
@@ -5324,10 +5329,10 @@ struct GameView: View {
                     SpySpinner(size: 18, accent: SpyTheme.red)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(copy.waitingForHost)
-                            .font(.system(size: 10, weight: .black, design: .monospaced))
+                            .font(SpyTheme.gameFont(size: 10, weight: .black))
                             .foregroundStyle(.white)
                         Text(copy.minimumOperatives(room.playersList.count))
-                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .font(SpyTheme.gameFont(size: 8, weight: .bold))
                             .foregroundStyle(SpyTheme.dim)
                     }
                     Spacer()
@@ -5340,6 +5345,7 @@ struct GameView: View {
         }
         .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: canStart)
         .animation(reduceMotion ? nil : .smooth(duration: 0.20), value: isStarting)
+        .spyGameTypography()
     }
 
     private func webRoomCodePanel(_ room: GameRoom) -> some View {
@@ -7001,11 +7007,13 @@ struct GameView: View {
                 .foregroundStyle(focusedOnlineSetupField == .theme ? SpyTheme.red : SpyTheme.dim)
                 .frame(width: 18)
 
-            TextField("", text: roomThemeDraftBinding, prompt: Text(roomThemePlaceholder).foregroundStyle(SpyTheme.dim))
+            TextField("", text: roomThemeDraftBinding, prompt: Text(roomThemePlaceholder)
+                .font(SpyTheme.gameFont(size: 13, weight: .medium))
+                .foregroundStyle(SpyTheme.dim))
                 .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
                 .submitLabel(.done)
-                .font(SpyTheme.mono)
+                .font(SpyTheme.gameFont(size: 13, weight: .medium))
                 .tracking(0.04)
                 .foregroundStyle(.white)
                 .tint(SpyTheme.red)
@@ -7078,11 +7086,11 @@ struct GameView: View {
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(roomWordCountModeTitle(mode))
-                                    .font(.system(size: 10.5, weight: .black, design: .default))
+                                    .font(SpyTheme.gameFont(size: 10.5, weight: .black))
                                     .tracking(0.02)
                                     .spyFitted(lines: 1, scale: 0.58)
                                 Text(roomWordCountModeHint(mode))
-                                    .font(.system(size: 9.5, weight: .bold, design: .default))
+                                    .font(SpyTheme.gameFont(size: 9.5, weight: .bold))
                                     .tracking(0.02)
                                     .foregroundStyle(isActive ? Color.white.opacity(0.70) : SpyTheme.dim)
                                     .spyFitted(lines: 1, scale: 0.58)
@@ -7113,13 +7121,13 @@ struct GameView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text(roomCountLabel)
-                            .font(SpyTheme.micro)
+                            .font(SpyTheme.gameFont(size: 11, weight: .bold, relativeTo: .caption))
                             .tracking(0.12)
                             .foregroundStyle(SpyTheme.dim)
                             .spyKicker()
                         Spacer()
                         Text("\(Int(roomCustomWordCount)) / 80")
-                            .font(.system(size: 15, weight: .black, design: .default))
+                            .font(SpyTheme.gameFont(size: 15, weight: .black))
                             .foregroundStyle(SpyTheme.red)
                             .spyFitted(scale: 0.66, alignment: .trailing)
                     }
@@ -7153,7 +7161,7 @@ struct GameView: View {
 
     private var roomAnalyzeButton: some View {
         VStack(spacing: 12) {
-        GenerationAllowanceView(isGenerating: isGeneratingRoomTheme)
+        GenerationAllowanceView(isGenerating: isGeneratingRoomTheme, roomID: appState.activeRoom?.id)
         Button {
             dismissOnlineSetupCapture()
             Task {
@@ -7184,7 +7192,7 @@ struct GameView: View {
                 HStack(spacing: 10) {
                     SpySpinner(size: 16, accent: SpyTheme.red)
                     Text(localized(en: "LOADING WORD PACKS", ru: "ЗАГРУЗКА КОЛОД", es: "CARGANDO PACKS", uk: "ЗАВАНТАЖЕННЯ НАБОРІВ СЛІВ"))
-                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .font(SpyTheme.gameFont(size: 11, weight: .black))
                         .tracking(0.04)
                         .foregroundStyle(SpyTheme.dim)
                 }
@@ -7195,10 +7203,10 @@ struct GameView: View {
             } else if let roomPackLoadError {
                 VStack(alignment: .leading, spacing: 9) {
                     Text(localized(en: "COULDN'T LOAD YOUR DECKS", ru: "НЕ УДАЛОСЬ ЗАГРУЗИТЬ КОЛОДЫ", es: "NO SE PUDIERON CARGAR LOS PACKS", uk: "НЕ ВДАЛОСЯ ЗАВАНТАЖИТИ НАБОРИ"))
-                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .font(SpyTheme.gameFont(size: 11, weight: .black))
                         .foregroundStyle(SpyTheme.red)
                     Text(roomPackLoadError)
-                        .font(.system(size: 10, weight: .semibold, design: .default))
+                        .font(SpyTheme.gameFont(size: 10, weight: .semibold))
                         .foregroundStyle(SpyTheme.dim)
                         .lineLimit(2)
                     Button {
@@ -7208,7 +7216,7 @@ struct GameView: View {
                             localized(en: "TRY AGAIN", ru: "ПОВТОРИТЬ", es: "REINTENTAR", uk: "ПОВТОРИТИ"),
                             systemImage: "arrow.clockwise"
                         )
-                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .font(SpyTheme.gameFont(size: 10, weight: .black))
                         .foregroundStyle(SpyTheme.red)
                         .frame(maxWidth: .infinity, minHeight: 38)
                         .background(SpyTheme.red.opacity(0.06), in: CutCornerShape(cut: 7))
@@ -7231,7 +7239,7 @@ struct GameView: View {
                         es: "No has creado ningun pack.",
                         uk: "Ви ще не створили жодного набору."
                     ))
-                    .font(.system(size: 11, weight: .semibold, design: .default))
+                    .font(SpyTheme.gameFont(size: 11, weight: .semibold))
                     .foregroundStyle(SpyTheme.muted)
                     .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
@@ -7243,7 +7251,7 @@ struct GameView: View {
                 .accessibilityIdentifier("onlineRoom.noSavedWordPacks")
             } else {
                 Text("\(localized(en: "WORD PACKS", ru: "КОЛОДЫ", es: "PACKS", uk: "НАБОРИ СЛІВ")) \(lobbyWordPacks.count)")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .font(SpyTheme.gameFont(size: 12, weight: .bold))
                     .tracking(0.02)
                     .foregroundStyle(SpyTheme.dim)
                     .spyFitted(scale: 0.62)
@@ -7286,13 +7294,13 @@ struct GameView: View {
         return Button(action: action) {
             HStack(spacing: 5) {
                 Text(title.uppercased())
-                    .font(.system(size: 12, weight: .black, design: .default))
+                    .font(SpyTheme.gameFont(size: 12, weight: .black))
                     .tracking(0.02)
                     .spyFitted(lines: 2, scale: 0.68, alignment: .center)
 
                 if let subtitle {
                     Text("(\(subtitle))")
-                        .font(.system(size: 10, weight: .black, design: .default))
+                        .font(SpyTheme.gameFont(size: 10, weight: .black))
                         .foregroundStyle(SpyTheme.dim)
                         .lineLimit(1)
                 }
@@ -7318,19 +7326,19 @@ struct GameView: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text(roomWordsLabel)
-                    .font(SpyTheme.micro)
+                    .font(SpyTheme.gameFont(size: 11, weight: .bold, relativeTo: .caption))
                     .tracking(0.12)
                     .foregroundStyle(SpyTheme.dim)
                     .spyKicker()
                 Spacer()
                 Text("\(selectedWords) / \(maxWords)")
-                    .font(.system(size: 16, weight: .black, design: .default))
+                    .font(SpyTheme.gameFont(size: 16, weight: .black))
                     .foregroundStyle(SpyTheme.red)
                     .spyFitted(scale: 0.66, alignment: .trailing)
             }
 
             Text(roomThemeMetaLabel(maxWords: maxWords))
-                .font(.system(size: 9, weight: .bold, design: .default))
+                .font(SpyTheme.gameFont(size: 9, weight: .bold))
                 .tracking(0.02)
                 .foregroundStyle(SpyTheme.dim)
                 .spyFitted(lines: 2, scale: 0.60)
@@ -7412,12 +7420,12 @@ struct GameView: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(roomPoolPreviewLabel)
-                        .font(SpyTheme.micro)
+                        .font(SpyTheme.gameFont(size: 11, weight: .bold, relativeTo: .caption))
                         .tracking(0.12)
                         .foregroundStyle(SpyTheme.dim)
                         .spyKicker()
                     Text(snapshot.category.uppercased())
-                        .font(.system(size: 18, weight: .black, design: .default))
+                        .font(SpyTheme.gameFont(size: 18, weight: .black))
                         .tracking(0.04)
                         .foregroundStyle(.white)
                         .spyFitted(lines: 2, scale: 0.56)
@@ -7427,7 +7435,7 @@ struct GameView: View {
                 Spacer()
 
                 Text(snapshot.countLabel)
-                    .font(SpyTheme.micro)
+                    .font(SpyTheme.gameFont(size: 11, weight: .bold, relativeTo: .caption))
                     .tracking(0.10)
                     .foregroundStyle(SpyTheme.green)
                     .spyFitted(scale: 0.62, alignment: .trailing)
@@ -7449,7 +7457,7 @@ struct GameView: View {
 
             HStack(spacing: 8) {
                 Text(snapshot.source.uppercased())
-                    .font(.system(size: 9, weight: .black, design: .default))
+                    .font(SpyTheme.gameFont(size: 9, weight: .black))
                     .tracking(0.02)
                     .foregroundStyle(SpyTheme.dim)
                     .spyFitted(scale: 0.50)
@@ -7475,7 +7483,7 @@ struct GameView: View {
                         Image(systemName: showsAllRoomPoolWords ? "chevron.up" : "chevron.down")
                             .font(.system(size: 10, weight: .black))
                     }
-                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .font(SpyTheme.gameFont(size: 10, weight: .black))
                     .tracking(0.02)
                     .foregroundStyle(SpyTheme.muted)
                     .padding(.horizontal, 12)
@@ -7525,7 +7533,7 @@ struct GameView: View {
                     toggleRoomPoolWord(word)
                 } label: {
                     Text(word.uppercased())
-                        .font(.system(size: 12, weight: .black, design: .default))
+                        .font(SpyTheme.gameFont(size: 12, weight: .black))
                         .tracking(0.01)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
@@ -12721,14 +12729,14 @@ private struct WaitingStartActionLabel: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(.system(size: titleSize, weight: .black, design: .monospaced))
+                .font(SpyTheme.gameFont(size: titleSize, weight: .bold, relativeTo: .headline))
                 .foregroundStyle(titleColor)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
                 .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 0.78 : 0.52)
                 .contentTransition(.opacity)
 
             Text(detail)
-                .font(.system(size: dynamicTypeSize.isAccessibilitySize ? 8.5 : 7, weight: .bold, design: .monospaced))
+                .font(SpyTheme.gameFont(size: dynamicTypeSize.isAccessibilitySize ? 8.5 : 7, weight: .bold, relativeTo: .caption2))
                 .foregroundStyle(detailColor)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
                 .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 0.76 : 0.50)

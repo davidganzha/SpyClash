@@ -10,17 +10,38 @@ protocol GenerationRewardsClientProtocol: AnyObject {
 
 extension Base44Client: GenerationRewardsClientProtocol {}
 
+enum GenerationRewardPresentationPhase: Equatable {
+    case idle, preparing, requestingConsent, readyToPresent, presenting, confirming
+}
+
 @MainActor
 protocol GenerationRewardAdPresenting: AnyObject {
     var canOfferAds: Bool { get }
     var isOwnedSimulatorTestConfiguration: Bool { get }
     func present(attempt: GenerationRewardAttempt, onEarned: @escaping @MainActor () -> Void) async throws -> Bool
     func present(adUnitID: String, userID: String, customData: String, onEarned: @escaping @MainActor () -> Void) async throws -> Bool
+    func present(attempt: GenerationRewardAttempt,
+                 onPhaseChanged: @escaping @MainActor (GenerationRewardPresentationPhase) -> Void,
+                 beforePresentation: @escaping @MainActor () async throws -> Void,
+                 onEarned: @escaping @MainActor () -> Void) async throws -> Bool
+    func preloadUnityAd() async
+    func beginPresentationTrace()
     func cancelPendingPresentation()
 }
 
 extension GenerationRewardAdPresenting {
     var isOwnedSimulatorTestConfiguration: Bool { false }
+    func preloadUnityAd() async {}
+    func beginPresentationTrace() {}
+    // Old presenters retain their original timing. SDK-aware implementations
+    // call beforePresentation only once the creative and reward context exist.
+    func present(attempt: GenerationRewardAttempt,
+                 onPhaseChanged: @escaping @MainActor (GenerationRewardPresentationPhase) -> Void,
+                 beforePresentation: @escaping @MainActor () async throws -> Void,
+                 onEarned: @escaping @MainActor () -> Void) async throws -> Bool {
+        onPhaseChanged(.presenting)
+        return try await present(attempt: attempt, onEarned: onEarned)
+    }
     func present(attempt: GenerationRewardAttempt, onEarned: @escaping @MainActor () -> Void) async throws -> Bool {
         guard attempt.provider == .admob else { throw RewardedGenerationAdError.unavailable }
         return try await present(adUnitID: attempt.adUnitID, userID: attempt.userID, customData: attempt.customData, onEarned: onEarned)
@@ -39,6 +60,12 @@ final class GenerationRewardStore {
     private(set) var isAwaitingReward = false
     private(set) var scope = MembershipScope(userID: nil, accessToken: nil)
     private(set) var isPreview = false
+    private(set) var presentationPhase: GenerationRewardPresentationPhase = .idle
+    private(set) var confirmedRewardAttemptID: UUID?
+    @ObservationIgnored private var activePresentationEnd: (id: UUID, callback: @MainActor (Bool) -> Void)?
+    @ObservationIgnored private var deferredConfirmedAttemptID: UUID?
+    @ObservationIgnored private var preloadTask: Task<Void, Never>?
+    @ObservationIgnored private let presentationPause: (Duration) async throws -> Void
     @ObservationIgnored private let client: any GenerationRewardsClientProtocol
     @ObservationIgnored private let ads: any GenerationRewardAdPresenting
     @ObservationIgnored private let defaults: UserDefaults
@@ -48,8 +75,9 @@ final class GenerationRewardStore {
     @ObservationIgnored private var recoveryID: UUID?
     @ObservationIgnored private var membershipEpoch = UUID()
 
-    init(client: any GenerationRewardsClientProtocol, ads: any GenerationRewardAdPresenting = RewardedGenerationAdPresenter.shared, defaults: UserDefaults = .standard, sleep: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
+    init(client: any GenerationRewardsClientProtocol, ads: any GenerationRewardAdPresenting = RewardedGenerationAdPresenter.shared, defaults: UserDefaults = .standard, sleep: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) }, presentationPause: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
         self.client = client; self.ads = ads; self.defaults = defaults; self.sleep = sleep
+        self.presentationPause = presentationPause
     }
 
     var canWatch: Bool {
@@ -70,6 +98,9 @@ final class GenerationRewardStore {
     func bind(_ scope: MembershipScope, preview: GenerationRewardStatus? = nil) {
         guard self.scope != scope || isPreview != (preview != nil) else { return }
         ads.cancelPendingPresentation()
+        if let end = activePresentationEnd { endAdPresentation(end.id) }
+        preloadTask?.cancel(); preloadTask = nil
+        presentationPhase = .idle; confirmedRewardAttemptID = nil; deferredConfirmedAttemptID = nil
         refreshID = UUID(); watchID = nil; recoveryID = nil; membershipEpoch = UUID()
         self.scope = scope; snapshot = preview; isPreview = preview != nil
         notice = nil; isLoading = false; isWatching = false
@@ -90,6 +121,7 @@ final class GenerationRewardStore {
             guard !Task.isCancelled, scope == account, refreshID == id else { return false }
             snapshot = status
             if pendingAttemptID != nil { await recoverPending() }
+            preloadIfEligible()
             return true
         } catch {
             // Old servers may not expose the new service before rollout. Never
@@ -109,14 +141,24 @@ final class GenerationRewardStore {
         membershipEpoch = UUID(); refreshID = UUID(); recoveryID = nil
         snapshot = nil; isLoading = false
         notice = isAwaitingReward ? .confirming : nil
-        ads.cancelPendingPresentation()
+        cancelPresentation()
     }
 
-    func watch(testAd: Bool = false) async {
+    func watch(testAd: Bool = false, onAdPresentationChanged: (@MainActor (Bool) -> Void)? = nil) async {
         guard (testAd ? canWatchTestAd : canWatch), let accountID = scope.userID else { return }
         let account = scope, id = UUID(), epoch = membershipEpoch
-        watchID = id; isWatching = true; notice = nil
-        defer { if watchID == id { isWatching = false; watchID = nil } }
+        ads.beginPresentationTrace()
+        watchID = id; isWatching = true; notice = nil; presentationPhase = .preparing
+        confirmedRewardAttemptID = nil
+        defer {
+            endAdPresentation(id)
+            if watchID == id {
+                isWatching = false; watchID = nil
+                presentationPhase = isAwaitingReward ? .confirming : .idle
+                revealDeferredConfirmation()
+                preloadIfEligible()
+            }
+        }
         do {
             let attempt: GenerationRewardAttempt
 #if DEBUG
@@ -133,11 +175,26 @@ final class GenerationRewardStore {
             // Persist before presentation: an app interruption must not lose a
             // completed ad whose server callback arrives after the next launch.
             setPending(attempt.attemptID)
-            let earned = try await ads.present(attempt: attempt) { [weak self] in
+            let earned = try await ads.present(attempt: attempt, onPhaseChanged: { [weak self] phase in
+                guard let self, self.scope == account, self.watchID == id, self.membershipEpoch == epoch else { return }
+                self.presentationPhase = phase
+                if phase == .presenting { self.beginAdPresentation(id, callback: onAdPresentationChanged) }
+            }, beforePresentation: { [weak self] in
+                guard let self, self.scope == account, self.watchID == id, self.membershipEpoch == epoch else { throw CancellationError() }
+                try Task.checkCancellation()
+                self.presentationPhase = .readyToPresent
+                self.beginAdPresentation(id, callback: onAdPresentationChanged)
+                try await self.presentationPause(.milliseconds(180))
+                try Task.checkCancellation()
+                guard self.scope == account, self.watchID == id, self.membershipEpoch == epoch else { throw CancellationError() }
+            }) { [weak self] in
                 guard let self, self.scope == account, self.watchID == id, self.pendingAttemptID == attempt.attemptID else { return }
                 self.markAwaitingReward()
             }
+            endAdPresentation(id)
             guard scope == account, watchID == id else { return }
+            presentationPhase = .confirming
+            revealDeferredConfirmation()
             if !earned {
                 setPending(nil); notice = .incomplete
                 return
@@ -150,6 +207,7 @@ final class GenerationRewardStore {
                 // UI preview is fully local, never persisted or sent to a server.
                 snapshot = GenerationRewardStatus(enabled: true, unlimited: false, freeRemaining: current.freeRemaining, bonusCredits: current.bonusCredits + 1, resetsAt: current.resetsAt, adAvailable: true)
                 setPending(nil); notice = .earned
+                confirmReward(attempt.attemptID)
                 return
             }
 #endif
@@ -161,7 +219,10 @@ final class GenerationRewardStore {
                 try await sleep(.seconds(3))
             }
         } catch {
+            endAdPresentation(id)
             guard scope == account, watchID == id else { return }
+            presentationPhase = isAwaitingReward ? .confirming : .idle
+            revealDeferredConfirmation()
             if isAwaitingReward {
                 // Cancellation/network failures are ambiguous. Keep the durable
                 // attempt until the server confirms its final disposition.
@@ -187,6 +248,7 @@ final class GenerationRewardStore {
             snapshot = result.status
             if result.state == "earned" {
                 setPending(nil); notice = .earned
+                confirmReward(attempt)
             } else if ["expired", "cancelled", "rejected"].contains(result.state) {
                 let completedViewing = isAwaitingReward
                 setPending(nil)
@@ -198,7 +260,59 @@ final class GenerationRewardStore {
         }
     }
 
-    func cancelPresentation() { ads.cancelPendingPresentation() }
+    func dismissRewardCelebration(_ attemptID: UUID) {
+        guard confirmedRewardAttemptID == attemptID else { return }
+        confirmedRewardAttemptID = nil
+    }
+
+    func cancelPresentation() {
+        // A displayed SDK ad owns dismissal. A completed viewing must retain its
+        // durable confirmation even when its original generation view disappears.
+        guard [.preparing, .requestingConsent, .readyToPresent].contains(presentationPhase) else { return }
+        ads.cancelPendingPresentation()
+        if let id = watchID { endAdPresentation(id) }
+        watchID = nil; isWatching = false; presentationPhase = .idle
+        if !isAwaitingReward { setPending(nil) }
+    }
+
+    private func beginAdPresentation(_ id: UUID, callback: (@MainActor (Bool) -> Void)?) {
+        guard activePresentationEnd == nil, let callback else { return }
+        activePresentationEnd = (id, callback)
+        callback(true)
+    }
+
+    private func endAdPresentation(_ id: UUID) {
+        guard let end = activePresentationEnd, end.id == id else { return }
+        activePresentationEnd = nil
+        end.callback(false)
+    }
+
+    private func confirmReward(_ attemptID: UUID) {
+        if presentationPhase == .presenting {
+            deferredConfirmedAttemptID = attemptID
+        } else {
+            confirmedRewardAttemptID = attemptID
+        }
+    }
+
+    private func revealDeferredConfirmation() {
+        guard let attempt = deferredConfirmedAttemptID else { return }
+        deferredConfirmedAttemptID = nil
+        confirmedRewardAttemptID = attempt
+    }
+
+    private func preloadIfEligible() {
+        guard !isPreview, scope.isAuthenticated, let status = snapshot,
+              status.enabled, !status.unlimited, status.adAvailable, ads.canOfferAds,
+              preloadTask == nil else { return }
+        let account = scope, epoch = membershipEpoch
+        preloadTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.preloadTask = nil }
+            guard !Task.isCancelled, self.scope == account, self.membershipEpoch == epoch else { return }
+            await self.ads.preloadUnityAd()
+        }
+    }
 
 #if DEBUG
     func consumePreviewGeneration() -> Bool {

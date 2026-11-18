@@ -240,7 +240,7 @@ final class AppleAuthenticationOwnershipTests: XCTestCase {
         return try XCTUnwrap(value(), "Owned internal session was not started within the bounded wait")
     }
 
-    func testAppleHandoffFailureSurvivesToastDismissalAndClearsBeforeRetry() async throws {
+    func testAppleHandoffFailureUsesOnlySupportAlertAndClearsBeforeRetry() async throws {
         let state = makeState()
         let failure = AppleNativeHandoffError.missingCallback.withDiagnostic(
             AppleNativeHandoffDiagnostic(response: nil, destination: nil, redirectCount: 4)
@@ -251,7 +251,7 @@ final class AppleAuthenticationOwnershipTests: XCTestCase {
 
         XCTAssertFalse(state.isBusy)
         XCTAssertEqual(state.appleHandoffFailure, failure)
-        for notice in state.toastNotices { state.dismissToast(notice.id) }
+        XCTAssertNil(state.authError)
         XCTAssertTrue(state.toastNotices.isEmpty)
         XCTAssertEqual(try XCTUnwrap(state.appleHandoffFailure).diagnosticIdentifier, "SCA177-H05-r4-s0-cN-uUN-q0-pN-fN")
 
@@ -267,16 +267,18 @@ final class AppleAuthenticationOwnershipTests: XCTestCase {
         XCTAssertNil(state.appleHandoffFailure)
     }
 
-    func testOnlyTypedAppleFailureCanPresentSupportAlertAndDismissalPreservesError() async {
+    func testOnlyTypedAppleFailureCanPresentSupportAlertAndDismissalDoesNotCreateToast() async {
         let state = makeState()
         let requestID = UUID()
         state.configureAppleSignInRequest(ASAuthorizationAppleIDProvider().createRequest(), requestID: requestID)
         await state.completeAppleSignIn(.failure(AppleNativeHandoffError.invalidCallback), requestID: requestID)
         XCTAssertNotNil(state.appleHandoffFailure)
-        let originalMessage = state.authError
+        XCTAssertNil(state.authError)
+        XCTAssertTrue(state.toastNotices.isEmpty)
         state.dismissAppleHandoffFailure()
         XCTAssertNil(state.appleHandoffFailure)
-        XCTAssertEqual(state.authError, originalMessage)
+        XCTAssertNil(state.authError)
+        XCTAssertTrue(state.toastNotices.isEmpty)
 
         let nextID = UUID()
         state.configureAppleSignInRequest(ASAuthorizationAppleIDProvider().createRequest(), requestID: nextID)
@@ -286,6 +288,7 @@ final class AppleAuthenticationOwnershipTests: XCTestCase {
         await state.completeAppleSignIn(.failure(untypedError), requestID: nextID)
         XCTAssertNotNil(state.authError)
         XCTAssertNil(state.appleHandoffFailure, "A matching message prefix must not opt arbitrary errors into the support-code UI")
+        XCTAssertEqual(state.toastNotices.count, 1)
     }
 
     func testAppleHandoffFailureClearsOnAuthResetAccountChangeAndLogout() async throws {
@@ -368,7 +371,39 @@ final class AppleAuthenticationOwnershipTests: XCTestCase {
         add(attachment)
     }
 
-    func testRenderedAppleFailureAlertShowsCompleteCodeAndActionsAfterToastExpires() async throws {
+    func testAuthPasswordInputUsesBundledGameTypeface() async throws {
+        let state = makeState()
+        state.authPhase = .password(email: "synthetic@example.test")
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let scene = try XCTUnwrap(scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first)
+        let previousKeyWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let host = UIHostingController(rootView: AuthView().environment(state))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+            previousKeyWindow?.makeKey()
+        }
+        func fields(in view: UIView) -> [UITextField] {
+            (view as? UITextField).map { [$0] } ?? view.subviews.flatMap { fields(in: $0) }
+        }
+        var rendered: [UITextField] = []
+        for _ in 0..<30 {
+            host.view.layoutIfNeeded()
+            rendered = fields(in: host.view)
+            if !rendered.isEmpty { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertFalse(rendered.isEmpty, "The actual SwiftUI password input must render its UIKit text field")
+        for field in rendered {
+            XCTAssertEqual(field.font?.fontName, SpyTheme.gameFontName(weight: .regular),
+                           "The app-owned input returned actual font \(field.font?.fontName ?? "nil")")
+        }
+    }
+
+    func testRenderedAppleFailureOverlayScrollsWithAccessibilityTextWithoutToast() async throws {
         let state = makeState()
         let previousLanguage = state.language
         defer { state.language = previousLanguage }
@@ -380,7 +415,9 @@ final class AppleAuthenticationOwnershipTests: XCTestCase {
         let host = UIHostingController(rootView: AuthView()
             .spyGlobalToastLayer()
             .spyInterfaceScale()
-            .environment(state))
+            .environment(state)
+            .environment(\.dynamicTypeSize, .accessibility3)
+            .frame(width: 320, height: 568))
         window.rootViewController = host
         window.makeKeyAndVisible()
         defer {
@@ -390,9 +427,15 @@ final class AppleAuthenticationOwnershipTests: XCTestCase {
             window.rootViewController = nil
             previousKeyWindow?.makeKey()
         }
-        // Give SwiftUI its appearance pass before changing the observed state.
+        func scrollViews(in view: UIView) -> [UIScrollView] {
+            let own = (view as? UIScrollView).map { [$0] } ?? []
+            return own + view.subviews.flatMap { scrollViews(in: $0) }
+        }
+        // Give the underlying form its appearance pass before opening the modal.
         try await Task.sleep(for: .milliseconds(100))
+        host.view.layoutIfNeeded()
         XCTAssertTrue(host.view.window === window)
+        let underlyingScrollIDs = Set(scrollViews(in: host.view).map(ObjectIdentifier.init))
 
         let failure = AppleNativeHandoffError.missingCallback.withDiagnostic(
             AppleNativeHandoffDiagnostic(response: nil, destination: nil, redirectCount: 12)
@@ -402,32 +445,36 @@ final class AppleAuthenticationOwnershipTests: XCTestCase {
         // Inject a synthetic completed failure; never present or contact Apple.
         await state.completeAppleSignIn(.failure(failure), requestID: requestID)
 
-        var renderedAlert: UIAlertController?
-        for _ in 0..<100 {
-            if let alert = host.presentedViewController as? UIAlertController,
-               alert.viewIfLoaded?.window != nil, !alert.isBeingPresented {
-                renderedAlert = alert
-                break
+        var modalScroll: UIScrollView?
+        for _ in 0..<60 {
+            host.view.layoutIfNeeded()
+            modalScroll = scrollViews(in: host.view).first {
+                !underlyingScrollIDs.contains(ObjectIdentifier($0)) &&
+                    $0.contentSize.height > $0.bounds.height + 5
             }
+            if modalScroll != nil { break }
             try await Task.sleep(for: .milliseconds(50))
         }
-        let alert = try XCTUnwrap(renderedAlert, "The actual AuthView must present a native alert")
-        XCTAssertEqual(alert.title, "Apple sign-in")
-        XCTAssertEqual(alert.message, failure.localizedDescription)
-        XCTAssertTrue(alert.message?.contains("SCA177-H05-r12-s0-cN-uUN-q0-pN-fN") == true)
-        XCTAssertEqual(Set(alert.actions.compactMap(\.title)), ["Copy support code", "OK"])
+        let scroll = try XCTUnwrap(modalScroll, "The branded modal must scroll at large accessibility text sizes")
+        XCTAssertLessThanOrEqual(scroll.bounds.width, 320)
+        XCTAssertLessThanOrEqual(scroll.bounds.height, 568)
+        XCTAssertNil(host.presentedViewController, "App-owned failure must use the branded overlay")
+        let bottom = scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom
+        scroll.setContentOffset(CGPoint(x: 0, y: bottom), animated: false)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(scroll.contentOffset.y, bottom, accuracy: 1)
 
-        // The former transient toast lasts 2.8 seconds. The alert must remain
-        // visible afterwards so the entire code can be read or copied.
+        // Persistence and modal layout are checked here. The actual SwiftUI
+        // accessibility tree and copy/close controls are tested with XCTest UI,
+        // rather than inspecting private UIKit accessibility proxies.
         try await Task.sleep(for: .seconds(3))
         XCTAssertTrue(state.toastNotices.isEmpty)
-        XCTAssertTrue(host.presentedViewController === alert)
-        XCTAssertNotNil(alert.view.window)
+        XCTAssertEqual(state.appleHandoffFailure, failure)
         let screenshot = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
         let attachment = XCTAttachment(data: try XCTUnwrap(screenshot.pngData()), uniformTypeIdentifier: "public.png")
-        attachment.name = "Apple-support-code-persistent-native-alert"
+        attachment.name = "Apple-support-code-game-font-modal-compact-accessibility"
         attachment.lifetime = .keepAlways
         add(attachment)
     }

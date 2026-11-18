@@ -21,6 +21,22 @@ final class WordPackCardsUITests: XCTestCase {
         app.terminate()
     }
 
+    func testExhaustedBalanceInPlayableWordPackEditorOffersOneGeneration() {
+        app.terminate()
+        app.launchArguments.removeAll { $0.hasPrefix("--spyclash-preview-lang=") }
+        app.launchArguments += ["--spyclash-preview-lang=ru", "--spyclash-preview-generations",
+                                "--spyclash-preview-generations-exhausted"]
+        app.launch()
+        app.buttons["wordPacks.add"].tap()
+        app.buttons["wordPacks.editor.method.ai"].tap()
+        let offer = app.buttons["generation.watchAd"]
+        reveal(offer)
+        XCTAssertTrue(offer.isEnabled)
+        XCTAssertEqual(offer.label, "Посмотреть рекламу → +1 генерация")
+        XCTAssertFalse(app.descendants(matching: .any)["generation.rewardReveal"].exists)
+        attachScreenshot("generation-offer-in-pack-editor")
+    }
+
     func testManualCreationDeletesWordsAndSavesPendingInputThenReopens() {
         app.buttons["wordPacks.add"].tap()
         app.buttons["wordPacks.editor.method.manual"].tap()

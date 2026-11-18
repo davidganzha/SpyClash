@@ -34,15 +34,35 @@ enum AppleNativeHandoffError: Error, Equatable, LocalizedError, Sendable {
         return "SCA177-\(supportCode.rawValue)\(suffix)"
     }
 
-    var errorDescription: String? {
-        let message: String = switch supportCode {
-        case .cancelled: "Apple sign-in was cancelled."
-        case .expired: "Apple sign-in expired. Please try again."
-        case .temporarilyUnavailable: "Apple sign-in is temporarily unavailable. Please try again."
-        case .providerRejected: "Apple sign-in could not be completed. Please try again."
-        default: "Apple sign-in returned an invalid response. Please try again."
+    var errorDescription: String? { message(language: .en) }
+
+    /// The app's selected language, rather than the device locale, owns the
+    /// support alert. Only fixed copy and the bounded identifier are displayed.
+    func message(language: AppLanguage) -> String {
+        "[\(diagnosticIdentifier)]\n\(messageText(language: language))"
+    }
+
+    func messageText(language: AppLanguage) -> String {
+        let message: String
+        switch (language, supportCode) {
+        case (.en, .cancelled): message = "Apple sign-in was cancelled."
+        case (.es, .cancelled): message = "Se canceló el inicio de sesión con Apple."
+        case (.ru, .cancelled): message = "Вход через Apple отменён."
+        case (.uk, .cancelled): message = "Вхід через Apple скасовано."
+        case (.en, .expired): message = "Apple sign-in expired. Please try again."
+        case (.es, .expired): message = "El inicio de sesión con Apple ha caducado. Inténtalo de nuevo."
+        case (.ru, .expired): message = "Время входа через Apple истекло. Попробуйте ещё раз."
+        case (.uk, .expired): message = "Час входу через Apple минув. Спробуйте ще раз."
+        case (.en, .temporarilyUnavailable): message = "Apple sign-in is temporarily unavailable. Please try again."
+        case (.es, .temporarilyUnavailable): message = "El inicio de sesión con Apple no está disponible temporalmente. Inténtalo de nuevo."
+        case (.ru, .temporarilyUnavailable): message = "Вход через Apple временно недоступен. Попробуйте ещё раз."
+        case (.uk, .temporarilyUnavailable): message = "Вхід через Apple тимчасово недоступний. Спробуйте ще раз."
+        case (.en, _): message = "Apple sign-in could not be completed. Please try again."
+        case (.es, _): message = "No se pudo completar el inicio de sesión con Apple. Inténtalo de nuevo."
+        case (.ru, _): message = "Не удалось завершить вход через Apple. Попробуйте ещё раз."
+        case (.uk, _): message = "Не вдалося завершити вхід через Apple. Спробуйте ще раз."
         }
-        return "[\(diagnosticIdentifier)]\n\(message)"
+        return message
     }
 }
 
@@ -70,6 +90,12 @@ struct AppleNativeHandoffDiagnostic: Equatable, Sendable {
     }
     enum Provider: String, Sendable { case apple = "A", google = "G", other = "O", absent = "N" }
     enum Fragment: String, Sendable { case absent = "N", inert = "I", other = "O" }
+    /// Categories of a rejected landing, never a new document permission.
+    enum Landing: String, Sendable {
+        case root = "RT", home = "HM", login = "LI", registration = "RG"
+        case sso = "SS", platformAuth = "PA", legacyBridge = "LB"
+        case googleCallback = "GC", edge = "EC", other = "OT"
+    }
 
     let status: Int
     let content: Content
@@ -80,6 +106,10 @@ struct AppleNativeHandoffDiagnostic: Equatable, Sendable {
     let provider: Provider
     let fragment: Fragment
     let redirectCount: Int
+    let landing: Landing
+    /// Fixed name-presence bits: code, auth_code, authorization_code, token,
+    /// from_url, redirect_uri, returnTo, is_new_user, session_id, app_id.
+    let returnQueryFlags: UInt16
 
     init(response: URLResponse?, destination: URL?, redirectCount: Int) {
         let httpStatus = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -110,6 +140,22 @@ struct AppleNativeHandoffDiagnostic: Equatable, Sendable {
         }
         if Set(items.map(\.name)).count != items.count { flags |= 32 }
         queryFlags = flags
+        returnQueryFlags = items.reduce(into: UInt16(0)) { flags, item in
+            let bit: UInt16 = switch item.name {
+            case "code": 1
+            case "auth_code": 2
+            case "authorization_code": 4
+            case "token": 8
+            case "from_url": 16
+            case "redirect_uri": 32
+            case "returnTo": 64
+            case "is_new_user": 128
+            case "session_id": 256
+            case "app_id": 512
+            default: 0
+            }
+            flags |= bit
+        }
         switch items.first(where: { $0.name == "auth_provider" })?.value {
         case "apple": provider = .apple
         case "google": provider = .google
@@ -141,10 +187,32 @@ struct AppleNativeHandoffDiagnostic: Equatable, Sendable {
             else if path == "/api/apps/69a0e57fa939f578082f8091/auth/sso/auth-error" { endpoint = .ssoError }
             else { endpoint = .otherTrusted }
         } else { endpoint = .unknown }
+
+        // Only fixed public routes/prefixes are classified. Dynamic segments,
+        // unknown query names and all values are discarded. Even a known
+        // category remains rejected by the unchanged completion policy.
+        if endpoint == .otherTrusted, let path = parts?.percentEncodedPath {
+            switch path {
+            case "", "/": landing = .root
+            case "/home": landing = .home
+            case "/login": landing = .login
+            case "/register": landing = .registration
+            case "/MobileAuthCallback.html": landing = .googleCallback
+            case "/api/apps/69a0e57fa939f578082f8091/functions/mobileAuthCallback": landing = .legacyBridge
+            case let path where path.hasPrefix("/api/apps/69a0e57fa939f578082f8091/auth/sso/"): landing = .sso
+            case let path where path.hasPrefix("/api/apps/auth/"): landing = .platformAuth
+            case let path where path.hasPrefix("/cdn-cgi/"): landing = .edge
+            default: landing = .other
+            }
+        } else { landing = .other }
     }
 
     var supportSuffix: String {
-        "-r\(redirectCount)-s\(status)-c\(content.rawValue)-u\(endpoint.rawValue)-q\(String(queryFlags, radix: 16, uppercase: true))-p\(provider.rawValue)-f\(fragment.rawValue)"
+        let envelope = "-r\(redirectCount)-s\(status)-c\(content.rawValue)-u\(endpoint.rawValue)-q\(String(queryFlags, radix: 16, uppercase: true))-p\(provider.rawValue)-f\(fragment.rawValue)"
+        // Existing valid callback/token diagnostics keep their identifiers.
+        // Extend only the currently unresolved token-free trusted landing.
+        guard endpoint == .otherTrusted, queryFlags & 2 == 0 else { return envelope }
+        return envelope + "-d\(landing.rawValue)-k\(String(returnQueryFlags, radix: 16, uppercase: true))"
     }
 }
 

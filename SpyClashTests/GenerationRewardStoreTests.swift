@@ -96,10 +96,17 @@ final class GenerationRewardStoreTests: XCTestCase {
         client.status = .init(enabled: true, unlimited: false, freeRemaining: 0, bonusCredits: 1, adAvailable: true)
         await store.recoverPending()
         XCTAssertNil(store.pendingAttemptID)
+        XCTAssertNil(store.confirmedRewardAttemptID, "Server confirmation must not celebrate over the SDK end card.")
         continuation.resume(returning: true)
         await watch.value
         XCTAssertFalse(store.isAwaitingReward)
         XCTAssertEqual(store.snapshot?.bonusCredits, 1)
+        let confirmation = try XCTUnwrap(store.confirmedRewardAttemptID)
+        store.dismissRewardCelebration(UUID())
+        XCTAssertEqual(store.confirmedRewardAttemptID, confirmation)
+        store.dismissRewardCelebration(confirmation)
+        await store.recoverPending()
+        XCTAssertNil(store.confirmedRewardAttemptID, "A dismissed confirmation must not replay on activation.")
     }
 
     func testAccountChangeDiscardsLateAdResponse() async throws {
@@ -359,6 +366,130 @@ final class GenerationRewardStoreTests: XCTestCase {
         XCTAssertFalse(restored.canWatch)
         XCTAssertEqual(ads.presentCount, 1)
     }
+
+    func testPreloadDuringFreeAllowanceCreatesNoRewardAttempt() async {
+        let client = RewardClientMock(status: .init(enabled: true, unlimited: false, freeRemaining: 3, adAvailable: true))
+        let ads = RewardAdMock()
+        let store = GenerationRewardStore(client: client, ads: ads, defaults: storage())
+        store.bind(owner)
+        _ = await store.refresh()
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(ads.preloadCount, 1)
+        XCTAssertEqual(client.prepareCount, 0)
+        XCTAssertEqual(ads.presentCount, 0)
+        XCTAssertFalse(store.canWatch)
+        XCTAssertEqual(store.presentationPhase, .idle)
+    }
+
+    func testUnlimitedAccountDoesNotPreloadAds() async {
+        let client = RewardClientMock(status: .init(enabled: true, unlimited: true, freeRemaining: nil, adAvailable: true))
+        let ads = RewardAdMock()
+        let store = GenerationRewardStore(client: client, ads: ads, defaults: storage())
+        store.bind(owner)
+        _ = await store.refresh()
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(ads.preloadCount, 0)
+        XCTAssertEqual(client.prepareCount, 0)
+    }
+
+    func testCancelDuringServerPrepareImmediatelyReturnsAndNeverStartsLateAdOrRoomOffer() async throws {
+        let client = RewardClientMock(status: empty), ads = RewardAdMock()
+        var prepare: CheckedContinuation<GenerationRewardAttempt, Error>?
+        client.prepareHandler = { try await withCheckedThrowingContinuation { prepare = $0 } }
+        let store = GenerationRewardStore(client: client, ads: ads, defaults: storage())
+        store.bind(owner)
+        _ = await store.refresh()
+        var roomSignals: [Bool] = []
+        let watch = Task { await store.watch(onAdPresentationChanged: { roomSignals.append($0) }) }
+        for _ in 0..<100 where prepare == nil { await Task.yield() }
+        let continuation = try XCTUnwrap(prepare)
+        XCTAssertEqual(store.presentationPhase, .preparing)
+        store.cancelPresentation()
+        XCTAssertEqual(store.presentationPhase, .idle)
+        XCTAssertFalse(store.isWatching)
+        continuation.resume(returning: .init(attemptID: UUID(), customData: "opaque", adUnitID: "test", userID: "owner"))
+        await watch.value
+        XCTAssertEqual(ads.presentCount, 0)
+        XCTAssertTrue(roomSignals.isEmpty)
+        XCTAssertNil(store.pendingAttemptID)
+    }
+
+    func testPreparationFailureDoesNotInviteRoomOrPresentSDK() async {
+        let client = RewardClientMock(status: empty), ads = RewardAdMock()
+        client.prepareHandler = { throw URLError(.notConnectedToInternet) }
+        let store = GenerationRewardStore(client: client, ads: ads, defaults: storage())
+        store.bind(owner)
+        _ = await store.refresh()
+        var roomSignals: [Bool] = []
+        await store.watch(onAdPresentationChanged: { roomSignals.append($0) })
+        XCTAssertTrue(roomSignals.isEmpty)
+        XCTAssertEqual(ads.presentCount, 0)
+        XCTAssertEqual(store.presentationPhase, .idle)
+    }
+
+    func testReadyCreativeWaitsForBlackFrameAndCancellationCannotAutoplay() async throws {
+        let client = RewardClientMock(status: empty), ads = RewardAdMock()
+        ads.usesPreparationPhases = true
+        var fade: CheckedContinuation<Void, Error>?
+        let store = GenerationRewardStore(client: client, ads: ads, defaults: storage(), presentationPause: { _ in
+            try await withCheckedThrowingContinuation { fade = $0 }
+        })
+        store.bind(owner)
+        _ = await store.refresh()
+        var roomSignals: [Bool] = []
+        let watch = Task { await store.watch(onAdPresentationChanged: { roomSignals.append($0) }) }
+        for _ in 0..<100 where fade == nil { await Task.yield() }
+        let continuation = try XCTUnwrap(fade)
+        XCTAssertEqual(store.presentationPhase, .readyToPresent)
+        XCTAssertEqual(ads.presentCount, 0)
+        XCTAssertEqual(roomSignals, [true])
+        store.cancelPresentation()
+        XCTAssertEqual(store.presentationPhase, .idle)
+        XCTAssertEqual(roomSignals, [true, false])
+        continuation.resume()
+        await watch.value
+        XCTAssertEqual(ads.presentCount, 0)
+        XCTAssertEqual(roomSignals, [true, false])
+    }
+
+    func testSDKTerminalEndsRoomOfferBeforeServerConfirmationPolling() async {
+        let client = RewardClientMock(status: empty), ads = RewardAdMock()
+        ads.usesPreparationPhases = true
+        var roomSignals: [Bool] = []
+        let store = GenerationRewardStore(client: client, ads: ads, defaults: storage(), sleep: { _ in
+            XCTAssertEqual(roomSignals, [true, false])
+            throw CancellationError()
+        }, presentationPause: { _ in })
+        store.bind(owner)
+        _ = await store.refresh()
+        await store.watch(onAdPresentationChanged: { roomSignals.append($0) })
+        XCTAssertEqual(roomSignals, [true, false])
+        XCTAssertEqual(store.presentationPhase, .confirming)
+        store.cancelPresentation()
+        XCTAssertTrue(store.isAwaitingReward)
+        XCTAssertNotNil(store.pendingAttemptID)
+    }
+
+    func testWarmFakePreparationConfirmsExactlyOnceWithoutReusingRoomCallback() async throws {
+        let client = RewardClientMock(status: empty), ads = RewardAdMock()
+        ads.usesPreparationPhases = true
+        client.claimState = "earned"
+        let store = GenerationRewardStore(client: client, ads: ads, defaults: storage(), presentationPause: { _ in })
+        store.bind(owner)
+        _ = await store.refresh()
+        var roomSignals: [Bool] = []
+        let start = ContinuousClock.now
+        await store.watch(onAdPresentationChanged: { roomSignals.append($0) })
+        print("reward_warm_fake_prepare_wall=\(start.duration(to: .now))")
+        XCTAssertEqual(ads.traceCount, 1)
+        XCTAssertEqual(roomSignals, [true, false])
+        let confirmed = try XCTUnwrap(store.confirmedRewardAttemptID)
+        store.dismissRewardCelebration(confirmed)
+        await store.watch()
+        XCTAssertEqual(roomSignals, [true, false], "A direct later watch must not retain the earlier room's closure.")
+        XCTAssertEqual(ads.traceCount, 2)
+    }
+
 }
 
 @MainActor private final class RewardClientMock: GenerationRewardsClientProtocol {
@@ -390,6 +521,22 @@ final class GenerationRewardStoreTests: XCTestCase {
 
 @MainActor private final class RewardAdMock: GenerationRewardAdPresenting {
     var canOfferAds = true
+    var preloadCount = 0
+    var traceCount = 0
+    var usesPreparationPhases = false
+    func preloadUnityAd() async { preloadCount += 1 }
+    func beginPresentationTrace() { traceCount += 1 }
+    func present(attempt: GenerationRewardAttempt,
+                 onPhaseChanged: @escaping @MainActor (GenerationRewardPresentationPhase) -> Void,
+                 beforePresentation: @escaping @MainActor () async throws -> Void,
+                 onEarned: @escaping @MainActor () -> Void) async throws -> Bool {
+        if usesPreparationPhases {
+            onPhaseChanged(.preparing)
+            try await beforePresentation()
+        }
+        onPhaseChanged(.presenting)
+        return try await present(attempt: attempt, onEarned: onEarned)
+    }
     var isOwnedSimulatorTestConfiguration = false
     var earned = true
     var failure: Error?

@@ -33,6 +33,7 @@ final class RewardedGenerationAdPresenter: NSObject {
 
     private var isGoogleBusy = false
     var isBusy: Bool { isGoogleBusy || unity.isBusy }
+    var isPresentingUnityAd: Bool { unity.isPresentingAd }
     private(set) var privacyOptionsRequired = false
     var isConfigured: Bool { configuration.isConfigured || unity.isConfigured }
     var canOfferAds: Bool { isConfigured && !isBusy }
@@ -72,24 +73,58 @@ final class RewardedGenerationAdPresenter: NSObject {
     }
 #endif
 
+    func preloadUnityAd() async {
+        guard !isBusy else { return }
+#if DEBUG
+        guard !UnityAdsTestPresenter.shared.isBusy else { return }
+#endif
+        unity.preload()
+    }
+
+    func beginPresentationTrace() { unity.beginPresentationTrace() }
+
+    func presentGuestUnityAd(onStarted: @escaping @MainActor () -> Void = {}) async throws -> Bool {
+        guard !isBusy else { throw RewardedGenerationAdError.alreadyPresenting }
+#if DEBUG
+        guard !UnityAdsTestPresenter.shared.isBusy else { throw RewardedGenerationAdError.alreadyPresenting }
+#endif
+        unity.beginPresentationTrace()
+        return try await unity.presentGuest(onStarted: onStarted)
+    }
+
     func present(attempt: GenerationRewardAttempt, onEarned: @escaping @MainActor () -> Void) async throws -> Bool {
+        try await present(attempt: attempt, onPhaseChanged: { _ in }, beforePresentation: {}, onEarned: onEarned)
+    }
+
+    func present(attempt: GenerationRewardAttempt,
+                 onPhaseChanged: @escaping @MainActor (GenerationRewardPresentationPhase) -> Void,
+                 beforePresentation: @escaping @MainActor () async throws -> Void,
+                 onEarned: @escaping @MainActor () -> Void) async throws -> Bool {
         guard !isBusy else { throw RewardedGenerationAdError.alreadyPresenting }
 #if DEBUG
         guard !UnityAdsTestPresenter.shared.isBusy else { throw RewardedGenerationAdError.alreadyPresenting }
 #endif
         switch attempt.provider {
         case .admob:
-            return try await present(adUnitID: attempt.adUnitID, userID: attempt.userID, customData: attempt.customData, onEarned: onEarned)
+            return try await present(adUnitID: attempt.adUnitID, userID: attempt.userID, customData: attempt.customData, onPhaseChanged: onPhaseChanged, beforePresentation: beforePresentation, onEarned: onEarned)
         case .unity:
-            return try await unity.present(attempt: attempt, onEarned: onEarned)
+            return try await unity.present(attempt: attempt, onPhaseChanged: onPhaseChanged, beforePresentation: beforePresentation, onEarned: onEarned)
         }
     }
 
-    func present(
+    func present(adUnitID: String, userID: String, customData: String,
+                 onEarned: @escaping @MainActor () -> Void = {}) async throws -> Bool {
+        try await present(adUnitID: adUnitID, userID: userID, customData: customData,
+                          onPhaseChanged: { _ in }, beforePresentation: {}, onEarned: onEarned)
+    }
+
+    private func present(
         adUnitID: String,
         userID: String,
         customData: String,
-        onEarned: @escaping @MainActor () -> Void = {}
+        onPhaseChanged: @escaping @MainActor (GenerationRewardPresentationPhase) -> Void,
+        beforePresentation: @escaping @MainActor () async throws -> Void,
+        onEarned: @escaping @MainActor () -> Void
     ) async throws -> Bool {
         guard configuration.permits(adUnitID: adUnitID) else { throw RewardedGenerationAdError.unavailable }
         // SSV identifiers are opaque IDs, never an email address or player name.
@@ -112,10 +147,13 @@ final class RewardedGenerationAdPresenter: NSObject {
         defer { endOperation(id) }
 
         return try await withTaskCancellationHandler {
-            try await updateConsent(from: presenter, operation: id)
+            try await updateConsent(from: presenter, operation: id) {
+                onPhaseChanged(.requestingConsent)
+            }
             try validatePendingOperation(id, presenter: presenter)
             guard ConsentInformation.shared.canRequestAds else { throw RewardedGenerationAdError.consentUnavailable }
 
+            onPhaseChanged(.preparing)
             configurePrivacyBeforeInitialization()
             if !initialized {
                 await MobileAds.shared.start()
@@ -145,6 +183,8 @@ final class RewardedGenerationAdPresenter: NSObject {
             options.customRewardText = customData
             ad.serverSideVerificationOptions = options
             try ad.canPresent(from: presenter)
+            try await beforePresentation()
+            try validatePendingOperation(id, presenter: presenter)
 
             // Capture only app-owned content, before the SDK creates its modal.
             // Include the sheet's presenting content so its margins fade too.
@@ -159,6 +199,7 @@ final class RewardedGenerationAdPresenter: NSObject {
                 let attempt = RewardedGenerationAdAttempt(ad: ad, onEarned: onEarned)
                 presentation = attempt
                 // Once visible, the SDK owns dismissal and its entire ad UI.
+                onPhaseChanged(.presenting)
                 let earned = try await attempt.present(from: presenter)
                 await transition.revealContent(reduceMotion: Self.reduceMotion, animated: Self.canReveal(presenter))
                 return earned
@@ -209,7 +250,8 @@ final class RewardedGenerationAdPresenter: NSObject {
         }
     }
 
-    private func updateConsent(from presenter: UIViewController, operation id: UUID) async throws {
+    private func updateConsent(from presenter: UIViewController, operation id: UUID,
+                               willPresentForm: @MainActor () -> Void) async throws {
         do {
             try await requestConsentUpdate()
             refreshPrivacyOptionsRequirement()
@@ -219,6 +261,7 @@ final class RewardedGenerationAdPresenter: NSObject {
                 // Keep consent loading separate from presentation so navigating
                 // away cannot cause a delayed privacy modal either.
                 try validatePendingOperation(id, presenter: presenter)
+                willPresentForm()
                 try await form.present(from: presenter)
             }
         } catch {

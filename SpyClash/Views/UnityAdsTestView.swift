@@ -13,14 +13,14 @@ struct UnityAdsTestPreview: View {
                 Text("UNITY ADS")
                     .font(SpyTheme.brandFont(size: 36))
                 Text(copy.text("AD PREVIEW", "ПРОСМОТР РЕКЛАМЫ", "VISTA PREVIA DEL ANUNCIO", "ПЕРЕГЛЯД РЕКЛАМИ"))
-                    .font(SpyTheme.mono)
+                    .font(SpyTheme.gameFont(size: 15, relativeTo: .subheadline))
                     .foregroundStyle(SpyTheme.muted)
                 UnityAdsTestControl(isGenerating: false)
                 Button(action: close) {
                     Text(copy.text("Return to SpyClash", "Вернуться в SpyClash", "Volver a SpyClash", "Повернутися в SpyClash"))
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(SpyButtonStyle(variant: .outline))
+                .buttonStyle(SpyButtonStyle(variant: .outline, labelFont: SpyTheme.gameFont(size: 15, weight: .bold, relativeTo: .subheadline)))
                 .disabled(UnityAdsTestPresenter.shared.isBusy)
                 .accessibilityIdentifier("unityAd.return")
             }
@@ -72,7 +72,7 @@ struct UnityAdsTestControl: View {
                     .frame(maxWidth: .infinity)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .buttonStyle(SpyButtonStyle(variant: .outline))
+            .buttonStyle(SpyButtonStyle(variant: .outline, labelFont: SpyTheme.gameFont(size: 15, weight: .bold, relativeTo: .subheadline)))
             .disabled(!canWatch)
             .accessibilityIdentifier("unityAd.watch")
             if let result {
@@ -94,7 +94,7 @@ struct UnityAdsTestControl: View {
                 .accessibilityIdentifier("unityAd.error")
             }
         }
-        .font(SpyTheme.mono)
+        .font(SpyTheme.gameFont(size: 15, relativeTo: .subheadline))
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(SpyTheme.panel, in: CutCornerShape(cut: 10))

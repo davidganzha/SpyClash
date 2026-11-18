@@ -212,6 +212,24 @@ final class LobbyFeedbackUITests: XCTestCase {
         attachScreenshot("qr-denied-radar-hidden")
     }
 
+    func testHostCanReachOneGenerationOfferInsideOnlineRoom() {
+        app.launchArguments = [
+            "--spyclash-ui-preview", "--spyclash-preview-tab=game", "--spyclash-preview-room=waiting",
+            "--spyclash-preview-lang=ru", "--spyclash-preview-generations",
+            "--spyclash-preview-generations-exhausted", "--spyclash-preview-limitless"
+        ]
+        app.launch()
+        let idea = app.buttons["onlineRoom.themeSuggestions.animals"]
+        reveal(idea)
+        idea.tap()
+        let offer = app.buttons["generation.watchAd"]
+        reveal(offer)
+        XCTAssertTrue(offer.isEnabled)
+        XCTAssertEqual(offer.label, "Посмотреть рекламу → +1 генерация")
+        XCTAssertTrue(app.buttons["onlineRoom.inviteMore"].exists)
+        attachScreenshot("online-room-generator-offer")
+    }
+
     private func launchLobby(extraArguments: [String] = []) {
         app.terminate()
         app.launchArguments = [

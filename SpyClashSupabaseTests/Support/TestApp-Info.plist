@@ -68,6 +68,9 @@
 	<key>UIAppFonts</key>
 	<array>
 		<string>Rajdhani-Bold.ttf</string>
+		<string>IBMPlexSansCondensed-Regular.ttf</string>
+		<string>IBMPlexSansCondensed-SemiBold.ttf</string>
+		<string>IBMPlexSansCondensed-Bold.ttf</string>
 	</array>
 	<key>UIFileSharingEnabled</key>
 	<true/>

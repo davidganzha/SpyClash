@@ -78,6 +78,26 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
         }
     }
 
+    func testTokenFreePostSSOLandingIsDiagnosedWithoutLoadingOrAcceptingIt() async throws {
+        let terminal = expectation(description: "Token-free SSO landing is rejected")
+        let target = "https://spyclash.com/api/apps/auth/synthetic-completion?code=synthetic-private-code&from_url=synthetic-private-return"
+        let fixture = ssoFixture(finalScript: "window.location.replace(\(jsString(target)));")
+        let session = fixture.session(url: bootstrapURL) { terminal.fulfill() }
+        XCTAssertTrue(session.start())
+        let view = try XCTUnwrap(fixture.webView)
+        await fulfillment(of: [terminal], timeout: 15)
+        let failure = try XCTUnwrap(fixture.error as? AppleNativeHandoffError)
+        XCTAssertEqual(failure.supportCode, .navigationDocument)
+        XCTAssertEqual(failure.diagnosticIdentifier, "SCA177-H34-r6-s0-cN-uOT-q10-pN-fN-dPA-k11")
+        XCTAssertNil(fixture.callback)
+        XCTAssertNotEqual(view.url?.path, "/api/apps/auth/synthetic-completion")
+        XCTAssertEqual(fixture.completionCount, 1)
+        for forbidden in ["synthetic-private-code", "synthetic-private-return", "synthetic-completion", "from_url"] {
+            XCTAssertFalse(failure.localizedDescription.contains(forbidden))
+        }
+        await assertCleanedUp(view)
+    }
+
     /// Runs only with the local TLS fixture and a disposable Simulator trust
     /// store. Unlike injected HTML, this exercises real HTTPS server redirects
     /// and the production authentication-challenge delegate without overrides.

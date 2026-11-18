@@ -1300,6 +1300,13 @@ final class Base44Client {
         let _: EmptyResponse = try await wordPackAction("delete", packID: id)
     }
 
+    func publishRoomGenerationAd(room: GameRoom, sessionID: UUID, isPresenting: Bool) async throws -> GameRoom {
+        try await roomAction("set_generation_ad", roomID: room.id,
+                             expectedMembershipID: room.viewerMembershipID,
+                             generationAdSessionID: sessionID.uuidString.lowercased(),
+                             generationAdState: isPresenting ? "presenting" : "ended")
+    }
+
     func generationRewardStatus() async throws -> GenerationRewardStatus {
         try await generationRewardRequest(action: "status", fields: GenerationRewardClientCapabilities.current)
     }
@@ -2304,6 +2311,8 @@ final class Base44Client {
         expectedLobbyRevision: Int? = nil,
         expectedMatchID: String? = nil,
         expectedGameStartedAt: String? = nil,
+        generationAdSessionID: String? = nil,
+        generationAdState: String? = nil,
         requestTimeoutInterval: TimeInterval? = nil,
         allowsTypedConflictRetry: Bool = true
     ) async throws -> GameRoom {
@@ -2334,7 +2343,9 @@ final class Base44Client {
             state: state,
             expectedLobbyRevision: expectedLobbyRevision,
             expectedMatchID: expectedMatchID,
-            expectedGameStartedAt: expectedGameStartedAt
+            expectedGameStartedAt: expectedGameStartedAt,
+            generationAdSessionID: generationAdSessionID,
+            generationAdState: generationAdState
         )
         var body = try SupabaseFullGameStore.json(payload).object ?? [:]
         body.removeValue(forKey: "access_token")
@@ -2371,7 +2382,9 @@ final class Base44Client {
             state: state,
             expectedLobbyRevision: expectedLobbyRevision,
             expectedMatchID: expectedMatchID,
-            expectedGameStartedAt: expectedGameStartedAt
+            expectedGameStartedAt: expectedGameStartedAt,
+            generationAdSessionID: generationAdSessionID,
+            generationAdState: generationAdState
         )
         // Expired-room finalization owns an authoritative read/backoff loop in
         // GameView. Latency-sensitive vote/guess calls also keep their deadline
@@ -3400,6 +3413,8 @@ private struct GameRoomActionPayload: Encodable {
     let expectedLobbyRevision: Int?
     let expectedMatchID: String?
     let expectedGameStartedAt: String?
+    let generationAdSessionID: String?
+    let generationAdState: String?
 
     init(
         action: String,
@@ -3427,7 +3442,9 @@ private struct GameRoomActionPayload: Encodable {
         state: LobbyStatePayload? = nil,
         expectedLobbyRevision: Int? = nil,
         expectedMatchID: String? = nil,
-        expectedGameStartedAt: String? = nil
+        expectedGameStartedAt: String? = nil,
+        generationAdSessionID: String? = nil,
+        generationAdState: String? = nil
     ) {
         self.action = action
         self.accessToken = accessToken
@@ -3455,6 +3472,8 @@ private struct GameRoomActionPayload: Encodable {
         self.expectedLobbyRevision = expectedLobbyRevision
         self.expectedMatchID = expectedMatchID
         self.expectedGameStartedAt = expectedGameStartedAt
+        self.generationAdSessionID = generationAdSessionID
+        self.generationAdState = generationAdState
     }
 
     enum CodingKeys: String, CodingKey {
@@ -3484,6 +3503,8 @@ private struct GameRoomActionPayload: Encodable {
         case expectedLobbyRevision = "expected_lobby_revision"
         case expectedMatchID = "expected_match_id"
         case expectedGameStartedAt = "expected_game_started_at"
+        case generationAdSessionID = "generation_ad_session_id"
+        case generationAdState = "generation_ad_state"
     }
 }
 

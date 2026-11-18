@@ -1,6 +1,16 @@
 import Foundation
 
 extension AppState {
+    /// Only the online generator supplies roomID; opening a personal library
+    /// while a room exists must never invite that room's guests to an ad.
+    func watchGenerationRewardAd(testAd: Bool = false, roomID: String? = nil) async {
+        guard !generationRewards.isWatching else { return }
+        await generationRewards.watch(testAd: testAd) { [weak self] presenting in
+            guard let roomID else { return }
+            self?.publishRoomGenerationAdPresentation(presenting, roomID: roomID)
+        }
+    }
+
     /// All explicit AI entry points share the same server-owned allowance. A
     /// stale client balance never prevents replaying an already paid request.
     func generateWordPack(theme: String, count: Int, requestID: UUID, excluding: [String] = [], preferFresh: Bool = false) async throws -> GeneratedWordPack {

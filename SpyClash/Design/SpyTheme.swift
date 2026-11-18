@@ -39,6 +39,21 @@ enum SpyTheme {
         .system(size: 11 * InterfacePreferences.shared.settings.labelSize.scale, weight: .bold, design: .monospaced)
     }
 
+    static func gameFontName(weight: Font.Weight) -> String {
+        switch weight {
+        case .bold, .heavy, .black: "IBMPlexSansCond-Bold"
+        case .semibold, .medium: "IBMPlexSansCond-SmBld"
+        default: "IBMPlexSansCond"
+        }
+    }
+
+    @MainActor
+    static func gameFont(size: CGFloat, weight: Font.Weight = .regular,
+                         relativeTo style: Font.TextStyle = .body) -> Font {
+        .custom(gameFontName(weight: weight),
+                size: size * InterfacePreferences.shared.settings.labelSize.scale, relativeTo: style)
+    }
+
     static func brandFont(size: CGFloat) -> Font {
         .custom("Rajdhani-Bold", size: size)
     }
@@ -201,6 +216,7 @@ struct SpyBrandMark: View {
 }
 
 struct SpyButtonStyle: ButtonStyle {
+    @Environment(\.spyUsesGameTypography) private var usesGameTypography
     enum Variant {
         case red
         case outline
@@ -208,12 +224,13 @@ struct SpyButtonStyle: ButtonStyle {
     }
 
     let variant: Variant
+    var labelFont: Font? = nil
 
     @SpyReduceMotion private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12, weight: .black, design: .monospaced))
+            .font(labelFont ?? (usesGameTypography ? SpyTheme.gameFont(size: 12, weight: .bold, relativeTo: .headline) : .system(size: 12, weight: .black, design: .monospaced)))
             .tracking(0.12)
             .textCase(.uppercase)
             .lineLimit(2)
@@ -277,6 +294,7 @@ struct SpyButtonStyle: ButtonStyle {
 }
 
 struct SpyActionLabel: View {
+    @Environment(\.spyUsesGameTypography) private var usesGameTypography
     let title: String
     let systemImage: String
     var fontSize: CGFloat = 12
@@ -292,7 +310,7 @@ struct SpyActionLabel: View {
                 .accessibilityHidden(true)
 
             Text(title)
-                .font(.system(size: fontSize, weight: .black, design: .monospaced))
+                .font(usesGameTypography ? SpyTheme.gameFont(size: fontSize, weight: .bold, relativeTo: .headline) : .system(size: fontSize, weight: .black, design: .monospaced))
                 .tracking(resolvedTracking)
                 .lineLimit(lines)
                 .minimumScaleFactor(resolvedScale)
@@ -469,6 +487,7 @@ struct SpyLobbyPanel<Content: View>: View {
 }
 
 struct SpyLobbySectionHeader: View {
+    @Environment(\.spyUsesGameTypography) private var usesGameTypography
     let systemImage: String
     let title: String
 
@@ -485,7 +504,7 @@ struct SpyLobbySectionHeader: View {
                 .frame(width: 16)
 
             Text(title)
-                .font(SpyTheme.micro)
+                .font(usesGameTypography ? SpyTheme.gameFont(size: 11, weight: .bold, relativeTo: .caption) : SpyTheme.micro)
                 .tracking(0.08)
                 .foregroundStyle(SpyTheme.muted)
                 .spyFitted(lines: 2, scale: 0.68)
@@ -714,6 +733,7 @@ struct SpyLobbyFooterPressStyle: ButtonStyle {
 }
 
 struct SpyLobbySecondaryActionLabel: View {
+    @Environment(\.spyUsesGameTypography) private var usesGameTypography
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let title: String
@@ -742,7 +762,7 @@ struct SpyLobbySecondaryActionLabel: View {
                 .accessibilityHidden(true)
 
             Text(title)
-                .font(.system(size: dynamicTypeSize.isAccessibilitySize ? 11 : 9, weight: .black, design: .monospaced))
+                .font(usesGameTypography ? SpyTheme.gameFont(size: dynamicTypeSize.isAccessibilitySize ? 11 : 9, weight: .bold, relativeTo: .headline) : .system(size: dynamicTypeSize.isAccessibilitySize ? 11 : 9, weight: .black, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.94))
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
                 .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 0.80 : 0.58)
@@ -777,6 +797,7 @@ struct SpyLobbySecondaryActionLabel: View {
 }
 
 struct SpyLobbyPrimaryActionLabel: View {
+    @Environment(\.spyUsesGameTypography) private var usesGameTypography
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let title: String
@@ -805,14 +826,14 @@ struct SpyLobbyPrimaryActionLabel: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.system(size: dynamicTypeSize.isAccessibilitySize ? 11 : 9, weight: .black, design: .monospaced))
+                    .font(usesGameTypography ? SpyTheme.gameFont(size: dynamicTypeSize.isAccessibilitySize ? 11 : 9, weight: .bold, relativeTo: .headline) : .system(size: dynamicTypeSize.isAccessibilitySize ? 11 : 9, weight: .black, design: .monospaced))
                     .foregroundStyle(isAvailable ? .white : SpyTheme.red.opacity(0.48))
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
                     .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 0.78 : 0.52)
                     .contentTransition(.opacity)
 
                 Text(detail)
-                    .font(.system(size: dynamicTypeSize.isAccessibilitySize ? 8.5 : 7, weight: .bold, design: .monospaced))
+                    .font(usesGameTypography ? SpyTheme.gameFont(size: dynamicTypeSize.isAccessibilitySize ? 8.5 : 7, weight: .bold, relativeTo: .caption2) : .system(size: dynamicTypeSize.isAccessibilitySize ? 8.5 : 7, weight: .bold, design: .monospaced))
                     .foregroundStyle(isAvailable ? Color.white.opacity(0.72) : SpyTheme.dim)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
                     .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 0.76 : 0.50)
@@ -868,6 +889,8 @@ struct SpyInput: View {
         case secure
     }
 
+    @Environment(\.spyUsesGameTypography) private var usesGameTypography
+
     var label: String?
     var placeholder: String
     @Binding var text: String
@@ -886,7 +909,7 @@ struct SpyInput: View {
         VStack(alignment: .leading, spacing: label == nil ? 0 : 8) {
             if let label {
                 Text(label)
-                    .font(SpyTheme.micro)
+                    .font(usesGameTypography ? SpyTheme.gameFont(size: 12, weight: .semibold, relativeTo: .caption) : SpyTheme.micro)
                     .tracking(0.12)
                     .foregroundStyle(SpyTheme.dim)
                     .spyKicker(lines: 2)
@@ -902,12 +925,14 @@ struct SpyInput: View {
                 }
 
                 field
-                    .font(SpyTheme.mono)
+                    .font(fieldFont)
                     .tracking(0.04)
                     .foregroundStyle(.white)
             }
             .padding(.horizontal, 14)
-            .frame(height: height)
+            .padding(.vertical, usesGameTypography ? 12 : 0)
+            .frame(minHeight: height)
+            .frame(height: usesGameTypography ? nil : height)
             .background(SpyTheme.panelDeep, in: CutCornerShape(cut: 9))
             .overlay(
                 CutCornerShape(cut: 9)
@@ -935,7 +960,11 @@ struct SpyInput: View {
     }
 
     private var prompt: Text {
-        Text(placeholder).foregroundStyle(SpyTheme.dim)
+        Text(placeholder).font(fieldFont).foregroundStyle(SpyTheme.dim)
+    }
+
+    private var fieldFont: Font {
+        usesGameTypography ? SpyTheme.gameFont(size: 17, relativeTo: .body) : SpyTheme.mono
     }
 
     private var boundedText: Binding<String> {
@@ -1041,7 +1070,7 @@ struct AIThemeSuggestionStrip: View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
                 Text("// \(title)")
-                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .font(SpyTheme.gameFont(size: 8, weight: .bold, relativeTo: .caption2))
                     .tracking(0.08)
                     .foregroundStyle(SpyTheme.dim)
                     .accessibilityHidden(true)
@@ -1057,7 +1086,7 @@ struct AIThemeSuggestionStrip: View {
                         Image(systemName: "chevron.right")
                             .accessibilityHidden(true)
                     }
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .font(SpyTheme.gameFont(size: 11, weight: .bold, relativeTo: .caption))
                     .foregroundStyle(SpyTheme.red)
                     .spyHitTarget()
                 }
@@ -1102,7 +1131,7 @@ struct AIThemeSuggestionStrip: View {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 12) {
                     Text(catalogTitle)
-                        .font(SpyTheme.brandFont(size: 22))
+                        .font(SpyTheme.gameFont(size: 22, weight: .bold, relativeTo: .title2))
                         .foregroundStyle(.white)
                         .accessibilityAddTraits(.isHeader)
 
@@ -1123,7 +1152,7 @@ struct AIThemeSuggestionStrip: View {
                 }
 
                 Text(selectionHint)
-                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                    .font(SpyTheme.gameFont(size: 13, weight: .medium))
                     .foregroundStyle(SpyTheme.bodyText)
 
                 HStack(spacing: 10) {
@@ -1131,7 +1160,7 @@ struct AIThemeSuggestionStrip: View {
                         .foregroundStyle(SpyTheme.muted)
                         .accessibilityHidden(true)
                     TextField(searchPlaceholder, text: $searchText)
-                        .font(.system(size: 15, weight: .medium, design: .monospaced))
+                        .font(SpyTheme.gameFont(size: 15, weight: .medium))
                         .foregroundStyle(.white)
                         .tint(SpyTheme.red)
                         .textInputAutocapitalization(.never)
@@ -1151,7 +1180,7 @@ struct AIThemeSuggestionStrip: View {
                         }
                         if filteredSuggestions.isEmpty {
                             Text(noResultsTitle)
-                                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                .font(SpyTheme.gameFont(size: 13, weight: .medium))
                                 .foregroundStyle(SpyTheme.bodyText)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 28)
@@ -1192,7 +1221,7 @@ struct AIThemeSuggestionStrip: View {
                     .accessibilityHidden(true)
 
                 Text(expanded ? suggestionTitle : suggestionTitle.uppercased())
-                    .font(.system(size: expanded ? 15 : 10, weight: .bold, design: .monospaced))
+                    .font(SpyTheme.gameFont(size: expanded ? 15 : 10, weight: .bold, relativeTo: .callout))
                     .foregroundStyle(isSelected ? .white : expanded ? SpyTheme.bodyText : SpyTheme.muted)
                     .lineLimit(expanded ? nil : layout == .grid ? 2 : 1)
                     .multilineTextAlignment(.leading)
@@ -1780,6 +1809,7 @@ struct SpyPrimaryCommandStyle: ButtonStyle {
 }
 
 struct SpyModal<Content: View>: View {
+    @Environment(\.spyUsesGameTypography) private var usesGameTypography
     let title: String
     var message: String?
     var systemImage: String = "exclamationmark.triangle.fill"
@@ -1800,7 +1830,7 @@ struct SpyModal<Content: View>: View {
                             .foregroundStyle(accent)
 
                         Text(title.uppercased())
-                            .font(.system(size: 18, weight: .black, design: .monospaced))
+                            .font(usesGameTypography ? SpyTheme.gameFont(size: 18, weight: .bold, relativeTo: .headline) : .system(size: 18, weight: .black, design: .monospaced))
                             .tracking(0.08)
                             .foregroundStyle(.white)
                             .spyFitted(lines: 2, scale: 0.58)
@@ -1808,7 +1838,7 @@ struct SpyModal<Content: View>: View {
 
                     if let message {
                         Text(message)
-                            .font(SpyTheme.mono)
+                            .font(usesGameTypography ? SpyTheme.gameFont(size: 13, weight: .medium) : SpyTheme.mono)
                             .foregroundStyle(SpyTheme.muted)
                             .lineSpacing(4)
                             .fixedSize(horizontal: false, vertical: true)
@@ -2149,6 +2179,7 @@ struct SpySpinner: View {
 }
 
 struct SpyLoadingLabel: View {
+    @Environment(\.spyUsesGameTypography) private var usesGameTypography
     let title: String
     var accent: Color = SpyTheme.red
 
@@ -2156,7 +2187,7 @@ struct SpyLoadingLabel: View {
         HStack(spacing: 10) {
             SpySpinner(size: 18, accent: accent)
             Text(title)
-                .font(.system(size: 12, weight: .black, design: .monospaced))
+                .font(usesGameTypography ? SpyTheme.gameFont(size: 12, weight: .bold, relativeTo: .headline) : .system(size: 12, weight: .black, design: .monospaced))
                 .tracking(0.10)
                 .lineLimit(2)
                 .minimumScaleFactor(0.62)

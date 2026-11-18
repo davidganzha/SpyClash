@@ -106,6 +106,7 @@ private struct RootView: View {
         }
         .spyGlobalToastLayer()
         .spyLimitlessUnlockLayer()
+        .generationPresentationLayer()
         .alert(
             manualAppleRevocationTitle,
             isPresented: manualAppleRevocationBinding

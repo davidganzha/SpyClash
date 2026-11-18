@@ -1446,11 +1446,12 @@ struct LocalGameView: View {
             Spacer()
 
             Text(aiIntelLabel)
-                .font(.system(size: 10, weight: .black, design: .default))
+                .font(SpyTheme.gameFont(size: 10, weight: .black))
                 .tracking(0.02)
                 .foregroundStyle(SpyTheme.dim)
                 .spyFitted(scale: 0.62, alignment: .trailing)
         }
+        .spyGameTypography()
     }
 
     @ViewBuilder
@@ -1470,7 +1471,7 @@ struct LocalGameView: View {
     private var localIntelMessages: some View {
         if localHasCustomTheme, let generatedPack, !generatedPack.words.localCleanWords.isEmpty {
             Text(localAIWarning)
-                .font(.system(size: 9, weight: .bold, design: .default))
+                .font(SpyTheme.gameFont(size: 9, weight: .bold))
                 .tracking(0.02)
                 .foregroundStyle(SpyTheme.dim)
                 .lineSpacing(2)
@@ -1516,24 +1517,24 @@ struct LocalGameView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(localWordsLabel)
-                        .font(SpyTheme.micro)
+                        .font(SpyTheme.gameFont(size: 11, weight: .bold, relativeTo: .caption))
                         .foregroundStyle(SpyTheme.dim)
                     Spacer()
                     Text("\(words.count)")
-                        .font(.system(size: 16, weight: .black))
+                        .font(SpyTheme.gameFont(size: 16, weight: .bold))
                         .foregroundStyle(SpyTheme.green)
                         .accessibilityIdentifier("localGame.poolPreview.count")
                 }
 
                 Text(localPoolTitle)
-                    .font(.system(size: 18, weight: .black))
+                    .font(SpyTheme.gameFont(size: 18, weight: .bold))
                     .foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 8)], spacing: 8) {
                     ForEach(showsAllLocalPoolWords ? words : Array(words.prefix(8)), id: \.self) { word in
                         Text(word)
-                            .font(.system(size: 12, weight: .bold))
+                            .font(SpyTheme.gameFont(size: 12, weight: .bold))
                             .foregroundStyle(SpyTheme.bodyText)
                             .multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
@@ -1559,7 +1560,7 @@ struct LocalGameView: View {
                             Spacer()
                             Image(systemName: showsAllLocalPoolWords ? "chevron.up" : "chevron.down")
                         }
-                        .font(.system(size: 10, weight: .black))
+                        .font(SpyTheme.gameFont(size: 10, weight: .bold))
                         .foregroundStyle(SpyTheme.muted)
                         .padding(.horizontal, 12)
                         .frame(minHeight: 44)
@@ -1608,13 +1609,13 @@ struct LocalGameView: View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Text(title.uppercased())
-                    .font(.system(size: 12, weight: .black, design: .default))
+                    .font(SpyTheme.gameFont(size: 12, weight: .black))
                     .tracking(0.02)
                     .spyFitted(lines: 2, scale: 0.68, alignment: .center)
 
                 if let subtitle {
                     Text("(\(subtitle))")
-                        .font(.system(size: 10, weight: .black, design: .default))
+                        .font(SpyTheme.gameFont(size: 10, weight: .black))
                         .foregroundStyle(SpyTheme.dim)
                         .lineLimit(1)
                 }
@@ -1639,11 +1640,13 @@ struct LocalGameView: View {
                 .foregroundStyle(focusedLocalSetupField == .theme ? SpyTheme.red : SpyTheme.dim)
                 .frame(width: 18)
 
-            TextField("", text: localThemeTextBinding, prompt: Text(localThemePlaceholder).foregroundStyle(SpyTheme.dim))
+            TextField("", text: localThemeTextBinding, prompt: Text(localThemePlaceholder)
+                .font(SpyTheme.gameFont(size: 13, weight: .medium))
+                .foregroundStyle(SpyTheme.dim))
                 .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
                 .submitLabel(.done)
-                .font(SpyTheme.mono)
+                .font(SpyTheme.gameFont(size: 13, weight: .medium))
                 .tracking(0.04)
                 .foregroundStyle(.white)
                 .tint(SpyTheme.red)
@@ -1736,13 +1739,13 @@ struct LocalGameView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text(localCountLabel)
-                            .font(SpyTheme.micro)
+                            .font(SpyTheme.gameFont(size: 11, weight: .bold, relativeTo: .caption))
                             .tracking(0.04)
                             .foregroundStyle(SpyTheme.dim)
                             .spyKicker()
                         Spacer()
                         Text("\(Int(localCustomWordCount)) / 80")
-                            .font(.system(size: 15, weight: .black, design: .default))
+                            .font(SpyTheme.gameFont(size: 15, weight: .black))
                             .foregroundStyle(SpyTheme.red)
                             .spyFitted(scale: 0.66, alignment: .trailing)
                     }
@@ -1787,12 +1790,12 @@ struct LocalGameView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(localWordCountModeTitle(mode))
-                        .font(.system(size: 10.5, weight: .black, design: .default))
+                        .font(SpyTheme.gameFont(size: 10.5, weight: .black))
                         .tracking(0.02)
                         .spyFitted(lines: 1, scale: 0.58)
 
                     Text(localWordCountModeHint(mode))
-                        .font(.system(size: 9.5, weight: .bold, design: .default))
+                        .font(SpyTheme.gameFont(size: 9.5, weight: .bold))
                         .tracking(0.02)
                         .foregroundStyle(isActive ? Color.white.opacity(0.70) : SpyTheme.dim)
                         .spyFitted(lines: 1, scale: 0.58)
@@ -1844,6 +1847,7 @@ struct LocalGameView: View {
         .opacity(localHasCustomTheme ? 1 : 0.42)
         .accessibilityIdentifier("localGame.generateThemeWords")
         }
+        .spyGameTypography()
     }
 
     private var localWordPackSelector: some View {
@@ -1854,15 +1858,15 @@ struct LocalGameView: View {
                 } label: {
                     HStack(alignment: .center, spacing: 10) {
                         Text("📦")
-                            .font(.system(size: 24))
+                            .font(SpyTheme.gameFont(size: 24))
                         VStack(alignment: .leading, spacing: 4) {
                             Text(localized(en: "You don't have any word packs yet.", ru: "У тебя пока нет наборов слов.", es: "Aun no tienes word packs.", uk: "У тебе ще немає наборів слів."))
-                                .font(.system(size: 12, weight: .bold, design: .default))
+                                .font(SpyTheme.gameFont(size: 12, weight: .bold))
                                 .tracking(0.02)
                                 .foregroundStyle(SpyTheme.dim)
                                 .spyFitted(lines: 2, scale: 0.62)
                             Text(localized(en: "+ Create first pack →", ru: "+ Создать первый набор →", es: "+ Crear primer pack →", uk: "+ Створити перший набір →"))
-                                .font(.system(size: 12, weight: .black, design: .monospaced))
+                                .font(SpyTheme.gameFont(size: 12, weight: .black))
                                 .tracking(0.02)
                                 .foregroundStyle(SpyTheme.red)
                                 .spyFitted(lines: 2, scale: 0.62)
@@ -1877,7 +1881,7 @@ struct LocalGameView: View {
                 .buttonStyle(SpyWebPressStyle())
             } else {
                 Text("\(localized(en: "WORD PACKS", ru: "WORD PACKS", es: "WORD PACKS", uk: "НАБОРИ СЛІВ")) \(packs.count)")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .font(SpyTheme.gameFont(size: 12, weight: .bold))
                     .tracking(0.02)
                     .foregroundStyle(SpyTheme.dim)
                     .spyFitted(scale: 0.62)
@@ -1897,7 +1901,7 @@ struct LocalGameView: View {
 
                 if let selected = packs.first(where: { $0.id == selectedPackID }) {
                     Text("\(localized(en: "Selected", ru: "Выбрано", es: "Seleccionado", uk: "Обрано")) \(selected.name) · \(selected.words?.localCleanWords.count ?? 0) \(copy.wordsSuffix)")
-                        .font(.system(size: 11, weight: .bold, design: .default))
+                        .font(SpyTheme.gameFont(size: 11, weight: .bold))
                         .tracking(0.02)
                         .foregroundStyle(SpyTheme.dim)
                         .spyFitted(lines: 2, scale: 0.62)
@@ -1913,19 +1917,19 @@ struct LocalGameView: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text(localWordsLabel)
-                    .font(SpyTheme.micro)
+                    .font(SpyTheme.gameFont(size: 11, weight: .bold, relativeTo: .caption))
                     .tracking(0.04)
                     .foregroundStyle(SpyTheme.dim)
                     .spyKicker()
                 Spacer()
                 Text("\(Int(wordCount)) / \(maxWords)")
-                    .font(.system(size: 16, weight: .black, design: .default))
+                    .font(SpyTheme.gameFont(size: 16, weight: .black))
                     .foregroundStyle(SpyTheme.red)
                     .spyFitted(scale: 0.66, alignment: .trailing)
             }
 
             Text(localThemeMetaLabel(maxWords: maxWords))
-                .font(.system(size: 9, weight: .bold, design: .default))
+                .font(SpyTheme.gameFont(size: 9, weight: .bold))
                 .tracking(0.02)
                 .foregroundStyle(SpyTheme.dim)
                 .spyFitted(lines: 2, scale: 0.60)
@@ -1979,6 +1983,7 @@ struct LocalGameView: View {
         .buttonStyle(SpyButtonStyle(variant: .outline))
         .disabled(isGenerating || localThemeMaxWords >= localThemeGenerationLimit)
         .accessibilityIdentifier("localGame.addMoreThemeWords")
+        .spyGameTypography()
     }
 
     private var localSaveAsWordPackButton: some View {
@@ -1997,6 +2002,7 @@ struct LocalGameView: View {
         }
         .buttonStyle(SpyButtonStyle(variant: .ghost))
         .disabled(isSavingGeneratedPack || (generatedPack?.words.localCleanWords.count ?? 0) < 2)
+        .spyGameTypography()
     }
 
     private var localTimingPanel: some View {
@@ -2066,6 +2072,7 @@ struct LocalGameView: View {
         }
         .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: localPrimaryActionResolution)
         .animation(reduceMotion ? nil : .smooth(duration: 0.20), value: players.count >= 3)
+        .spyGameTypography()
     }
 
     private func publishLocalToast(_ message: String) {

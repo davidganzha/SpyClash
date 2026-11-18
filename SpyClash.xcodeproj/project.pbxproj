@@ -24,6 +24,7 @@
 		06C2FCB23B06A882DC67ECAA /* LeaderboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 723E083EC43863E9B19D1DBD /* LeaderboardView.swift */; };
 		06C51565E294435310FA67C4 /* NotificationsInboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBEA537D0BEEC5A171ABD419 /* NotificationsInboxView.swift */; };
 		07C8BE911E4032D0AC430598 /* GenerationRewardStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FB7C6E371EB4047C9D7508B /* GenerationRewardStore.swift */; };
+		0882295B085F205913433D5D /* IBMPlexSansCondensed-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C3A80B9BDEBB28972FE39300 /* IBMPlexSansCondensed-Regular.ttf */; };
 		08B9BAD1B0E5C9ADF0D2AF59 /* Base44Client.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EE75E34545D7FD03BFBF561 /* Base44Client.swift */; };
 		08CA62E4DFC88730D2918813 /* AppState+AcquisitionSurvey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8866651A8510FD0A890116EB /* AppState+AcquisitionSurvey.swift */; };
 		09568FB6384F907485E666C4 /* SpyLaserScanLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08CF05650D30ADCD231D6904 /* SpyLaserScanLayer.swift */; };
@@ -36,10 +37,12 @@
 		0C4CA1FFBC333349B3C52FEB /* LimitlessUnlockOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEE68A515367ABB807A2007D /* LimitlessUnlockOverlay.swift */; };
 		0C748DDAC83D3EC01179E074 /* SpyOrbSceneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05EC9F49E8EAD9FFF41E783E /* SpyOrbSceneView.swift */; };
 		0D03DEA8F40E9957A59146C4 /* SupabaseLegacyAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82CC9E52C9F3F732F47A312A /* SupabaseLegacyAuth.swift */; };
+		0D24038E0A73F24FFDD3832B /* GenerationPresentationLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B72F9D417C2F280B53C4C8E7 /* GenerationPresentationLayer.swift */; };
 		0DA880E29BA82DDA521B0848 /* GameCenterEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B56DC470E758E134D21613A8 /* GameCenterEntryView.swift */; };
 		0E5B384245B705E4A0093F79 /* WordPackDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = B81713411A03923224780579 /* WordPackDraft.swift */; };
 		0E7E9D69BA5174E7E5022CD8 /* LocalWordPoolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C5B90645CF02EF486E85429 /* LocalWordPoolTests.swift */; };
 		0E95043E279140BF59FFBED7 /* Base44Client.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EE75E34545D7FD03BFBF561 /* Base44Client.swift */; };
+		0EC7F2180A96A12234D1D50D /* GenerationTypography.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84413D3643CDF2ECA9677E78 /* GenerationTypography.swift */; };
 		0FAC87F7B6D324185502000F /* UnityAds in Frameworks */ = {isa = PBXBuildFile; productRef = 1617B1BE3B4C5330E2B42E2D /* UnityAds */; };
 		0FD841571A372C96B7274736 /* RewardedGenerationAdPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 630208291E3E478FE4DF690A /* RewardedGenerationAdPresenter.swift */; };
 		106AE27F4B2724A17C722789 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22314E28DB2385F7A05ABC74 /* HistoryView.swift */; };
@@ -52,14 +55,18 @@
 		133448F13C27E0FBF766665D /* FanModeViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DDCB23A8525645FFB728E92 /* FanModeViews.swift */; };
 		138D4E2D9BDF375CF36C08F5 /* OnboardingPermissionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E6103AB3131936FE120B988 /* OnboardingPermissionTests.swift */; };
 		13D77822DD0A8C0C325DD829 /* Rajdhani-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 57701A39195710C4AEBFB6CA /* Rajdhani-Bold.ttf */; };
+		15CD66A3F2566BEF4B2FF175 /* IBMPlexSansCondensed-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E467400508A87F29F5DF91BC /* IBMPlexSansCondensed-Bold.ttf */; };
 		186D9D59A18E714E0B9C4184 /* OnlineGameStartTransition.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4E860862659AA90219386A1 /* OnlineGameStartTransition.swift */; };
 		18F1BF781D449AE1CB9E76B0 /* HapticManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BBA628FB7C9372162E4C619 /* HapticManager.swift */; };
+		1910F63283682FA1340F12F9 /* IBMPlexSansCondensed-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C3A80B9BDEBB28972FE39300 /* IBMPlexSansCondensed-Regular.ttf */; };
 		1B815281AA002B53CF21EF9A /* LocalWordPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE85736438E55EBC81677CE4 /* LocalWordPool.swift */; };
 		1B9D552196DE38FAAE5ABF8E /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75823698B8005677C73DFC1B /* AppState.swift */; };
+		1BC13F1D37B24A38F6EF0EF7 /* RoomGenerationAdOffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09ACEB59A2F2120E9A76B911 /* RoomGenerationAdOffer.swift */; };
 		1C1FE7256CAA742AAD62B7CB /* PricingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4B70AB1F4B7C7D339E01E1F /* PricingView.swift */; };
 		1C75A8A1770F832EFBC5D5B8 /* WordPackDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = B81713411A03923224780579 /* WordPackDraft.swift */; };
 		1E60350353F2C07011F9D788 /* InterfaceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97913D6348B4319F467C8E65 /* InterfaceSettingsView.swift */; };
 		1E6E50FE38DCE15E011FE6A1 /* RewardedGenerationAdConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6A859496D612784856E9BC6 /* RewardedGenerationAdConfiguration.swift */; };
+		1E883FF17A1BDC5718AF02FF /* GenerationTypography.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84413D3643CDF2ECA9677E78 /* GenerationTypography.swift */; };
 		1EBA152D3B76AF65B2CFCBB2 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16DD679CA8E36033E9AD5D76 /* HomeView.swift */; };
 		1F738C6A3F8083905F3EFBAC /* WordPacksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2863C15FC8DD7D0C969D6E78 /* WordPacksView.swift */; };
 		1FBE45CC7EB218F58B3FF8B3 /* RadarNearbyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B9250197E503D48B2502EFF /* RadarNearbyService.swift */; };
@@ -88,6 +95,7 @@
 		2915D6FDF45861DC23688293 /* OnboardingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6575BABB395718344476FA1 /* OnboardingModels.swift */; };
 		2946A41A9575F0D1AEE2D809 /* SpyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86974FE98CF9350796FC28D3 /* SpyModels.swift */; };
 		2AE8379041D2415FE0005E5B /* GameRoomLiveActivityProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79E0CCD1E46813B6962CBD4B /* GameRoomLiveActivityProjection.swift */; };
+		2B205CAEBD60872E33C4DA9D /* RoomGenerationAdOffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09ACEB59A2F2120E9A76B911 /* RoomGenerationAdOffer.swift */; };
 		2B48A221A50B06D9EFE14A83 /* SupabaseSocialRealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 733493DF0AA53A035B384D8B /* SupabaseSocialRealtimeService.swift */; };
 		2BBF889C1E286E3395D500AD /* FanModeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE0B1865BE40A17101030D2D /* FanModeTests.swift */; };
 		2C8A9A50CCB88C3451BA520A /* UnityRewardedGenerationAdPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB6405AB953F8EA6452D405D /* UnityRewardedGenerationAdPresenter.swift */; };
@@ -105,6 +113,7 @@
 		30C55028FF9156F0B409A186 /* SupabasePublicReleaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B95A2D741697760ECF94CA2C /* SupabasePublicReleaseTests.swift */; };
 		31252C853388440AE83688A5 /* SpyAchievements.swift in Sources */ = {isa = PBXBuildFile; fileRef = E174D5AC38FFB4D09F35DE12 /* SpyAchievements.swift */; };
 		3159EFBB317BADEB054053A9 /* LabConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03A02561E0935B7FDA0396C6 /* LabConfiguration.swift */; };
+		31DA3DF304D4E7F2039A3C36 /* IBMPlexSansCondensed-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FE7C42AFE086D686281C64C1 /* IBMPlexSansCondensed-SemiBold.ttf */; };
 		320672F1370735C4463AF92E /* Membership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 026F4AEBE8A76B12EE72FAC6 /* Membership.swift */; };
 		32A32FB529A80D299F2FCAC9 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16DD679CA8E36033E9AD5D76 /* HomeView.swift */; };
 		32EF53E57801236CA3D98A71 /* StoreKitOperationFailure.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27425526602C8E8958509FC4 /* StoreKitOperationFailure.swift */; };
@@ -114,6 +123,7 @@
 		373294D8674BA67AEC1E8B5D /* StoreKitSandboxIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32506C28F05EE47E2211DB75 /* StoreKitSandboxIntegrationTests.swift */; };
 		37C42D25F1B6C9755A733B03 /* AppState+Membership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C35AB10E88428C6F3D53699 /* AppState+Membership.swift */; };
 		3822B1521A7DDF0AF7EA06C2 /* AppleSessionCompletionSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B4836BDF480BCA80CB3EDC0 /* AppleSessionCompletionSession.swift */; };
+		394FB513BA12337E02EC4F3B /* RoomGenerationAdOffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09ACEB59A2F2120E9A76B911 /* RoomGenerationAdOffer.swift */; };
 		397C0B1DBC891128B57E1133 /* WordPackDraftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D58811816F930A78503187 /* WordPackDraftTests.swift */; };
 		39840D09E8474E87D45E1555 /* OnlineRoundStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 673C14A27AC3CD3669188134 /* OnlineRoundStateTests.swift */; };
 		3D0B519B6BFBCE5D8DFF3D45 /* SupabaseFullGameStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A0054A2A4BACE2F0F8AE94 /* SupabaseFullGameStore.swift */; };
@@ -132,6 +142,7 @@
 		45ABC9F4F0CF8648D69F77AC /* SpyInterfacePreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79E76174123D2C9A9D699412 /* SpyInterfacePreferences.swift */; };
 		45C3674AC6E3B7D1422F8B5C /* InterfacePreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = A845F2AA618E50DAC8D05962 /* InterfacePreferences.swift */; };
 		45C5F0C1D78B5C2F1EA5A7A0 /* RadarNearbyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B9250197E503D48B2502EFF /* RadarNearbyService.swift */; };
+		462961DD51827C9CB583FE25 /* RoomGenerationAdGuestOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5840A2FA4030079EBFF44FFC /* RoomGenerationAdGuestOverlay.swift */; };
 		464C102A316C7FF1D32C01CF /* SessionRestoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C5B707CA0A5ADFB4E85FD4B /* SessionRestoreTests.swift */; };
 		466D60225A6F7D8850EC3F0D /* GameInvitationOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3CC16A7D85B706DA22DF02D /* GameInvitationOverlay.swift */; };
 		4693DB8945B0EFD836FD3CA3 /* SupabaseAppSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2EBD2681F0E66455DFA96C2 /* SupabaseAppSession.swift */; };
@@ -143,6 +154,7 @@
 		48512E608658258667579729 /* GameCenterAuthentication.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5931997BCC3E996880F08A6 /* GameCenterAuthentication.swift */; };
 		48A0545EF1955170DAFE7577 /* SpyAchievementsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE22C49E3B0E6870ED01BF77 /* SpyAchievementsView.swift */; };
 		48F60AF8B621AC2ECA17AA4D /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE1AF213121DB5A761660563 /* WelcomeView.swift */; };
+		4940271032C30B72A727E1AC /* IBMPlexSansCondensed-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 117446244F1F9F9921D5AEEE /* IBMPlexSansCondensed-OFL.txt */; };
 		4A6145A456F92EBDA8F65ACB /* SupabaseFullGameStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A0054A2A4BACE2F0F8AE94 /* SupabaseFullGameStore.swift */; };
 		4A813CE60E868B73C569589E /* PlayerSpyCard3DView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA73BD6B334F5A9F54F3E659 /* PlayerSpyCard3DView.swift */; };
 		4AEFCC7469436ADF655861F4 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B25DFE515749E670224D319 /* ProfileView.swift */; };
@@ -168,6 +180,7 @@
 		55A2B607F3CD43ABD0B91CCC /* LocalPrivateDecisionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDDD6B72D176640B3190D628 /* LocalPrivateDecisionViews.swift */; };
 		56ACA1F8C1407ECA16EBFA58 /* AcquisitionSurveyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7C3B1B2BCFE537391DFD165 /* AcquisitionSurveyTests.swift */; };
 		5767CD1715E3A330461009CB /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 9C904BBF810EAAFF591F9659 /* PrivacyInfo.xcprivacy */; };
+		58F31B175C1B117423961839 /* RoomGenerationAdGuestConsent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39182376A1B9A86E5DCA8845 /* RoomGenerationAdGuestConsent.swift */; };
 		5A7CE9C49591D5EB3A25B6B2 /* FanModeViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DDCB23A8525645FFB728E92 /* FanModeViews.swift */; };
 		5AB3D58F1CEC5AE0D4712E57 /* DetectiveVoteCancellationOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 719D1CED512E653A43A0FBDC /* DetectiveVoteCancellationOverlay.swift */; };
 		5B593E16295DC7565E195EDF /* GameInvitationOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3CC16A7D85B706DA22DF02D /* GameInvitationOverlay.swift */; };
@@ -192,6 +205,7 @@
 		66729B899552E572F2097712 /* SpyTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3EC24BA3BA2A7A16F039946 /* SpyTheme.swift */; };
 		66F21F2319FE97F5D8A0DF4E /* WordPacksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2863C15FC8DD7D0C969D6E78 /* WordPacksView.swift */; };
 		675BFFD6FF048AF8127150C3 /* LeaderboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 723E083EC43863E9B19D1DBD /* LeaderboardView.swift */; };
+		67AE980D2DDC981B6750ABAE /* GenerationTypography.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84413D3643CDF2ECA9677E78 /* GenerationTypography.swift */; };
 		693894BAD0DB8065DFE66A1C /* SupabaseLegacySessionUpgrade.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4C7DF591EE7DC58C7D4568F /* SupabaseLegacySessionUpgrade.swift */; };
 		697D20379506F13DE0E39415 /* SupabaseAppGameTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 269FE123D2811B55068F7E92 /* SupabaseAppGameTransport.swift */; };
 		6A4BC6B25BB1F62752B03E31 /* RewardedGenerationAdConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF9A57CA1115E3D240363FC /* RewardedGenerationAdConfigurationTests.swift */; };
@@ -200,6 +214,7 @@
 		6BF35DC0D8CF7F44CC02D78A /* SpyInterfaceScale.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A763626AA7553FBDDD665B8 /* SpyInterfaceScale.swift */; };
 		6DDE079AE64460C59BB9029A /* GoogleUserMessagingPlatform in Frameworks */ = {isa = PBXBuildFile; productRef = B24312875D0AAF20A6872E3B /* GoogleUserMessagingPlatform */; };
 		6E4C94E70834661C17C08E06 /* HapticManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BBA628FB7C9372162E4C619 /* HapticManager.swift */; };
+		6F22BA9DBE5BFF9FBB75E5CA /* GenerationPresentationLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B72F9D417C2F280B53C4C8E7 /* GenerationPresentationLayer.swift */; };
 		70545E7667108CB8B2470745 /* InterfacePreferencesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35921860BD3A7EB84F963F87 /* InterfacePreferencesTests.swift */; };
 		70F319F5A6A6D666A1E2F8A5 /* CommunityResponsivenessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBF611A1F11FF70BB08253DA /* CommunityResponsivenessTests.swift */; };
 		71026DB90484A82D6A99FD6E /* SpyGameIntroScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA90F2A720D3C914DAEB5AD /* SpyGameIntroScene.swift */; };
@@ -220,12 +235,14 @@
 		7ABFCD782E22AF6AFF519942 /* GameRoomRealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E68BF1820775925C6C61E563 /* GameRoomRealtimeService.swift */; };
 		7B17BEF84CA90C58195734CF /* RadarNearbyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B9250197E503D48B2502EFF /* RadarNearbyService.swift */; };
 		7B6D3EB62FE74629B61B73AE /* PricingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4B70AB1F4B7C7D339E01E1F /* PricingView.swift */; };
+		7BCAFB6BD932187596C7BEA7 /* IBMPlexSansCondensed-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 117446244F1F9F9921D5AEEE /* IBMPlexSansCondensed-OFL.txt */; };
 		7BD86047097EED150447E003 /* AppleAuthenticationOwnershipTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F4E919DA47D72F73CF78184 /* AppleAuthenticationOwnershipTests.swift */; };
 		7C459F10E68740F733B82BF9 /* SupabaseGameRecoveryBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = F34CB7D3E96AC6FB27315519 /* SupabaseGameRecoveryBanner.swift */; };
 		7CF9DC97F5FD59E2BD18E81D /* LimitlessUnlockOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEE68A515367ABB807A2007D /* LimitlessUnlockOverlay.swift */; };
 		7D6221160001A1F896D98689 /* SpyOrbSceneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05EC9F49E8EAD9FFF41E783E /* SpyOrbSceneView.swift */; };
 		7E0E07142DA44B953A6398F5 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 103786B1CACE81CF96C268EF /* AuthView.swift */; };
 		7E2EDBD178BC1EB05FEAAAF8 /* SupabaseGameAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CC25664F127715AEB988EA8 /* SupabaseGameAdapter.swift */; };
+		7EF98F100EB10682724FA46E /* AppState+RoomGenerationAds.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D91BF73673480F3E1FA45DB /* AppState+RoomGenerationAds.swift */; };
 		7F36602A9ED9FDA2896F8B1F /* SupabaseAppSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2EBD2681F0E66455DFA96C2 /* SupabaseAppSession.swift */; };
 		7F3F676C52F8827203D1B104 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = 8EFBB6DF80CE1233AAE13E57 /* SocketIO */; };
 		7FACB277E50A335BA5255580 /* OnlineIntroTransitionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05771A06AAAC09C1EFFC05D8 /* OnlineIntroTransitionUITests.swift */; };
@@ -248,6 +265,7 @@
 		875C127D823F8CC2A7184A59 /* InterfaceSettingsControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = B278BBFE3E1ED1E156E14A3E /* InterfaceSettingsControls.swift */; };
 		87A595553DD1CBD4814B590E /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = BC20A5F1586F7EEBA03DB7CA /* SocketIO */; };
 		87B6300699B1E22574D5802A /* GameCenterAuthentication.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5931997BCC3E996880F08A6 /* GameCenterAuthentication.swift */; };
+		88F43CE9ED5A276F11BA260F /* RoomGenerationAdTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7333BF517B93BBF1D8FA400 /* RoomGenerationAdTests.swift */; };
 		8AAD0E7106FFD33A43390CC2 /* LocalPrivateDecisionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDDD6B72D176640B3190D628 /* LocalPrivateDecisionViews.swift */; };
 		8AF4AE9E42D0059BC97AA93D /* NotificationsInboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBEA537D0BEEC5A171ABD419 /* NotificationsInboxView.swift */; };
 		8B01A6DA6E8E3D4906164B40 /* GameCenterEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B56DC470E758E134D21613A8 /* GameCenterEntryView.swift */; };
@@ -260,10 +278,12 @@
 		902E32C11866089BF88D65CE /* GameInvitationCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67988F1441EC617CDC37B9CC /* GameInvitationCenter.swift */; };
 		90D86FABF9E207A397D2C072 /* OnlineIntroPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC3BA9CE94127497DE05CB5D /* OnlineIntroPresentation.swift */; };
 		9103D1B0A85B9BE196D5BDC3 /* GenerationAllowanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0EE0374CBCB5188F7302E97 /* GenerationAllowanceView.swift */; };
+		912A5D1FBAC26001703A1808 /* GenerationPresentationLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B72F9D417C2F280B53C4C8E7 /* GenerationPresentationLayer.swift */; };
 		922E6C04543D5F9501330ED7 /* LobbyPlayerCardSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3F04D961B33C5465B9CC241 /* LobbyPlayerCardSelection.swift */; };
 		9291C4383F23F3480E66E42E /* LocalCinematicGameplayViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D83FC09C66C9373238F2E95 /* LocalCinematicGameplayViews.swift */; };
 		92B1BBB8E171289053871912 /* OnlineRoundState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D67CB7923E19DDEA905468EC /* OnlineRoundState.swift */; };
 		92B7FE790DAD7865A222C702 /* LocalNetworkPermissionLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAA8E2AA8AC5B9AF8FDE042F /* LocalNetworkPermissionLifecycleTests.swift */; };
+		93D1D25ACC32E1640A60151F /* IBMPlexSansCondensed-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E467400508A87F29F5DF91BC /* IBMPlexSansCondensed-Bold.ttf */; };
 		9493CF3845943B1F03EC50A3 /* LegacySessionUpgradeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9A2DBB40FABD6C9062F4EEB /* LegacySessionUpgradeTests.swift */; };
 		94A889B7CFE0ACF273873A1A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75823698B8005677C73DFC1B /* AppState.swift */; };
 		96552A6BA367C44EDD94588B /* OnlineIntroPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC3BA9CE94127497DE05CB5D /* OnlineIntroPresentation.swift */; };
@@ -296,6 +316,7 @@
 		A79E33F12838705CF1E207E5 /* SpyBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9065A7D0489C60903CBB7D5B /* SpyBackground.swift */; };
 		A814169A66463E38BC383971 /* AppleSessionCompletionWebKitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC2AB93A701A847C9E2977B2 /* AppleSessionCompletionWebKitTests.swift */; };
 		A816E004D99CB364368124EB /* Membership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 026F4AEBE8A76B12EE72FAC6 /* Membership.swift */; };
+		AAD00F46151BE8D70CF507A5 /* AppState+RoomGenerationAds.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D91BF73673480F3E1FA45DB /* AppState+RoomGenerationAds.swift */; };
 		AB0EBEC9C530C017E365C396 /* LimitlessClearancePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8736848DF8FD11DE43D2EF37 /* LimitlessClearancePanel.swift */; };
 		AB95CD955F889F9CBDF70281 /* StoreKitOperationFailure.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27425526602C8E8958509FC4 /* StoreKitOperationFailure.swift */; };
 		AD94D2C31B62CBB58C370BFA /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75823698B8005677C73DFC1B /* AppState.swift */; };
@@ -307,6 +328,7 @@
 		B1B2B929196A95AF3E1B508F /* GenerationRewardStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FB7C6E371EB4047C9D7508B /* GenerationRewardStore.swift */; };
 		B1C4BB65C23D491D1D46BBCF /* SpyBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9065A7D0489C60903CBB7D5B /* SpyBackground.swift */; };
 		B28A0BBC07A115E31A4C2F34 /* InterfaceSettingsControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = B278BBFE3E1ED1E156E14A3E /* InterfaceSettingsControls.swift */; };
+		B2993AB7CC9679EEA78118ED /* IBMPlexSansCondensed-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FE7C42AFE086D686281C64C1 /* IBMPlexSansCondensed-SemiBold.ttf */; };
 		B35F1FD1E62796C51B94E381 /* OnboardingPermissionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E73CCDCA0692312901E5444 /* OnboardingPermissionCoordinator.swift */; };
 		B448495713BFE7660B0AA84E /* AppTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA586ACEEC2D7E92F3621A49 /* AppTab.swift */; };
 		B4833EE0381A0C6150503F85 /* LobbyPlayerCardOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 986727DF9EBF18917FE1CD73 /* LobbyPlayerCardOverlay.swift */; };
@@ -322,14 +344,17 @@
 		B9505E224064194D44CDC4A5 /* MembershipRealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4819AE6F17AFC1A3DC6FB58B /* MembershipRealtimeService.swift */; };
 		B9D1FF47D2C2B9CBC1DD3312 /* UnityAdsTestConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84B29D9240846103AA2746E1 /* UnityAdsTestConfiguration.swift */; };
 		BA98E60B487B564CAA1C023C /* SpyClashWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 760CBEBE89AEE2AA0F8A6E0E /* SpyClashWidgetsBundle.swift */; };
+		BAA43C49D2622FE9ABB92509 /* IBMPlexSansCondensed-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C3A80B9BDEBB28972FE39300 /* IBMPlexSansCondensed-Regular.ttf */; };
 		BAD33DC603A706584926821E /* GameRoomRealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E68BF1820775925C6C61E563 /* GameRoomRealtimeService.swift */; };
 		BAD7C5A89F0A921F00A0C5A9 /* UnityRewardedGenerationAdConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D01B8E768EEB507CA362B56 /* UnityRewardedGenerationAdConfigurationTests.swift */; };
+		BAE0690B08625A1BDBE030EF /* IBMPlexSansCondensed-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 117446244F1F9F9921D5AEEE /* IBMPlexSansCondensed-OFL.txt */; };
 		BCFB873ADEE34038600E185F /* MembershipRealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4819AE6F17AFC1A3DC6FB58B /* MembershipRealtimeService.swift */; };
 		BD9EDC5A7F4F7334FFA8354D /* SpyClashMatchActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34243C161AC8643C57BD83B5 /* SpyClashMatchActivityAttributes.swift */; };
 		BDBA77A9062714F721A4ABE9 /* SpyAchievementsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE22C49E3B0E6870ED01BF77 /* SpyAchievementsView.swift */; };
 		BE763CD2921B74DCF33CB0EF /* SpyGameIntroScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA90F2A720D3C914DAEB5AD /* SpyGameIntroScene.swift */; };
 		BEE92851841DC7FE6D053B92 /* MembershipTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84FC834A8A03378CFB477BB4 /* MembershipTests.swift */; };
 		BFDC6F0514DFFBD3A44ECBAF /* LanguageSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2B3BFA42ABA9ED692193D49 /* LanguageSettingsView.swift */; };
+		C0D35469D2EA60647E52E773 /* IBMPlexSansCondensed-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E467400508A87F29F5DF91BC /* IBMPlexSansCondensed-Bold.ttf */; };
 		C0F07960343E815EFDD1D1FB /* SupabaseTestEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = C481340ADF6DBB4A3DBCB6EF /* SupabaseTestEnvironment.swift */; };
 		C0F8C6877F8E009D51D8797D /* SpyClashWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 760CBEBE89AEE2AA0F8A6E0E /* SpyClashWidgetsBundle.swift */; };
 		C13E0EBECB6241A198663B29 /* SupabaseSocialRealtimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 523B3250485D6A8133C376BD /* SupabaseSocialRealtimeTests.swift */; };
@@ -361,9 +386,11 @@
 		CDA15BB02FAE4BDB45F4F8F1 /* SupabaseAppSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2EBD2681F0E66455DFA96C2 /* SupabaseAppSession.swift */; };
 		CE4C883EBFBCB2661D9A6167 /* AppState+Membership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C35AB10E88428C6F3D53699 /* AppState+Membership.swift */; };
 		CE63963CB32A0F5BA8ABA5EC /* SupabaseAppStoreRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3AF0D5E1F1101B0893BC27F /* SupabaseAppStoreRetryTests.swift */; };
+		CE65EBDBBFEE3CC6C4C35908 /* AppState+RoomGenerationAds.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D91BF73673480F3E1FA45DB /* AppState+RoomGenerationAds.swift */; };
 		CEB5D0CCBAB0AE0C37D8C2A2 /* InterfaceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97913D6348B4319F467C8E65 /* InterfaceSettingsView.swift */; };
 		D06A399059CDA7411774FB98 /* WordPackPersistenceIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B50EAE76ED873FFED393BDB8 /* WordPackPersistenceIntegrationTests.swift */; };
 		D149A139CEF873F928134053 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB5C3278E8027E74B4A7DB82 /* Assets.xcassets */; };
+		D389233C890F2241CAD3B9BF /* IBMPlexSansCondensed-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FE7C42AFE086D686281C64C1 /* IBMPlexSansCondensed-SemiBold.ttf */; };
 		D482E101817EE166DFCEB772 /* GenerationRewardStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FB7C6E371EB4047C9D7508B /* GenerationRewardStore.swift */; };
 		D6B23D48649F5025143180FD /* SpyClashMatchActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34243C161AC8643C57BD83B5 /* SpyClashMatchActivityAttributes.swift */; };
 		D7A272D9B68173A1354D364E /* LocalWordPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE85736438E55EBC81677CE4 /* LocalWordPool.swift */; };
@@ -383,6 +410,7 @@
 		DD40C1C823006A047E998E56 /* AppleNativeHandoffTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 600712411563E727E4CD6ACB /* AppleNativeHandoffTests.swift */; };
 		DDA19A583872FBA8CB3ACB84 /* AcquisitionSurveyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA0319F312DAE72483CFD6B /* AcquisitionSurveyStore.swift */; };
 		DE7A295A22B65A451AC9F827 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB5C3278E8027E74B4A7DB82 /* Assets.xcassets */; };
+		DF5438ACCA01B9B07F66C541 /* RoomGenerationAdGuestOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5840A2FA4030079EBFF44FFC /* RoomGenerationAdGuestOverlay.swift */; };
 		DF8EA13A1061FB8F1D73341A /* InterfacePreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = A845F2AA618E50DAC8D05962 /* InterfacePreferences.swift */; };
 		E003ECA92C61B98778CAC8EC /* GameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B5C87FEFE82151F2F7D6F6A /* GameView.swift */; };
 		E0EBE638D83D2427760234CB /* SpyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86974FE98CF9350796FC28D3 /* SpyModels.swift */; };
@@ -390,6 +418,7 @@
 		E354C5031FBE679050E0623D /* AppShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D09D5EDA02EAE3E217C67199 /* AppShellView.swift */; };
 		E3A7E5A6BD9E1E5D2EB56BB0 /* UnityAdsTestConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84B29D9240846103AA2746E1 /* UnityAdsTestConfiguration.swift */; };
 		E493CC355812E336264DFE58 /* SupabaseFullGameStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A0054A2A4BACE2F0F8AE94 /* SupabaseFullGameStore.swift */; };
+		E568D1C1B66B5C7E9338774B /* RoomGenerationAdGuestOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5840A2FA4030079EBFF44FFC /* RoomGenerationAdGuestOverlay.swift */; };
 		E62BEECEF2147364B0AA05B5 /* SpyClashMatchLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 154D6A5D3C20539A72285920 /* SpyClashMatchLiveActivityController.swift */; };
 		E64A3733A226E57B8742236C /* PlayerSpyCard3DView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA73BD6B334F5A9F54F3E659 /* PlayerSpyCard3DView.swift */; };
 		E73DEC89CCD3B4F8643FB801 /* GameRoomLiveActivityProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79E0CCD1E46813B6962CBD4B /* GameRoomLiveActivityProjection.swift */; };
@@ -397,6 +426,7 @@
 		E7B4966F37EEA75D340BE350 /* SpyAchievements.swift in Sources */ = {isa = PBXBuildFile; fileRef = E174D5AC38FFB4D09F35DE12 /* SpyAchievements.swift */; };
 		E8E45235D0ACEB2F5D06029B /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5974161C5FAC304DACA7C96 /* OnboardingView.swift */; };
 		E9FEEF5223A129B8983521A7 /* QRSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA6E7B15464DD14D3E49671B /* QRSheets.swift */; };
+		EB241167DA1C9C6DBCAE03E6 /* RoomGenerationAdGuestConsent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39182376A1B9A86E5DCA8845 /* RoomGenerationAdGuestConsent.swift */; };
 		EB593AB9DBAB35ABE1356E5D /* SupabaseGameAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 425274EF31565B8F6D856236 /* SupabaseGameAdapterTests.swift */; };
 		EB66098A5FF5725EA16BDA21 /* FanMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DDB81933483F16CA218FD0A /* FanMode.swift */; };
 		EB88894AA6BE250797DF4850 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 103786B1CACE81CF96C268EF /* AuthView.swift */; };
@@ -413,7 +443,9 @@
 		F4243401982AD3911932F475 /* CommunityDirectoryLoadingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DBBB764730826D3F49D73FC /* CommunityDirectoryLoadingTests.swift */; };
 		F48E759F49C6CADA47DD79F0 /* SupabaseSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30F9ACD6849CEF356F71814 /* SupabaseSessionTests.swift */; };
 		F5C054A3675E51C54D31D874 /* SpyClashMatchActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34243C161AC8643C57BD83B5 /* SpyClashMatchActivityAttributes.swift */; };
+		F6E4D5FAFAA47D2250FD6941 /* RoomGenerationAdGuestConsent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39182376A1B9A86E5DCA8845 /* RoomGenerationAdGuestConsent.swift */; };
 		F7334FEEE1B85190AEC088DE /* UnityAdsTestPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F57A639BA3D4499CEE0081C3 /* UnityAdsTestPresenter.swift */; };
+		F7337A3BDDFDC1D2FF95116E /* GenerationPresentationStageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFFC651743D9808A58F19E68 /* GenerationPresentationStageTests.swift */; };
 		F757AA29B27E340487A900E3 /* LabStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBE35ADCE6A8428B76F3A58B /* LabStore.swift */; };
 		F7E60C4B5DADE7836EC06B91 /* GenerationAllowanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0EE0374CBCB5188F7302E97 /* GenerationAllowanceView.swift */; };
 		F81A7F53263F2BE40CC54FC3 /* GameInvitationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49B655DEDCC1F28E1E58254F /* GameInvitationSettingsView.swift */; };
@@ -523,12 +555,14 @@
 		0615AC062761EBDE879255B3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		086A09C277F7D2F0BACA368C /* WebAuthenticationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebAuthenticationCoordinator.swift; sourceTree = "<group>"; };
 		08CF05650D30ADCD231D6904 /* SpyLaserScanLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyLaserScanLayer.swift; sourceTree = "<group>"; };
+		09ACEB59A2F2120E9A76B911 /* RoomGenerationAdOffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomGenerationAdOffer.swift; sourceTree = "<group>"; };
 		0B2A404BBC1379D24E5CA621 /* AppleNativeHandoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleNativeHandoff.swift; sourceTree = "<group>"; };
 		0DA0319F312DAE72483CFD6B /* AcquisitionSurveyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcquisitionSurveyStore.swift; sourceTree = "<group>"; };
 		0E6103AB3131936FE120B988 /* OnboardingPermissionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPermissionTests.swift; sourceTree = "<group>"; };
 		0F52BB625EC301B1A25663D1 /* AuthenticationEntryUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticationEntryUITests.swift; sourceTree = "<group>"; };
 		103786B1CACE81CF96C268EF /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
 		111F5E9433CA50D443E2FF00 /* SupabaseAppConfiguration.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = SupabaseAppConfiguration.json; sourceTree = "<group>"; };
+		117446244F1F9F9921D5AEEE /* IBMPlexSansCondensed-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "IBMPlexSansCondensed-OFL.txt"; sourceTree = "<group>"; };
 		154D6A5D3C20539A72285920 /* SpyClashMatchLiveActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyClashMatchLiveActivityController.swift; sourceTree = "<group>"; };
 		16761BB9F39EB25282BB3079 /* uk */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = uk; path = uk.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		16DD679CA8E36033E9AD5D76 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
@@ -558,6 +592,7 @@
 		35921860BD3A7EB84F963F87 /* InterfacePreferencesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterfacePreferencesTests.swift; sourceTree = "<group>"; };
 		35C7C07502AB7E892CA5ED1A /* Base44IsolationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Base44IsolationTests.swift; sourceTree = "<group>"; };
 		37FD3AD53D245670F659C1E4 /* SpyClashTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = SpyClashTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		39182376A1B9A86E5DCA8845 /* RoomGenerationAdGuestConsent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomGenerationAdGuestConsent.swift; sourceTree = "<group>"; };
 		3CD32BA5F02442CAD3E5A34F /* SpyClashSettingsUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = SpyClashSettingsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		403995A712B2B30830E21D29 /* GenerationRecoveryMessageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationRecoveryMessageTests.swift; sourceTree = "<group>"; };
 		42212E4E823C9D641F8616EE /* GenerationRewards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationRewards.swift; sourceTree = "<group>"; };
@@ -572,6 +607,7 @@
 		4DDCB23A8525645FFB728E92 /* FanModeViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FanModeViews.swift; sourceTree = "<group>"; };
 		523B3250485D6A8133C376BD /* SupabaseSocialRealtimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseSocialRealtimeTests.swift; sourceTree = "<group>"; };
 		57701A39195710C4AEBFB6CA /* Rajdhani-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Rajdhani-Bold.ttf"; sourceTree = "<group>"; };
+		5840A2FA4030079EBFF44FFC /* RoomGenerationAdGuestOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomGenerationAdGuestOverlay.swift; sourceTree = "<group>"; };
 		5B4836BDF480BCA80CB3EDC0 /* AppleSessionCompletionSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSessionCompletionSession.swift; sourceTree = "<group>"; };
 		5BBA628FB7C9372162E4C619 /* HapticManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticManager.swift; sourceTree = "<group>"; };
 		5BFB1EE4DC2A4CED19EAE2D2 /* SpyClashSupabaseStagingTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = SpyClashSupabaseStagingTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -603,6 +639,7 @@
 		80DC7F5F28187879483888CC /* GenerationRewardStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationRewardStoreTests.swift; sourceTree = "<group>"; };
 		82CC9E52C9F3F732F47A312A /* SupabaseLegacyAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseLegacyAuth.swift; sourceTree = "<group>"; };
 		8380CFC8D36E6526C374E3F3 /* AppStoreTransactionRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreTransactionRetryTests.swift; sourceTree = "<group>"; };
+		84413D3643CDF2ECA9677E78 /* GenerationTypography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationTypography.swift; sourceTree = "<group>"; };
 		84B29D9240846103AA2746E1 /* UnityAdsTestConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnityAdsTestConfiguration.swift; sourceTree = "<group>"; };
 		84FC834A8A03378CFB477BB4 /* MembershipTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MembershipTests.swift; sourceTree = "<group>"; };
 		86974FE98CF9350796FC28D3 /* SpyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyModels.swift; sourceTree = "<group>"; };
@@ -629,6 +666,7 @@
 		986727DF9EBF18917FE1CD73 /* LobbyPlayerCardOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LobbyPlayerCardOverlay.swift; sourceTree = "<group>"; };
 		9AFFF43EECD45A2588F995CE /* SupabaseMutationJournalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseMutationJournalTests.swift; sourceTree = "<group>"; };
 		9C904BBF810EAAFF591F9659 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		9D91BF73673480F3E1FA45DB /* AppState+RoomGenerationAds.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+RoomGenerationAds.swift"; sourceTree = "<group>"; };
 		9E7E31F61F4DBF12D419781A /* SpyClash.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SpyClash.entitlements; sourceTree = "<group>"; };
 		9EE782106300DFB616AF9B1F /* WordPackCardsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordPackCardsUITests.swift; sourceTree = "<group>"; };
 		A01D249EEE029FBB05286504 /* SpyClash.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SpyClash.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -649,6 +687,7 @@
 		B4C7DF591EE7DC58C7D4568F /* SupabaseLegacySessionUpgrade.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseLegacySessionUpgrade.swift; sourceTree = "<group>"; };
 		B50EAE76ED873FFED393BDB8 /* WordPackPersistenceIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordPackPersistenceIntegrationTests.swift; sourceTree = "<group>"; };
 		B56DC470E758E134D21613A8 /* GameCenterEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameCenterEntryView.swift; sourceTree = "<group>"; };
+		B72F9D417C2F280B53C4C8E7 /* GenerationPresentationLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationPresentationLayer.swift; sourceTree = "<group>"; };
 		B7DA7D7405C80D4685A10F92 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		B81713411A03923224780579 /* WordPackDraft.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordPackDraft.swift; sourceTree = "<group>"; };
 		B95A2D741697760ECF94CA2C /* SupabasePublicReleaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabasePublicReleaseTests.swift; sourceTree = "<group>"; };
@@ -657,6 +696,7 @@
 		BDDD6B72D176640B3190D628 /* LocalPrivateDecisionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPrivateDecisionViews.swift; sourceTree = "<group>"; };
 		BEE68A515367ABB807A2007D /* LimitlessUnlockOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimitlessUnlockOverlay.swift; sourceTree = "<group>"; };
 		BF298687D20ABD495A966CBD /* SpyClashSupabaseStagingWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = SpyClashSupabaseStagingWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		C3A80B9BDEBB28972FE39300 /* IBMPlexSansCondensed-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexSansCondensed-Regular.ttf"; sourceTree = "<group>"; };
 		C3EDC9022617AE82E30BD8B3 /* SpyAchievementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyAchievementTests.swift; sourceTree = "<group>"; };
 		C481340ADF6DBB4A3DBCB6EF /* SupabaseTestEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseTestEnvironment.swift; sourceTree = "<group>"; };
 		C805DED7EE9787139BCA120C /* SupabaseAppRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseAppRuntime.swift; sourceTree = "<group>"; };
@@ -690,6 +730,7 @@
 		E3AF0D5E1F1101B0893BC27F /* SupabaseAppStoreRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseAppStoreRetryTests.swift; sourceTree = "<group>"; };
 		E3EC24BA3BA2A7A16F039946 /* SpyTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyTheme.swift; sourceTree = "<group>"; };
 		E3F04D961B33C5465B9CC241 /* LobbyPlayerCardSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LobbyPlayerCardSelection.swift; sourceTree = "<group>"; };
+		E467400508A87F29F5DF91BC /* IBMPlexSansCondensed-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexSansCondensed-Bold.ttf"; sourceTree = "<group>"; };
 		E5931997BCC3E996880F08A6 /* GameCenterAuthentication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameCenterAuthentication.swift; sourceTree = "<group>"; };
 		E5974161C5FAC304DACA7C96 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		E68BF1820775925C6C61E563 /* GameRoomRealtimeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameRoomRealtimeService.swift; sourceTree = "<group>"; };
@@ -699,14 +740,17 @@
 		EB6405AB953F8EA6452D405D /* UnityRewardedGenerationAdPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnityRewardedGenerationAdPresenter.swift; sourceTree = "<group>"; };
 		EC2AB93A701A847C9E2977B2 /* AppleSessionCompletionWebKitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSessionCompletionWebKitTests.swift; sourceTree = "<group>"; };
 		ED044A4EF5952B43BF45E37A /* CommunityDirectoryLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityDirectoryLoader.swift; sourceTree = "<group>"; };
+		EFFC651743D9808A58F19E68 /* GenerationPresentationStageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationPresentationStageTests.swift; sourceTree = "<group>"; };
 		F022A44C1089317A995CA2D7 /* NativeGameCenterSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeGameCenterSessionTests.swift; sourceTree = "<group>"; };
 		F02C42B98A9366662DA343CD /* NotificationInboxTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationInboxTests.swift; sourceTree = "<group>"; };
 		F34CB7D3E96AC6FB27315519 /* SupabaseGameRecoveryBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseGameRecoveryBanner.swift; sourceTree = "<group>"; };
 		F4B70AB1F4B7C7D339E01E1F /* PricingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PricingView.swift; sourceTree = "<group>"; };
 		F4E860862659AA90219386A1 /* OnlineGameStartTransition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineGameStartTransition.swift; sourceTree = "<group>"; };
 		F57A639BA3D4499CEE0081C3 /* UnityAdsTestPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnityAdsTestPresenter.swift; sourceTree = "<group>"; };
+		F7333BF517B93BBF1D8FA400 /* RoomGenerationAdTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomGenerationAdTests.swift; sourceTree = "<group>"; };
 		FA6E7B15464DD14D3E49671B /* QRSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRSheets.swift; sourceTree = "<group>"; };
 		FD9E0E8940B7305B84993F49 /* AcquisitionSurveyIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcquisitionSurveyIntegrationTests.swift; sourceTree = "<group>"; };
+		FE7C42AFE086D686281C64C1 /* IBMPlexSansCondensed-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexSansCondensed-SemiBold.ttf"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -838,6 +882,7 @@
 				49B655DEDCC1F28E1E58254F /* GameInvitationSettingsView.swift */,
 				8B5C87FEFE82151F2F7D6F6A /* GameView.swift */,
 				B0EE0374CBCB5188F7302E97 /* GenerationAllowanceView.swift */,
+				B72F9D417C2F280B53C4C8E7 /* GenerationPresentationLayer.swift */,
 				22314E28DB2385F7A05ABC74 /* HistoryView.swift */,
 				16DD679CA8E36033E9AD5D76 /* HomeView.swift */,
 				B278BBFE3E1ED1E156E14A3E /* InterfaceSettingsControls.swift */,
@@ -860,6 +905,7 @@
 				6B25DFE515749E670224D319 /* ProfileView.swift */,
 				FA6E7B15464DD14D3E49671B /* QRSheets.swift */,
 				6DE93DA44796A2FB3D6F8F93 /* RadarInviteView.swift */,
+				5840A2FA4030079EBFF44FFC /* RoomGenerationAdGuestOverlay.swift */,
 				A6DD9C73CE9356FB1C6B7258 /* SpyAchievementGlyph.swift */,
 				CE22C49E3B0E6870ED01BF77 /* SpyAchievementsView.swift */,
 				9065A7D0489C60903CBB7D5B /* SpyBackground.swift */,
@@ -877,6 +923,7 @@
 		7B5F5EE21DED3DDAA2C1A21D /* Design */ = {
 			isa = PBXGroup;
 			children = (
+				84413D3643CDF2ECA9677E78 /* GenerationTypography.swift */,
 				79E76174123D2C9A9D699412 /* SpyInterfacePreferences.swift */,
 				8A763626AA7553FBDDD665B8 /* SpyInterfaceScale.swift */,
 				08CF05650D30ADCD231D6904 /* SpyLaserScanLayer.swift */,
@@ -921,6 +968,10 @@
 			isa = PBXGroup;
 			children = (
 				AB5C3278E8027E74B4A7DB82 /* Assets.xcassets */,
+				E467400508A87F29F5DF91BC /* IBMPlexSansCondensed-Bold.ttf */,
+				117446244F1F9F9921D5AEEE /* IBMPlexSansCondensed-OFL.txt */,
+				C3A80B9BDEBB28972FE39300 /* IBMPlexSansCondensed-Regular.ttf */,
+				FE7C42AFE086D686281C64C1 /* IBMPlexSansCondensed-SemiBold.ttf */,
 				0615AC062761EBDE879255B3 /* Info.plist */,
 				9C904BBF810EAAFF591F9659 /* PrivacyInfo.xcprivacy */,
 				57701A39195710C4AEBFB6CA /* Rajdhani-Bold.ttf */,
@@ -964,6 +1015,7 @@
 				9247DA8D3D9DC6DE5F651601 /* DismissedRoomExitCleanupTests.swift */,
 				AE0B1865BE40A17101030D2D /* FanModeTests.swift */,
 				30EE506B7AB7C6D9DF56245F /* GameInvitationCenterTests.swift */,
+				EFFC651743D9808A58F19E68 /* GenerationPresentationStageTests.swift */,
 				403995A712B2B30830E21D29 /* GenerationRecoveryMessageTests.swift */,
 				80DC7F5F28187879483888CC /* GenerationRewardStoreTests.swift */,
 				35921860BD3A7EB84F963F87 /* InterfacePreferencesTests.swift */,
@@ -978,6 +1030,7 @@
 				673C14A27AC3CD3669188134 /* OnlineRoundStateTests.swift */,
 				8C9BF7C89321D9588B7D95E1 /* QRScannerTests.swift */,
 				CFF9A57CA1115E3D240363FC /* RewardedGenerationAdConfigurationTests.swift */,
+				F7333BF517B93BBF1D8FA400 /* RoomGenerationAdTests.swift */,
 				6C5B707CA0A5ADFB4E85FD4B /* SessionRestoreTests.swift */,
 				C3EDC9022617AE82E30BD8B3 /* SpyAchievementTests.swift */,
 				EA17B78E221F34E47BEC5A8D /* StoreKitProductCatalogTests.swift */,
@@ -1025,6 +1078,7 @@
 				8866651A8510FD0A890116EB /* AppState+AcquisitionSurvey.swift */,
 				DDA640D9C316AE409C50E644 /* AppState+GenerationRewards.swift */,
 				2C35AB10E88428C6F3D53699 /* AppState+Membership.swift */,
+				9D91BF73673480F3E1FA45DB /* AppState+RoomGenerationAds.swift */,
 				DA586ACEEC2D7E92F3621A49 /* AppTab.swift */,
 				D30EA0DF923F453AB3E7F360 /* SpyClashApp.swift */,
 			);
@@ -1055,6 +1109,8 @@
 				D6575BABB395718344476FA1 /* OnboardingModels.swift */,
 				CC3BA9CE94127497DE05CB5D /* OnlineIntroPresentation.swift */,
 				D67CB7923E19DDEA905468EC /* OnlineRoundState.swift */,
+				39182376A1B9A86E5DCA8845 /* RoomGenerationAdGuestConsent.swift */,
+				09ACEB59A2F2120E9A76B911 /* RoomGenerationAdOffer.swift */,
 				E174D5AC38FFB4D09F35DE12 /* SpyAchievements.swift */,
 				86974FE98CF9350796FC28D3 /* SpyModels.swift */,
 				B81713411A03923224780579 /* WordPackDraft.swift */,
@@ -1392,6 +1448,10 @@
 			files = (
 				D149A139CEF873F928134053 /* Assets.xcassets in Resources */,
 				331C70730EAB0752CDF9B95F /* BackendAllowlist.json in Resources */,
+				C0D35469D2EA60647E52E773 /* IBMPlexSansCondensed-Bold.ttf in Resources */,
+				BAE0690B08625A1BDBE030EF /* IBMPlexSansCondensed-OFL.txt in Resources */,
+				0882295B085F205913433D5D /* IBMPlexSansCondensed-Regular.ttf in Resources */,
+				31DA3DF304D4E7F2039A3C36 /* IBMPlexSansCondensed-SemiBold.ttf in Resources */,
 				1319A4EAFCA079FE24D5A2B3 /* PrivacyInfo.xcprivacy in Resources */,
 				54B33DF6612EBFEE78F8F401 /* Rajdhani-Bold.ttf in Resources */,
 			);
@@ -1403,6 +1463,10 @@
 			files = (
 				DE7A295A22B65A451AC9F827 /* Assets.xcassets in Resources */,
 				2CE082073C6E3C984756DFB8 /* BackendAllowlist.json in Resources */,
+				15CD66A3F2566BEF4B2FF175 /* IBMPlexSansCondensed-Bold.ttf in Resources */,
+				4940271032C30B72A727E1AC /* IBMPlexSansCondensed-OFL.txt in Resources */,
+				1910F63283682FA1340F12F9 /* IBMPlexSansCondensed-Regular.ttf in Resources */,
+				D389233C890F2241CAD3B9BF /* IBMPlexSansCondensed-SemiBold.ttf in Resources */,
 				D7CC36D78A0859D26846E5FE /* PrivacyInfo.xcprivacy in Resources */,
 				00066B865935E3918F5D3F71 /* Rajdhani-Bold.ttf in Resources */,
 				4FECD6300414747933656EF9 /* SupabaseAppConfiguration.json in Resources */,
@@ -1415,6 +1479,10 @@
 			files = (
 				D881639D076EDA12A4605402 /* Assets.xcassets in Resources */,
 				500383E78289452AEB22B3D5 /* BackendAllowlist.json in Resources */,
+				93D1D25ACC32E1640A60151F /* IBMPlexSansCondensed-Bold.ttf in Resources */,
+				7BCAFB6BD932187596C7BEA7 /* IBMPlexSansCondensed-OFL.txt in Resources */,
+				BAA43C49D2622FE9ABB92509 /* IBMPlexSansCondensed-Regular.ttf in Resources */,
+				B2993AB7CC9679EEA78118ED /* IBMPlexSansCondensed-SemiBold.ttf in Resources */,
 				0332FBE99D5419C0A04F460A /* InfoPlist.strings in Resources */,
 				5767CD1715E3A330461009CB /* PrivacyInfo.xcprivacy in Resources */,
 				13D77822DD0A8C0C325DD829 /* Rajdhani-Bold.ttf in Resources */,
@@ -1449,6 +1517,7 @@
 				08CA62E4DFC88730D2918813 /* AppState+AcquisitionSurvey.swift in Sources */,
 				4C5F5E4A3F22FE1D069D1D12 /* AppState+GenerationRewards.swift in Sources */,
 				37C42D25F1B6C9755A733B03 /* AppState+Membership.swift in Sources */,
+				7EF98F100EB10682724FA46E /* AppState+RoomGenerationAds.swift in Sources */,
 				1B9D552196DE38FAAE5ABF8E /* AppState.swift in Sources */,
 				B448495713BFE7660B0AA84E /* AppTab.swift in Sources */,
 				9B27C57E6F87A369A59970AF /* AppleNativeHandoff.swift in Sources */,
@@ -1471,8 +1540,10 @@
 				4CEEBB84BA694145A0069FD5 /* GameRoomRealtimeService.swift in Sources */,
 				F39CD39E7E07AF615192296B /* GameView.swift in Sources */,
 				F7E60C4B5DADE7836EC06B91 /* GenerationAllowanceView.swift in Sources */,
+				0D24038E0A73F24FFDD3832B /* GenerationPresentationLayer.swift in Sources */,
 				D482E101817EE166DFCEB772 /* GenerationRewardStore.swift in Sources */,
 				9916D84F42D641F297CDF216 /* GenerationRewards.swift in Sources */,
+				0EC7F2180A96A12234D1D50D /* GenerationTypography.swift in Sources */,
 				8C86AE7E5C8080688C7BAC5A /* HapticManager.swift in Sources */,
 				A29E8BCA9B340029B83D715A /* HistoryView.swift in Sources */,
 				4D2090BEB345E3594E79AAA2 /* HomeView.swift in Sources */,
@@ -1516,6 +1587,9 @@
 				7B17BEF84CA90C58195734CF /* RadarNearbyService.swift in Sources */,
 				1E6E50FE38DCE15E011FE6A1 /* RewardedGenerationAdConfiguration.swift in Sources */,
 				28DD3377045C0B08E6DE00E6 /* RewardedGenerationAdPresenter.swift in Sources */,
+				F6E4D5FAFAA47D2250FD6941 /* RoomGenerationAdGuestConsent.swift in Sources */,
+				DF5438ACCA01B9B07F66C541 /* RoomGenerationAdGuestOverlay.swift in Sources */,
+				1BC13F1D37B24A38F6EF0EF7 /* RoomGenerationAdOffer.swift in Sources */,
 				CBC80AF48BEC8F27F955F849 /* SpyAchievementGlyph.swift in Sources */,
 				31252C853388440AE83688A5 /* SpyAchievements.swift in Sources */,
 				BDBA77A9062714F721A4ABE9 /* SpyAchievementsView.swift in Sources */,
@@ -1592,6 +1666,7 @@
 				C19693D75ECDD255F7BF4CF7 /* AppState+AcquisitionSurvey.swift in Sources */,
 				20DFF3B7D338B984EEFCF4F0 /* AppState+GenerationRewards.swift in Sources */,
 				CE4C883EBFBCB2661D9A6167 /* AppState+Membership.swift in Sources */,
+				AAD00F46151BE8D70CF507A5 /* AppState+RoomGenerationAds.swift in Sources */,
 				94A889B7CFE0ACF273873A1A /* AppState.swift in Sources */,
 				309F817C661DCC3A931B4F28 /* AppTab.swift in Sources */,
 				B15AA8E36F5D4CA311443AD5 /* AppleNativeHandoff.swift in Sources */,
@@ -1614,8 +1689,10 @@
 				7ABFCD782E22AF6AFF519942 /* GameRoomRealtimeService.swift in Sources */,
 				E003ECA92C61B98778CAC8EC /* GameView.swift in Sources */,
 				5D9078739AD4DAA94B44A59E /* GenerationAllowanceView.swift in Sources */,
+				912A5D1FBAC26001703A1808 /* GenerationPresentationLayer.swift in Sources */,
 				07C8BE911E4032D0AC430598 /* GenerationRewardStore.swift in Sources */,
 				B186F2D8C53F0CA779DA210E /* GenerationRewards.swift in Sources */,
+				67AE980D2DDC981B6750ABAE /* GenerationTypography.swift in Sources */,
 				6E4C94E70834661C17C08E06 /* HapticManager.swift in Sources */,
 				1237FE47502FB08C11F86513 /* HistoryView.swift in Sources */,
 				32A32FB529A80D299F2FCAC9 /* HomeView.swift in Sources */,
@@ -1659,6 +1736,9 @@
 				1FBE45CC7EB218F58B3FF8B3 /* RadarNearbyService.swift in Sources */,
 				DD265B6E480E4420AB02A7BC /* RewardedGenerationAdConfiguration.swift in Sources */,
 				0FD841571A372C96B7274736 /* RewardedGenerationAdPresenter.swift in Sources */,
+				EB241167DA1C9C6DBCAE03E6 /* RoomGenerationAdGuestConsent.swift in Sources */,
+				462961DD51827C9CB583FE25 /* RoomGenerationAdGuestOverlay.swift in Sources */,
+				2B205CAEBD60872E33C4DA9D /* RoomGenerationAdOffer.swift in Sources */,
 				441BC72E1749C66A6E84A326 /* SpyAchievementGlyph.swift in Sources */,
 				E7B4966F37EEA75D340BE350 /* SpyAchievements.swift in Sources */,
 				48A0545EF1955170DAFE7577 /* SpyAchievementsView.swift in Sources */,
@@ -1740,6 +1820,7 @@
 				C4B47B45B269B92AF09B2EB3 /* AppState+AcquisitionSurvey.swift in Sources */,
 				82C65BC16F6B0AC33D960C65 /* AppState+GenerationRewards.swift in Sources */,
 				C9CBAA1C1F9A922900DD9F36 /* AppState+Membership.swift in Sources */,
+				CE65EBDBBFEE3CC6C4C35908 /* AppState+RoomGenerationAds.swift in Sources */,
 				AD94D2C31B62CBB58C370BFA /* AppState.swift in Sources */,
 				D892349CA7B68B2CE0874C8E /* AppTab.swift in Sources */,
 				3D4D456D6AB022537D3AB660 /* AppleNativeHandoff.swift in Sources */,
@@ -1762,8 +1843,10 @@
 				BAD33DC603A706584926821E /* GameRoomRealtimeService.swift in Sources */,
 				9D5E06E7A0149F7051E8AA1F /* GameView.swift in Sources */,
 				9103D1B0A85B9BE196D5BDC3 /* GenerationAllowanceView.swift in Sources */,
+				6F22BA9DBE5BFF9FBB75E5CA /* GenerationPresentationLayer.swift in Sources */,
 				B1B2B929196A95AF3E1B508F /* GenerationRewardStore.swift in Sources */,
 				8F8A8B76CDC6CAE463D062D9 /* GenerationRewards.swift in Sources */,
+				1E883FF17A1BDC5718AF02FF /* GenerationTypography.swift in Sources */,
 				18F1BF781D449AE1CB9E76B0 /* HapticManager.swift in Sources */,
 				106AE27F4B2724A17C722789 /* HistoryView.swift in Sources */,
 				1EBA152D3B76AF65B2CFCBB2 /* HomeView.swift in Sources */,
@@ -1807,6 +1890,9 @@
 				45C5F0C1D78B5C2F1EA5A7A0 /* RadarNearbyService.swift in Sources */,
 				C7298E8500DEE5B288E54A68 /* RewardedGenerationAdConfiguration.swift in Sources */,
 				8E7DA52338D42901D39DF01D /* RewardedGenerationAdPresenter.swift in Sources */,
+				58F31B175C1B117423961839 /* RoomGenerationAdGuestConsent.swift in Sources */,
+				E568D1C1B66B5C7E9338774B /* RoomGenerationAdGuestOverlay.swift in Sources */,
+				394FB513BA12337E02EC4F3B /* RoomGenerationAdOffer.swift in Sources */,
 				240E84EB016C70F67AE890CB /* SpyAchievementGlyph.swift in Sources */,
 				6083AE83473101C0E4CE9C18 /* SpyAchievements.swift in Sources */,
 				53BCDED60A7CB9802F772056 /* SpyAchievementsView.swift in Sources */,
@@ -1865,6 +1951,7 @@
 				FDE0BB1B7BB7D6144906D963 /* DismissedRoomExitCleanupTests.swift in Sources */,
 				2BBF889C1E286E3395D500AD /* FanModeTests.swift in Sources */,
 				2FB8D0A474A80817C48394F5 /* GameInvitationCenterTests.swift in Sources */,
+				F7337A3BDDFDC1D2FF95116E /* GenerationPresentationStageTests.swift in Sources */,
 				274997C81D03AB728BC0906A /* GenerationRecoveryMessageTests.swift in Sources */,
 				9AAB491871B53F7FB5DC49F5 /* GenerationRewardStoreTests.swift in Sources */,
 				70545E7667108CB8B2470745 /* InterfacePreferencesTests.swift in Sources */,
@@ -1879,6 +1966,7 @@
 				39840D09E8474E87D45E1555 /* OnlineRoundStateTests.swift in Sources */,
 				0AD0D0575DA19A67B46A8E69 /* QRScannerTests.swift in Sources */,
 				6A4BC6B25BB1F62752B03E31 /* RewardedGenerationAdConfigurationTests.swift in Sources */,
+				88F43CE9ED5A276F11BA260F /* RoomGenerationAdTests.swift in Sources */,
 				464C102A316C7FF1D32C01CF /* SessionRestoreTests.swift in Sources */,
 				25FB301333DA31221DAAAE41 /* SpyAchievementTests.swift in Sources */,
 				006CA900E7957F08B0E578D7 /* StoreKitProductCatalogTests.swift in Sources */,
@@ -2463,7 +2551,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 245;
+				CURRENT_PROJECT_VERSION = 246;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -2722,7 +2810,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 245;
+				CURRENT_PROJECT_VERSION = 246;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -2829,7 +2917,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 245;
+				CURRENT_PROJECT_VERSION = 246;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -2982,7 +3070,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 245;
+				CURRENT_PROJECT_VERSION = 246;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -3118,7 +3206,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 245;
+				CURRENT_PROJECT_VERSION = 246;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

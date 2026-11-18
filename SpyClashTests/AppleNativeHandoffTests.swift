@@ -340,6 +340,67 @@ final class AppleNativeHandoffTests: XCTestCase {
         }
     }
 
+    func testSupportFailureUsesSelectedLanguageWithoutLosingSafeIdentifier() throws {
+        let url = try XCTUnwrap(URL(string: "https://spyclash.com/unrecognized?private_value=synthetic-secret"))
+        let failure = AppleNativeHandoffError.validation(.navigationDocument).withDiagnostic(
+            AppleNativeHandoffDiagnostic(response: nil, destination: url, redirectCount: 6)
+        )
+        let expected: [(AppLanguage, String)] = [
+            (.en, "Apple sign-in could not be completed."),
+            (.es, "No se pudo completar el inicio de sesión con Apple."),
+            (.ru, "Не удалось завершить вход через Apple."),
+            (.uk, "Не вдалося завершити вхід через Apple.")
+        ]
+        for (language, text) in expected {
+            let message = failure.message(language: language)
+            XCTAssertTrue(message.contains(text))
+            XCTAssertTrue(message.contains("SCA177-H34-r6-s0-cN-uOT-q10-pN-fN"))
+            for forbidden in ["synthetic-secret", "unrecognized", "private_value", "spyclash.com"] {
+                XCTAssertFalse(message.contains(forbidden))
+            }
+        }
+    }
+
+    func testTokenFreeLandingDiagnosticsClassifyFixedShapesWithoutPermittingNavigation() throws {
+        let appRoute = "/api/apps/69a0e57fa939f578082f8091"
+        let paths: [(String, AppleNativeHandoffDiagnostic.Landing)] = [
+            ("/", .root), ("/home", .home), ("/login", .login), ("/register", .registration),
+            ("/MobileAuthCallback.html", .googleCallback),
+            (appRoute + "/functions/mobileAuthCallback", .legacyBridge),
+            (appRoute + "/auth/sso/synthetic-unrecognized", .sso),
+            ("/api/apps/auth/synthetic-unrecognized", .platformAuth),
+            ("/cdn-cgi/synthetic-unrecognized", .edge),
+            ("/private-path", .other),
+        ]
+        let query = "code=synthetic-secret&from_url=synthetic-destination&is_new_user=false&private_name=private-value"
+        for (path, landing) in paths {
+            let url = try XCTUnwrap(URL(string: "https://spyclash.com\(path)?\(query)"))
+            let diagnostic = AppleNativeHandoffDiagnostic(response: nil, destination: url, redirectCount: 6)
+            let failure = AppleNativeHandoffError.validation(.navigationDocument).withDiagnostic(diagnostic)
+            XCTAssertEqual(diagnostic.landing, landing)
+            XCTAssertEqual(diagnostic.returnQueryFlags, 0x91)
+            XCTAssertTrue(failure.diagnosticIdentifier.hasSuffix("-d\(landing.rawValue)-k91"))
+            XCTAssertFalse(AppleSessionCompletionSession.permitsSessionDocument(url))
+            for forbidden in [path, "synthetic-secret", "synthetic-destination", "private_name", "private-value"] {
+                XCTAssertFalse(failure.localizedDescription.contains(forbidden))
+            }
+        }
+        for raw in [
+            "https://foreign.invalid/login?code=secret",
+            "https://spyclash.com/api/apps/another-app/auth/sso/synthetic?code=secret",
+            "https://spyclash.com/api/apps/auth-similar/synthetic?code=secret",
+            "https://spyclash.com/cdn-cgi-similar/synthetic?code=secret",
+        ] {
+            let diagnostic = AppleNativeHandoffDiagnostic(response: nil, destination: URL(string: raw), redirectCount: 6)
+            XCTAssertEqual(diagnostic.landing, .other)
+        }
+        let allKeys = "code=1&auth_code=2&authorization_code=3&token=4&from_url=5&redirect_uri=6&returnTo=7&is_new_user=8&session_id=9&app_id=10"
+        let diagnostic = AppleNativeHandoffDiagnostic(response: nil, destination: URL(string: "https://spyclash.com/unknown?\(allKeys)"), redirectCount: 6)
+        XCTAssertEqual(diagnostic.returnQueryFlags, 0x3FF)
+        let credential = AppleNativeHandoffDiagnostic(response: nil, destination: URL(string: "https://spyclash.com/unknown?access_token=synthetic&is_new_user=false"), redirectCount: 6)
+        XCTAssertFalse(credential.supportSuffix.contains("-d"), "Existing token-candidate diagnostics keep their contract")
+    }
+
     func testSSOErrorDiagnosticIdentifiesOnlyTheFixedAppRouteAndKeepsItBlocked() throws {
         let secret = "synthetic-private-error-value"
         let path = "/api/apps/69a0e57fa939f578082f8091/auth/sso/auth-error"

@@ -512,23 +512,7 @@ enum LegalSheetKind: String, Identifiable, Hashable {
                 )
             ]
         case .acknowledgements:
-            [
-                LegalSection(
-                    title: "RAJDHANI BOLD · SIL OPEN FONT LICENSE 1.1",
-                    text: Self.bundledLicense(named: "Rajdhani-OFL-1.1", language: .en),
-                    usesMonospacedBody: true
-                ),
-                LegalSection(
-                    title: "SOCKET.IO CLIENT SWIFT 16.1.1 · MIT LICENSE",
-                    text: Self.bundledLicense(named: "SocketIO-MIT", language: .en),
-                    usesMonospacedBody: true
-                ),
-                LegalSection(
-                    title: "STARSCREAM 4.0.8 · APACHE LICENSE 2.0",
-                    text: Self.bundledLicense(named: "Starscream-Apache-2.0", language: .en),
-                    usesMonospacedBody: true
-                )
-            ]
+            acknowledgementSections(for: .en)
         }
     }
 
@@ -868,6 +852,11 @@ private extension LegalSheetKind {
 
     private func acknowledgementSections(for language: AppLanguage) -> [LegalSection] {
         [
+            LegalSection(
+                title: "IBM PLEX SANS CONDENSED · SIL OPEN FONT LICENSE 1.1",
+                text: Self.bundledLicense(named: "IBMPlexSansCondensed-OFL", language: language),
+                usesMonospacedBody: true
+            ),
             LegalSection(
                 title: "RAJDHANI BOLD · SIL OPEN FONT LICENSE 1.1",
                 text: Self.bundledLicense(named: "Rajdhani-OFL-1.1", language: language),

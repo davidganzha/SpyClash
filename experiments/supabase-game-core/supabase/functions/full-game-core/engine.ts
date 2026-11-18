@@ -4,6 +4,7 @@
 import { fanSettings, isFanMode, fanScenario, fanAssignmentCount, assertFanCapablePlayer, assertFanCapableRoster, fanVoteTransition, assertFanWordPool, assignFanPlayerWords } from "./rules/fan-mode-policy.ts";
 import { requireSafeCommunityText, safeCommunityAvatar, safeCommunityDisplayName } from "./rules/content-safety.ts";
 import { projectRoomForClient } from "./rules/room-projection.ts";
+import { roomGenerationAdPatch } from "./rules/room-generation-ad.ts";
 import { assertAuthoritativeLobbyReady, hasAuthoritativeLobbyState, lobbyMutationPatch, validateLobbyMutation, lobbyStateFromRoom, selectedAuthoritativeLobbyWordPool } from "./rules/lobby-state-policy.ts";
 import { refreshedPlayerCapabilities, canonicalClientCapabilities, canonicalSpyEmails, lobbySpyCount, spiesKnowEachOther, validatedLobbySpyCount, assertMultiSpyCapableRoster, compatibleRosterForSpyCount, lobbyMembershipClampPatch, serverSpyAssignment, playerSupportsMultiSpy, roomHasDepartedPlayer, departedPlayerEmails, activeDepartureTransition, assertActiveSpyGuesser, spyGuessWinner, spyTeamTerminalWinner } from "./rules/multi-spy-policy.ts";
 import { assertGameActionAllowedByDeadline, assertGameActionAllowedWhilePaused, hasGameTimerElapsed, pauseGameTransitionPatch, resumeGameTransitionPatch, finishGamePauseTransitionPatch, gameTimerDeadlineMilliseconds } from "./rules/game-timer-policy.ts";
@@ -504,6 +505,8 @@ export function reduceGame(input: GameInput): GameTransition {
       assertLobbySettingsAccess(room, user, "mode"); patch(gameModePatch(room, validatedGameMode(body.mode))); break;
     case "update_game_duration":
       assertLobbySettingsAccess(room, user, "duration"); patch(gameDurationPatch(room, validatedGameDuration(body.game_duration_seconds))); break;
+    case "set_generation_ad":
+      patch(roomGenerationAdPatch(room, user, body, input.now)); break;
     case "update_lobby_state": {
       assertLobbySettingsAccess(room, user, "lobby");
       const state = body.state && typeof body.state === "object" && !Array.isArray(body.state) ? body.state : {};

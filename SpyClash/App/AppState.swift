@@ -1406,6 +1406,7 @@ final class AppState: NSObject {
     @ObservationIgnored var appleSessionCompletionOverride: WebAuthenticationCoordinator?
     let membership: MembershipStore
     let generationRewards: GenerationRewardStore
+    @ObservationIgnored let roomGenerationAdPublication = RoomGenerationAdPublicationCoordinator()
     let storeKit: StoreKitManager
     let membershipRealtime: MembershipRealtimeService
     let notificationInbox: NotificationInboxStore
@@ -1555,6 +1556,7 @@ final class AppState: NSObject {
                     confirmedRevision: activeRoom?.lobbyRevision ?? 0
                 )
             }
+            roomGenerationAdPublication.reconcile(roomID: activeRoom?.id)
             persistActiveRoomReference(activeRoom)
             if !SupabaseTestEnvironment.isEnabled { radarNearby.setActiveRoom(activeRoom) }
             handleRoomPresenceChange(from: oldValue, to: activeRoom)
@@ -2451,6 +2453,10 @@ final class AppState: NSObject {
         if lobbySettingsSyncState.hasPendingIntent {
             startLobbySettingsWorker(debounce: .zero)
         }
+    }
+
+    func adoptRoomGenerationAdSnapshot(_ incomingRoom: GameRoom) {
+        adoptLobbyMutationRoom(incomingRoom)
     }
 
     private func adoptLobbyMutationRoom(_ incomingRoom: GameRoom) {
@@ -3850,8 +3856,14 @@ final class AppState: NSObject {
             appleAuthStage = nil
             authHomeRevealPhase = .idle
             if !(error is CancellationError) {
-                authError = error.localizedDescription
-                appleHandoffFailure = error as? AppleNativeHandoffError
+                if let failure = error as? AppleNativeHandoffError {
+                    // This failure has its own persistent, copyable alert.
+                    // Sending it through authError would also create a toast.
+                    authError = nil
+                    appleHandoffFailure = failure
+                } else {
+                    authError = error.localizedDescription
+                }
                 HapticManager.shared.fire(.notification(.error))
             }
         }
@@ -6236,6 +6248,19 @@ final class AppState: NSObject {
         let shouldPreviewActiveRoom = requestedTab == .game || arguments.contains("--spyclash-preview-active-room")
         selectedTab = requestedTab
         language = previewLanguage(from: arguments) ?? AppLanguage.stored
+        if ["auth", "login"].contains(directPreviewValue ?? ""),
+           arguments.contains("--spyclash-preview-apple-handoff-error") {
+            // DEBUG-only local UI fixture. It neither requests Apple
+            // authorization nor supplies a credential or authenticated session.
+            authError = nil
+            appleHandoffFailure = AppleNativeHandoffError.validation(.navigationDocument).withDiagnostic(
+                AppleNativeHandoffDiagnostic(
+                    response: nil,
+                    destination: URL(string: "https://spyclash.com/api/apps/auth/synthetic-completion?code=synthetic&from_url=synthetic"),
+                    redirectCount: 6
+                )
+            )
+        }
         let previewPlayerCount = previewArgumentValue(
             prefix: "--spyclash-preview-player-count=",
             in: arguments

@@ -22,32 +22,53 @@ struct AuthView: View {
 
     var body: some View {
         ZStack {
-            SpyBackground()
-            GeometryReader { geometry in
-                ScrollView {
-                    VStack(spacing: 24) {
-                        header
-                        SpyPanel(motionDelay: 0.25) {
-                            form
+            if appState.appleHandoffFailure == nil {
+                ZStack {
+                    SpyBackground()
+                    GeometryReader { geometry in
+                        ScrollView {
+                            VStack(spacing: 24) {
+                                header
+                                SpyPanel(motionDelay: 0.25) {
+                                    form
+                                }
+                                .padding(.horizontal, 20)
+                                footerSwitch
+                            }
+                            .padding(.vertical, 28)
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: geometry.size.height)
                         }
-                        .padding(.horizontal, 20)
-                        footerSwitch
+                        .scrollBounceBehavior(.basedOnSize)
                     }
-                    .padding(.vertical, 28)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: geometry.size.height)
+
+                    if let stage = displayedAppleAuthStage {
+                        AppleAuthCinematicOverlay(stage: stage)
+                            .transition(.opacity)
+                            .zIndex(10)
+                    } else if let stage = displayedStandardAuthStage {
+                        StandardAuthCinematicOverlay(stage: stage)
+                            .transition(.opacity)
+                            .zIndex(10)
+                    }
                 }
-                .scrollBounceBehavior(.basedOnSize)
+            } else {
+                // Remove the underlying form from both UIKit and SwiftUI's
+                // accessibility trees. AuthView's input @State stays owned here.
+                SpyBackground().accessibilityHidden(true)
             }
 
-            if let stage = displayedAppleAuthStage {
-                AppleAuthCinematicOverlay(stage: stage)
-                    .transition(.opacity)
-                    .zIndex(10)
-            } else if let stage = displayedStandardAuthStage {
-                StandardAuthCinematicOverlay(stage: stage)
-                    .transition(.opacity)
-                    .zIndex(10)
+            if let failure = appState.appleHandoffFailure {
+                AppleHandoffFailureOverlay(
+                    failure: failure,
+                    language: appState.language,
+                    onCopy: {
+                        UIPasteboard.general.string = failure.diagnosticIdentifier
+                        appState.dismissAppleHandoffFailure()
+                    },
+                    onDismiss: { appState.dismissAppleHandoffFailure() }
+                )
+                .zIndex(20)
             }
         }
         .onAppear {
@@ -107,47 +128,14 @@ struct AuthView: View {
             otp = ""
             if case .otp = phase { resendAvailableAt = Date().addingTimeInterval(30) }
         }
-        .interactiveDismissDisabled(appState.hasActiveAuthCinematic || appState.isBusy)
-        .alert(
-            appleHandoffAlertTitle,
-            isPresented: Binding(
-                get: { appState.appleHandoffFailure != nil },
-                set: { if !$0 { appState.dismissAppleHandoffFailure() } }
-            ),
-            presenting: appState.appleHandoffFailure
-        ) { failure in
-            Button(appleHandoffCopyCodeLabel) {
-                UIPasteboard.general.string = failure.diagnosticIdentifier
-                appState.dismissAppleHandoffFailure()
-            }
-            Button("OK", role: .cancel) { appState.dismissAppleHandoffFailure() }
-        } message: { failure in
-            Text(failure.localizedDescription)
-        }
-    }
-
-    private var appleHandoffAlertTitle: String {
-        switch appState.language {
-        case .en: "Apple sign-in"
-        case .es: "Inicio de sesión con Apple"
-        case .ru: "Вход с Apple"
-        case .uk: "Вхід з Apple"
-        }
-    }
-
-    private var appleHandoffCopyCodeLabel: String {
-        switch appState.language {
-        case .en: "Copy support code"
-        case .es: "Copiar código de soporte"
-        case .ru: "Скопировать код для поддержки"
-        case .uk: "Скопіювати код для підтримки"
-        }
+        .spyGameTypography()
+        .interactiveDismissDisabled(appState.hasActiveAuthCinematic || appState.isBusy || appState.appleHandoffFailure != nil)
     }
 
     private var header: some View {
         VStack(spacing: 14) {
             Image(systemName: headerIcon)
-                .font(.system(size: 28, weight: .bold))
+                .font(SpyTheme.gameFont(size: 28, weight: .bold, relativeTo: .title2))
                 .foregroundStyle(.white)
                 .frame(width: 58, height: 58)
                 .background(SpyTheme.red)
@@ -156,31 +144,63 @@ struct AuthView: View {
                 .spyWebEntrance(delay: 0.10, duration: 0.50, y: 0, scale: 0.70)
 
             Text(eyebrow)
-                .font(SpyTheme.micro)
+                .font(SpyTheme.gameFont(size: 12, weight: .semibold, relativeTo: .caption))
                 .tracking(0.12)
                 .foregroundStyle(SpyTheme.dim)
                 .spyKicker(lines: 2, alignment: .center)
                 .spyWebEntrance(delay: 0.05, duration: 0.45, y: 8)
 
             Text(title)
-                .font(.system(size: 32, weight: .black, design: .default))
+                .font(SpyTheme.gameFont(size: 32, weight: .bold, relativeTo: .largeTitle))
                 .tracking(0.04)
                 .foregroundStyle(.white)
                 .spyFitted(lines: 2, scale: 0.56, alignment: .center)
                 .spyWebEntrance(delay: 0.15, duration: 0.45, y: 8)
 
             Text(subtitle)
-                .font(SpyTheme.micro)
+                .font(SpyTheme.gameFont(size: 12, weight: .semibold, relativeTo: .caption))
                 .tracking(0.25)
                 .foregroundStyle(SpyTheme.muted)
                 .spyFitted(lines: 2, scale: 0.66, alignment: .center)
                 .spyWebEntrance(delay: 0.20, duration: 0.45, y: 8)
 
-            LanguageSwitcher()
+            languageSwitcher
                 .padding(.top, 2)
                 .spyWebEntrance(delay: 0.25, duration: 0.45, y: 8)
         }
         .multilineTextAlignment(.center)
+    }
+
+    private var languageSwitcher: some View {
+        HStack(spacing: 5) {
+            ForEach(AppLanguage.allCases) { language in
+                Button {
+                    guard appState.language != language else { return }
+                    HapticManager.shared.fire(.tabSelection)
+                    Task { try? await appState.setLanguage(language, syncRemote: appState.user != nil) }
+                } label: {
+                    Text(language.shortCode)
+                        .font(SpyTheme.gameFont(size: 12, weight: .semibold, relativeTo: .caption))
+                        .foregroundStyle(appState.language == language ? .white : SpyTheme.dim)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 8)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .background(appState.language == language ? SpyTheme.red.opacity(0.9) : SpyTheme.panelDeep)
+                        .overlay(Rectangle().stroke(appState.language == language ? SpyTheme.red : SpyTheme.stroke))
+                }
+                .buttonStyle(SpyWebPressStyle())
+                .accessibilityLabel(languageAccessibilityLabel(language))
+            }
+        }
+    }
+
+    private func languageAccessibilityLabel(_ language: AppLanguage) -> String {
+        switch appState.language {
+        case .en: "Set language \(language.title)"
+        case .es: "Cambiar idioma a \(language.title)"
+        case .ru: "Выбрать язык: \(language.title)"
+        case .uk: "Обрати мову: \(language.title)"
+        }
     }
 
     @ViewBuilder
@@ -227,7 +247,7 @@ struct AuthView: View {
                     move(to: .forgotPassword(email: lockedEmail))
                 } label: {
                         Text(copy.forgotPassphrase)
-                            .font(SpyTheme.micro)
+                            .font(SpyTheme.gameFont(size: 12, weight: .semibold, relativeTo: .caption))
                             .tracking(0.12)
                         .foregroundStyle(SpyTheme.red)
                         .spyFitted(lines: 2, scale: 0.60, alignment: .center)
@@ -275,7 +295,7 @@ struct AuthView: View {
 
             case .otp(let lockedEmail):
                 Text(copy.sixDigitKeyLabel.replacingOccurrences(of: "6", with: String(SupabaseAppRuntime.emailOTPLength)))
-                    .font(SpyTheme.micro)
+                    .font(SpyTheme.gameFont(size: 12, weight: .semibold, relativeTo: .caption))
                     .tracking(0.12)
                     .foregroundStyle(SpyTheme.dim)
                     .spyKicker(lines: 2)
@@ -283,7 +303,7 @@ struct AuthView: View {
                     .keyboardType(.numberPad)
                     .textContentType(.oneTimeCode)
                     .multilineTextAlignment(.center)
-                    .font(.system(size: SupabaseAppRuntime.emailOTPLength > 6 ? 24 : 28, weight: .bold, design: .monospaced))
+                    .font(SpyTheme.gameFont(size: SupabaseAppRuntime.emailOTPLength > 6 ? 24 : 28, weight: .bold, relativeTo: .title2))
                     .tracking(SupabaseAppRuntime.emailOTPLength > 6 ? 4 : 8)
                     .foregroundStyle(.white)
                     .padding(14)
@@ -311,7 +331,7 @@ struct AuthView: View {
                         }
                     } label: {
                         Text(seconds == 0 ? resendCodeLabel : "\(resendCodeLabel) (\(seconds))")
-                            .font(SpyTheme.micro)
+                            .font(SpyTheme.gameFont(size: 12, weight: .semibold, relativeTo: .caption))
                             .foregroundStyle(SpyTheme.muted)
                     }
                     .buttonStyle(SpyWebPressStyle())
@@ -320,7 +340,7 @@ struct AuthView: View {
                 }
                 VStack(spacing: 8) {
                     Text(copy.otpExistingAccountHelp)
-                        .font(SpyTheme.micro)
+                        .font(SpyTheme.gameFont(size: 12, weight: .semibold, relativeTo: .caption))
                         .foregroundStyle(SpyTheme.muted)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
@@ -331,7 +351,7 @@ struct AuthView: View {
                         move(to: .forgotPassword(email: lockedEmail))
                     } label: {
                         Text(copy.forgotPassphrase)
-                            .font(SpyTheme.micro)
+                            .font(SpyTheme.gameFont(size: 12, weight: .semibold, relativeTo: .caption))
                             .foregroundStyle(SpyTheme.red)
                             .frame(maxWidth: .infinity, minHeight: 34)
                     }
@@ -342,7 +362,7 @@ struct AuthView: View {
 
             case .forgotPassword(let lockedEmail):
                 Text(copy.requestResetBody)
-                    .font(SpyTheme.mono)
+                    .font(SpyTheme.gameFont(size: 15, relativeTo: .body))
                     .foregroundStyle(SpyTheme.muted)
                     .lineSpacing(3)
                 emailField
@@ -365,15 +385,15 @@ struct AuthView: View {
             case .resetEmailSent(let lockedEmail):
                 VStack(spacing: 12) {
                     Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 34, weight: .bold))
+                        .font(SpyTheme.gameFont(size: 34, weight: .bold, relativeTo: .title))
                         .foregroundStyle(SpyTheme.green)
                     Text(copy.resetInboxTitle)
-                        .font(.system(size: 22, weight: .black, design: .default))
+                        .font(SpyTheme.gameFont(size: 22, weight: .bold, relativeTo: .title2))
                         .tracking(0.04)
                         .foregroundStyle(.white)
                         .spyFitted(lines: 2, scale: 0.58, alignment: .center)
                     Text(copy.resetInboxDetail(lockedEmail))
-                        .font(SpyTheme.mono)
+                        .font(SpyTheme.gameFont(size: 15, relativeTo: .body))
                         .foregroundStyle(SpyTheme.muted)
                         .multilineTextAlignment(.center)
                         .lineSpacing(3)
@@ -431,7 +451,7 @@ struct AuthView: View {
             }
         } label: {
             Text(footerText)
-                .font(SpyTheme.micro)
+                .font(SpyTheme.gameFont(size: 12, weight: .semibold, relativeTo: .caption))
                 .tracking(0.12)
                 .foregroundStyle(SpyTheme.red)
                 .spyFitted(lines: 2, scale: 0.62, alignment: .center)
@@ -522,7 +542,7 @@ struct AuthView: View {
             .id(requestID)
             if SupabaseAppRuntime.isEnabled, !SupabaseAppRuntime.permitsAppleSignIn {
                 Text(stagingAppleUnavailable)
-                    .font(SpyTheme.micro)
+                    .font(SpyTheme.gameFont(size: 12, weight: .semibold, relativeTo: .caption))
                     .foregroundStyle(SpyTheme.muted)
                     .multilineTextAlignment(.center)
                     .lineLimit(nil)
@@ -554,7 +574,7 @@ struct AuthView: View {
         HStack {
             Rectangle().fill(SpyTheme.stroke).frame(height: 1)
             Text(copy.emailDivider)
-                .font(SpyTheme.micro)
+                .font(SpyTheme.gameFont(size: 12, weight: .semibold, relativeTo: .caption))
                 .tracking(0.12)
                 .foregroundStyle(SpyTheme.dim)
                 .spyFitted(scale: 0.62, alignment: .center)
@@ -575,7 +595,7 @@ struct AuthView: View {
                 Image(systemName: "pencil")
                     .foregroundStyle(SpyTheme.dim)
             }
-            .font(SpyTheme.mono)
+            .font(SpyTheme.gameFont(size: 15, relativeTo: .body))
             .foregroundStyle(.white.opacity(0.82))
             .padding(12)
             .spyCutCard(cut: 8, fill: SpyTheme.red.opacity(0.07), stroke: SpyTheme.red.opacity(0.25))
@@ -628,6 +648,132 @@ struct AuthView: View {
             copy.backToLogin
         default:
             copy.loginFooter
+        }
+    }
+}
+
+/// App-owned failure UI; Apple's authorization sheet remains system-owned.
+struct AppleHandoffFailureOverlay: View {
+    let failure: AppleNativeHandoffError
+    let language: AppLanguage
+    let onCopy: () -> Void
+    let onDismiss: () -> Void
+    @AccessibilityFocusState private var headingFocused: Bool
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                Color.black.opacity(0.84)
+                    .ignoresSafeArea()
+                    .accessibilityHidden(true)
+                ScrollView {
+                    VStack {
+                        panel
+                            .frame(maxWidth: 460)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: max(0, geometry.size.height - 40))
+                    .padding(20)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .accessibilityIdentifier("auth.appleFailure.scroll")
+            }
+        }
+        .spyGameTypography()
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isModal)
+        .accessibilityIdentifier("auth.appleFailure.modal")
+        .accessibilityAction(.escape, onDismiss)
+        .onAppear { headingFocused = true }
+    }
+
+    private var panel: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text(title)
+                .font(SpyTheme.gameFont(size: 27, weight: .bold, relativeTo: .title2))
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityFocused($headingFocused)
+                .accessibilityIdentifier("auth.appleFailure.title")
+            Text(failure.messageText(language: language))
+                .font(SpyTheme.gameFont(size: 18, relativeTo: .body))
+                .foregroundStyle(SpyTheme.bodyText)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("auth.appleFailure.message")
+            Text(failure.diagnosticIdentifier)
+                .font(SpyTheme.gameFont(size: 16, weight: .semibold, relativeTo: .callout))
+                .foregroundStyle(.white)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(SpyTheme.red.opacity(0.10), in: CutCornerShape(cut: 8))
+                .accessibilityLabel(supportCodeLabel)
+                .accessibilityValue(failure.diagnosticIdentifier)
+                .accessibilityIdentifier("auth.appleFailure.code")
+            VStack(spacing: 10) {
+                Button(action: onCopy) {
+                    Text(copyCodeLabel)
+                        .font(SpyTheme.gameFont(size: 18, weight: .bold, relativeTo: .headline))
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.vertical, 10)
+                }
+                .buttonStyle(SpyButtonStyle(variant: .red))
+                .accessibilityLabel(copyCodeLabel)
+                .accessibilityIdentifier("auth.appleFailure.copy")
+                Button(action: onDismiss) {
+                    Text(closeLabel)
+                        .font(SpyTheme.gameFont(size: 18, weight: .semibold, relativeTo: .headline))
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.vertical, 10)
+                }
+                .buttonStyle(SpyButtonStyle(variant: .outline))
+                .accessibilityLabel(closeLabel)
+                .accessibilityIdentifier("auth.appleFailure.close")
+            }
+        }
+        .padding(24)
+        .background(SpyTheme.panel, in: CutCornerShape(cut: 18))
+        .overlay(CutCornerShape(cut: 18).stroke(SpyTheme.red.opacity(0.65), lineWidth: 1))
+        .shadow(color: .black.opacity(0.5), radius: 28, y: 12)
+    }
+
+    private var title: String {
+        switch language {
+        case .en: "Apple sign-in"
+        case .es: "Inicio de sesión con Apple"
+        case .ru: "Вход с Apple"
+        case .uk: "Вхід з Apple"
+        }
+    }
+
+    private var supportCodeLabel: String {
+        switch language {
+        case .en: "Support code"
+        case .es: "Código de soporte"
+        case .ru: "Код для поддержки"
+        case .uk: "Код для підтримки"
+        }
+    }
+
+    private var copyCodeLabel: String {
+        switch language {
+        case .en: "Copy support code"
+        case .es: "Copiar código de soporte"
+        case .ru: "Скопировать код для поддержки"
+        case .uk: "Скопіювати код для підтримки"
+        }
+    }
+
+    private var closeLabel: String {
+        switch language {
+        case .en: "Close"
+        case .es: "Cerrar"
+        case .ru: "Закрыть"
+        case .uk: "Закрити"
         }
     }
 }

@@ -23,6 +23,7 @@ import {
   withRoomWriteLeases,
 } from "./room-write-lifecycle.ts";
 import { projectRoomForClient } from "./room-projection.ts";
+import { roomGenerationAdPatch } from "./room-generation-ad.ts";
 import { resolveRoomInvitesAfterJoin } from "./room-invite-resolution.ts";
 import { loadLeaderboard } from "./leaderboard.ts";
 import { reconcileCommunityProfileMirrors } from "./community-profile-mirror.ts";
@@ -3954,6 +3955,10 @@ async function executeRoomAction(
       return await updateGameMode(base44, room, user, body);
     case "update_game_duration":
       return await updateGameDuration(base44, room, user, body);
+    case "set_generation_ad": {
+      const patch = roomGenerationAdPatch(room, user, body, Date.now());
+      return Object.keys(patch).length ? await updateRoom(base44, room, patch) : room;
+    }
     case "update_lobby_state":
       return await updateLobbyState(base44, room, user, body);
     case "arm_roulette":

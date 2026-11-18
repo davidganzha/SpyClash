@@ -31,8 +31,10 @@ struct WordPackEditorSheet: View {
     @State private var operationTask: Task<Void, Never>?
     @State private var accessSheet: LimitlessSheet?
     @FocusState private var focusedField: Field?
+    @FocusState private var wordCountEditorIsFocused: Bool
 
     private let initialDraft: WordPackDraft
+    private var usesAIGenerationTypography: Bool { route.pack == nil && method == .ai && step != .chooseMethod }
 
     private enum Step: Equatable {
         case chooseMethod
@@ -97,8 +99,8 @@ struct WordPackEditorSheet: View {
 
                 footer
             }
-            .disabled(showDiscardConfirmation || showReplaceConfirmation)
-            .accessibilityHidden(showDiscardConfirmation || showReplaceConfirmation)
+            .disabled(showDiscardConfirmation || showReplaceConfirmation || showWordCountEditor)
+            .accessibilityHidden(showDiscardConfirmation || showReplaceConfirmation || showWordCountEditor)
 
             if showDiscardConfirmation {
                 SpyConfirmDialog(
@@ -135,7 +137,14 @@ struct WordPackEditorSheet: View {
                 .accessibilityElement(children: .contain)
                 .accessibilityAddTraits(.isModal)
             }
+            if showWordCountEditor {
+                wordCountEditor
+                    .zIndex(30)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityAddTraits(.isModal)
+            }
         }
+        .spyGameTypography(usesAIGenerationTypography)
 #if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         .safeAreaInset(edge: .bottom, spacing: 0) {
             SupabaseGameRecoveryBanner { response in
@@ -152,20 +161,6 @@ struct WordPackEditorSheet: View {
             }
         }
 #endif
-        .alert(copy.wordsToGenerate, isPresented: $showWordCountEditor) {
-            TextField("5–100", text: $wordCountInput)
-                .keyboardType(.numberPad)
-            Button("OK") {
-                guard let count = Int(wordCountInput.trimmingCharacters(in: .whitespacesAndNewlines)),
-                      (5...100).contains(count) else { return }
-                aiWordCount = count
-                generationInputChanged()
-            }
-            .disabled(!isWordCountInputValid)
-            Button(appState.language.wordPacks.cancel, role: .cancel) {}
-        } message: {
-            Text("5–100")
-        }
         .interactiveDismissDisabled(isBusy || hasUnsavedChanges)
         .sheet(item: $accessSheet) { _ in
             PricingView().spyInterfaceScale().presentationDetents([.large])
@@ -182,6 +177,36 @@ struct WordPackEditorSheet: View {
         }
     }
 
+    private var wordCountEditor: some View {
+        SpyModal(title: copy.wordsToGenerate, message: "5–100", systemImage: "number") {
+            TextField("5–100", text: $wordCountInput)
+                .font(SpyTheme.gameFont(size: 18, weight: .semibold))
+                .keyboardType(.numberPad)
+                .focused($wordCountEditorIsFocused)
+                .padding(14)
+                .frame(minHeight: 52)
+                .background(SpyTheme.panelDeep, in: CutCornerShape(cut: 8))
+                .overlay(CutCornerShape(cut: 8).stroke(SpyTheme.inputBorder))
+                .accessibilityLabel(copy.wordsToGenerate)
+                .accessibilityIdentifier("wordPacks.editor.wordCountInput")
+            Button("OK") {
+                guard let count = Int(wordCountInput.trimmingCharacters(in: .whitespacesAndNewlines)),
+                      (5...100).contains(count) else { return }
+                aiWordCount = count
+                generationInputChanged()
+                showWordCountEditor = false
+            }
+            .buttonStyle(SpyButtonStyle(variant: .red))
+            .disabled(!isWordCountInputValid)
+            Button(appState.language.wordPacks.cancel, role: .cancel) { showWordCountEditor = false }
+                .buttonStyle(SpyButtonStyle(variant: .ghost))
+        }
+        .spyGameTypography()
+        .accessibilityIdentifier("wordPacks.editor.wordCountDialog")
+        .onAppear { wordCountEditorIsFocused = true }
+        .onDisappear { wordCountEditorIsFocused = false }
+    }
+
     private var sheetHeader: some View {
         HStack(spacing: 10) {
             if showsBackButton {
@@ -196,13 +221,13 @@ struct WordPackEditorSheet: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(headerEyebrow)
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .font(usesAIGenerationTypography ? SpyTheme.gameFont(size: 9, weight: .black) : .system(size: 9, weight: .black, design: .monospaced))
                     .tracking(0.10)
                     .foregroundStyle(SpyTheme.red)
                     .lineLimit(1)
 
                 Text(headerTitle)
-                    .font(.system(size: 22, weight: .black, design: .monospaced))
+                    .font(usesAIGenerationTypography ? SpyTheme.gameFont(size: 22, weight: .black) : .system(size: 22, weight: .black, design: .monospaced))
                     .tracking(0.03)
                     .foregroundStyle(.white)
                     .lineLimit(2)
@@ -347,12 +372,12 @@ struct WordPackEditorSheet: View {
                 Text(appState.language == .ru
                      ? "AI-генератор остаётся на Base44 и требует входа в аккаунт Base44. Здесь можно создать набор вручную."
                      : "AI generation remains on Base44 and requires a Base44 account. You can create a manual pack here.")
-                    .font(SpyTheme.mono).foregroundStyle(SpyTheme.muted)
+                    .font(SpyTheme.gameFont(size: 13, weight: .medium)).foregroundStyle(SpyTheme.muted)
             } else if appState.generationRewards.snapshot?.enabled != true && appState.membership.snapshot?.isUniversal != true {
                 let copy = LimitlessCopy(language: appState.language)
                 if let remaining = appState.membership.snapshot?.aiRemaining {
                     Text("\(copy.remaining): \(remaining)")
-                        .font(SpyTheme.mono).foregroundStyle(SpyTheme.muted)
+                        .font(SpyTheme.gameFont(size: 13, weight: .medium)).foregroundStyle(SpyTheme.muted)
                 }
                 if !appState.membership.hasAccess {
                     Button("LIMITLESS") { accessSheet = LimitlessSheet() }
@@ -397,14 +422,14 @@ struct WordPackEditorSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(copy.wordsToGenerate)
-                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .font(SpyTheme.gameFont(size: 10, weight: .black))
                     .tracking(0.08)
                     .foregroundStyle(SpyTheme.muted)
 
                 Spacer()
 
                 Text("\(aiWordCount)")
-                    .font(SpyTheme.brandFont(size: 28))
+                    .font(SpyTheme.gameFont(size: 28, weight: .bold, relativeTo: .title2))
                     .foregroundStyle(SpyTheme.red)
             }
 
@@ -424,7 +449,7 @@ struct WordPackEditorSheet: View {
                     showWordCountEditor = true
                 } label: {
                     Text("\(aiWordCount)")
-                        .font(.system(size: 18, weight: .black, design: .monospaced))
+                        .font(SpyTheme.gameFont(size: 18, weight: .black))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .background(SpyTheme.panelDeep)
@@ -453,7 +478,7 @@ struct WordPackEditorSheet: View {
                         generationInputChanged()
                     } label: {
                         Text("\(preset)")
-                            .font(.system(size: 11, weight: .black, design: .monospaced))
+                            .font(SpyTheme.gameFont(size: 11, weight: .black))
                             .foregroundStyle(aiWordCount == preset ? .white : SpyTheme.muted)
                             .frame(maxWidth: .infinity, minHeight: 44)
                             .background(aiWordCount == preset ? SpyTheme.red.opacity(0.16) : SpyTheme.panelDeep)
@@ -555,13 +580,13 @@ struct WordPackEditorSheet: View {
     private func introBlock(title: String, body: String) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(title)
-                .font(.system(size: 18, weight: .black, design: .monospaced))
+                .font(usesAIGenerationTypography ? SpyTheme.gameFont(size: 18, weight: .black) : .system(size: 18, weight: .black, design: .monospaced))
                 .tracking(0.04)
                 .foregroundStyle(.white)
                 .fixedSize(horizontal: false, vertical: true)
 
             Text(body)
-                .font(SpyTheme.mono)
+                .font(usesAIGenerationTypography ? SpyTheme.gameFont(size: 13, weight: .medium) : SpyTheme.mono)
                 .foregroundStyle(SpyTheme.muted)
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
@@ -579,7 +604,7 @@ struct WordPackEditorSheet: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(label)
-                .font(.system(size: 10, weight: .black, design: .monospaced))
+                .font(usesAIGenerationTypography ? SpyTheme.gameFont(size: 10, weight: .black) : .system(size: 10, weight: .black, design: .monospaced))
                 .tracking(0.08)
                 .foregroundStyle(SpyTheme.muted)
 
@@ -589,8 +614,10 @@ struct WordPackEditorSheet: View {
                     .foregroundStyle(focusedField == field ? SpyTheme.red : SpyTheme.dim)
                     .accessibilityHidden(true)
 
-                TextField("", text: text, prompt: Text(placeholder).foregroundStyle(SpyTheme.dim))
-                    .font(SpyTheme.mono)
+                TextField("", text: text, prompt: Text(placeholder)
+                    .font(usesAIGenerationTypography ? SpyTheme.gameFont(size: 13, weight: .medium) : SpyTheme.mono)
+                    .foregroundStyle(SpyTheme.dim))
+                    .font(usesAIGenerationTypography ? SpyTheme.gameFont(size: 13, weight: .medium) : SpyTheme.mono)
                     .foregroundStyle(.white)
                     .focused($focusedField, equals: field)
                     .textInputAutocapitalization(field == .aiTheme ? .sentences : .words)
@@ -627,14 +654,14 @@ struct WordPackEditorSheet: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(copy.wordsLabel)
-                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .font(usesAIGenerationTypography ? SpyTheme.gameFont(size: 10, weight: .black) : .system(size: 10, weight: .black, design: .monospaced))
                     .tracking(0.08)
                     .foregroundStyle(SpyTheme.muted)
 
                 Spacer()
 
                 Text("\(wordCount)")
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .font(usesAIGenerationTypography ? SpyTheme.gameFont(size: 9, weight: .black) : .system(size: 9, weight: .black, design: .monospaced))
                     .foregroundStyle(wordCount >= 2 ? SpyTheme.green : SpyTheme.red)
                     .accessibilityLabel("\(wordCount) \(flowCopy.uniqueWords)")
                     .accessibilityIdentifier("wordPacks.editor.wordCountLabel")
@@ -642,7 +669,7 @@ struct WordPackEditorSheet: View {
 
             if !analysis.words.isEmpty {
                 Text(wordRemovalHint)
-                    .font(SpyTheme.micro)
+                    .font(usesAIGenerationTypography ? SpyTheme.gameFont(size: 11, weight: .bold, relativeTo: .caption) : SpyTheme.micro)
                     .foregroundStyle(SpyTheme.muted)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -658,14 +685,14 @@ struct WordPackEditorSheet: View {
             addWordsField
 
             Text(wordsInputHint)
-                .font(SpyTheme.micro)
+                .font(usesAIGenerationTypography ? SpyTheme.gameFont(size: 11, weight: .bold, relativeTo: .caption) : SpyTheme.micro)
                 .foregroundStyle(SpyTheme.muted)
 
             if validationAttempted && wordCount < 2 {
                 validationMessage(flowCopy.twoWordsRequired)
             } else if analysis.words.isEmpty {
                 Text(copy.emptyWordsHint)
-                    .font(SpyTheme.micro)
+                    .font(usesAIGenerationTypography ? SpyTheme.gameFont(size: 11, weight: .bold, relativeTo: .caption) : SpyTheme.micro)
                     .foregroundStyle(SpyTheme.muted)
             }
 
@@ -703,7 +730,7 @@ struct WordPackEditorSheet: View {
         } label: {
             HStack(spacing: 8) {
                 Text(word)
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .font(usesAIGenerationTypography ? SpyTheme.gameFont(size: 12, weight: .bold) : .system(size: 12, weight: .bold, design: .monospaced))
                     .foregroundStyle(SpyTheme.bodyText)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
@@ -730,7 +757,7 @@ struct WordPackEditorSheet: View {
     private var addWordsField: some View {
         HStack(spacing: 8) {
             TextField(addWordsLabel, text: $newWordsInput)
-                .font(SpyTheme.mono)
+                .font(usesAIGenerationTypography ? SpyTheme.gameFont(size: 13, weight: .medium) : SpyTheme.mono)
                 .foregroundStyle(.white)
                 .focused($focusedField, equals: .words)
                 .textInputAutocapitalization(.words)
@@ -816,7 +843,7 @@ struct WordPackEditorSheet: View {
                 .accessibilityHidden(true)
 
             Text(text)
-                .font(SpyTheme.micro)
+                .font(usesAIGenerationTypography ? SpyTheme.gameFont(size: 11, weight: .bold, relativeTo: .caption) : SpyTheme.micro)
                 .foregroundStyle(SpyTheme.muted)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -834,7 +861,7 @@ struct WordPackEditorSheet: View {
                 .accessibilityHidden(true)
 
             Text(message.text)
-                .font(SpyTheme.micro)
+                .font(usesAIGenerationTypography ? SpyTheme.gameFont(size: 11, weight: .bold, relativeTo: .caption) : SpyTheme.micro)
                 .foregroundStyle(.white)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -893,7 +920,7 @@ struct WordPackEditorSheet: View {
 
             if step == .aiSetup {
                 Text(copy.aiDraftHint)
-                    .font(SpyTheme.micro)
+                    .font(SpyTheme.gameFont(size: 11, weight: .bold, relativeTo: .caption))
                     .foregroundStyle(SpyTheme.muted)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
