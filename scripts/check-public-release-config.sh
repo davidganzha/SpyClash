@@ -32,8 +32,8 @@ xcrun xcresulttool get test-results summary \
   --path "$results/PublicConfigurationTests.xcresult" --format json | python3 -c '
 import json, sys
 summary = json.load(sys.stdin)
-if (summary.get("passedTests"), summary.get("failedTests"), summary.get("skippedTests")) != (3, 0, 0):
-    sys.exit("Public configuration gate requires all three runtime tests to execute and pass")
-print("Public configuration: 3 passed, 0 failed, 0 skipped")
+if (summary.get("passedTests"), summary.get("failedTests"), summary.get("skippedTests")) != (4, 0, 0):
+    sys.exit("Public configuration gate requires all four runtime tests to execute and pass")
+print("Public configuration: 4 passed, 0 failed, 0 skipped")
 '
 printf 'Public configuration evidence: %s/PublicConfigurationTests.xcresult\n' "$results"

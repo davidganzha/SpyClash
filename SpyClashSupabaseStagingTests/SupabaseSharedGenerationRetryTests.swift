@@ -196,12 +196,13 @@ private final class SharedGenerationRetryFixture {
     let journal: SupabaseAppMutationJournal
     let auth: SupabaseAppSession
     let http: URLSession
-    var requests: [JSONValue] = []
-    var authorization: [String?] = []
-    private let replies: [Reply]
+    var requests: [JSONValue] { responses.requests }
+    var authorization: [String?] { responses.authorization }
+    private let responses: SharedGenerationResponses
 
     init(responses: [Reply], sleep: @escaping @MainActor (Duration) async throws -> Void = { _ in }) {
-        replies = responses
+        let responseStore = SharedGenerationResponses(replies: responses)
+        self.responses = responseStore
         directory = FileManager.default.temporaryDirectory.appendingPathComponent("SharedGenerationRetry-\(UUID())")
         journal = SupabaseAppMutationJournal(directory: directory)
         let configuration = URLSessionConfiguration.ephemeral
@@ -211,8 +212,8 @@ private final class SharedGenerationRetryFixture {
             storedSession: .init(accessToken: "fixture-native", refreshToken: "fixture-refresh", userID: actor, expiresAt: Date().addingTimeInterval(3600), nativeCredentialKind: .gameCenter),
             saveSession: { _ in }, clearSession: {}, mutationJournal: journal,
             storedLegacy: nil, saveLegacy: { _ in }, clearLegacy: {}, sharedGenerationRetrySleep: sleep)
-        SharedGenerationURLProtocol.handler = { [weak self] request in
-            Task { @MainActor in self?.respond(to: request) }
+        SharedGenerationURLProtocol.handler = { request, body in
+            try responseStore.reply(to: request, body: body)
         }
     }
 
@@ -226,17 +227,6 @@ private final class SharedGenerationRetryFixture {
         try await auth.service("legacy", action: "generate", fields: body(requestID: requestID), write: true)
     }
 
-    private func respond(to request: SharedGenerationURLProtocol) {
-        do {
-            XCTAssertEqual(request.request.url?.path, "/functions/v1/app-services")
-            let json = try JSONDecoder().decode(JSONValue.self, from: request.bodyData())
-            let reply = replies[min(requests.count, replies.count - 1)]
-            requests.append(json)
-            authorization.append(request.request.value(forHTTPHeaderField: "Authorization"))
-            request.respond(status: reply.status, body: reply.body)
-        } catch { request.client?.urlProtocol(request, didFailWithError: error) }
-    }
-
     func close() {
         http.invalidateAndCancel()
         SharedGenerationURLProtocol.handler = nil
@@ -244,13 +234,47 @@ private final class SharedGenerationRetryFixture {
     }
 }
 
+// URLSession invokes URLProtocol off the main actor. Keep its synchronous
+// request/response work there, and protect the observations read by the tests.
+private final class SharedGenerationResponses: @unchecked Sendable {
+    private let lock = NSLock()
+    private let replies: [SharedGenerationRetryFixture.Reply]
+    private var recordedRequests: [JSONValue] = []
+    private var recordedAuthorization: [String?] = []
+
+    init(replies: [SharedGenerationRetryFixture.Reply]) { self.replies = replies }
+
+    var requests: [JSONValue] { lock.withLock { recordedRequests } }
+    var authorization: [String?] { lock.withLock { recordedAuthorization } }
+
+    func reply(to request: URLRequest, body: Data) throws -> SharedGenerationRetryFixture.Reply {
+        XCTAssertEqual(request.url?.path, "/functions/v1/app-services")
+        let json = try JSONDecoder().decode(JSONValue.self, from: body)
+        return lock.withLock {
+            let reply = replies[min(recordedRequests.count, replies.count - 1)]
+            recordedRequests.append(json)
+            recordedAuthorization.append(request.value(forHTTPHeaderField: "Authorization"))
+            return reply
+        }
+    }
+}
+
 private final class SharedGenerationURLProtocol: URLProtocol, @unchecked Sendable {
-    nonisolated(unsafe) static var handler: (@Sendable (SharedGenerationURLProtocol) -> Void)?
+    typealias Handler = @Sendable (URLRequest, Data) throws -> SharedGenerationRetryFixture.Reply
+    private static let handlerLock = NSLock()
+    nonisolated(unsafe) private static var storedHandler: Handler?
+    static var handler: Handler? {
+        get { handlerLock.withLock { storedHandler } }
+        set { handlerLock.withLock { storedHandler = newValue } }
+    }
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         guard let handler = Self.handler else { client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet)); return }
-        handler(self)
+        do {
+            let reply = try handler(request, bodyData())
+            respond(status: reply.status, body: reply.body)
+        } catch { client?.urlProtocol(self, didFailWithError: error) }
     }
     override func stopLoading() {}
     func bodyData() throws -> Data {
