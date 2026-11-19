@@ -24,7 +24,7 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
         let fixture = AppleWebKitFixture(script: "window.location.replace('spyclash://auth?auth_provider=apple&access_token=synthetic-js-session');")
         let session = fixture.session(url: bootstrapURL) { terminal.fulfill() }
 
-        XCTAssertTrue(session.start())
+        try await start(session, fixture: fixture)
         let view = try XCTUnwrap(fixture.webView)
         XCTAssertFalse(view.configuration.websiteDataStore.isPersistent)
         XCTAssertFalse(view.configuration.preferences.javaScriptCanOpenWindowsAutomatically)
@@ -48,7 +48,7 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
         let fixture = AppleWebKitFixture(script: "window.location.replace(\(jsString(target)));")
         let session = fixture.session(url: bootstrapURL) { terminal.fulfill() }
 
-        XCTAssertTrue(session.start())
+        try await start(session, fixture: fixture)
         let view = try XCTUnwrap(fixture.webView)
         await fulfillment(of: [terminal], timeout: 15)
 
@@ -64,7 +64,7 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
             let target = "https://\(host)/synthetic-intermediate?access_token=synthetic-sso-candidate&from_url=https%3A%2F%2Fforeign.invalid"
             let fixture = ssoFixture(finalScript: "window.location.replace(\(jsString(target)));")
             let session = fixture.session(url: bootstrapURL) { terminal.fulfill() }
-            XCTAssertTrue(session.start())
+            try await start(session, fixture: fixture)
             let view = try XCTUnwrap(fixture.webView)
             await fulfillment(of: [terminal], timeout: 15)
             XCTAssertNil(fixture.error)
@@ -83,7 +83,7 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
         let target = "https://spyclash.com/api/apps/auth/synthetic-completion?code=synthetic-private-code&from_url=synthetic-private-return"
         let fixture = ssoFixture(finalScript: "window.location.replace(\(jsString(target)));")
         let session = fixture.session(url: bootstrapURL) { terminal.fulfill() }
-        XCTAssertTrue(session.start())
+        try await start(session, fixture: fixture)
         let view = try XCTUnwrap(fixture.webView)
         await fulfillment(of: [terminal], timeout: 15)
         let failure = try XCTUnwrap(fixture.error as? AppleNativeHandoffError)
@@ -166,7 +166,7 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
             let terminal = expectation(description: "Candidate with missing or lost SSO ownership is rejected")
             let fixture = ssoFixture(finalScript: finalScript, stages: stages)
             let session = fixture.session(url: bootstrapURL) { terminal.fulfill() }
-            XCTAssertTrue(session.start())
+            try await start(session, fixture: fixture)
             await fulfillment(of: [terminal], timeout: 15)
             XCTAssertNil(fixture.callback)
             XCTAssertEqual((fixture.error as? AppleNativeHandoffError)?.supportCode, .navigationDocument)
@@ -183,9 +183,24 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
         ]
         for (script, code) in cases {
             let terminal = expectation(description: "Malformed candidate is not accepted")
-            let fixture = ssoFixture(finalScript: script)
+            let ready = expectation(description: "Owned SSO candidate document is ready")
+            let fixture = ssoFixture(finalScript: "window.webkit.messageHandlers.fixtureReady.postMessage('candidate-document-ready');")
+            let advanceSSO = fixture.onMessage
+            fixture.onMessage = { message in
+                if message == "candidate-document-ready" { ready.fulfill() }
+                else { advanceSSO?(message) }
+            }
             let session = fixture.session(url: bootstrapURL) { terminal.fulfill() }
-            XCTAssertTrue(session.start())
+            defer { session.cancel(); fixture.onMessage = nil }
+            try await start(session, fixture: fixture)
+            // Cold WebContent startup and the permitted SSO documents must
+            // finish before the 15-second navigation-policy deadline begins.
+            await fulfillment(of: [ready], timeout: 45)
+            let view = try XCTUnwrap(fixture.lastMessage == "candidate-document-ready" ? fixture.webView : nil)
+            XCTAssertEqual(fixture.completionCount, 0)
+            XCTAssertNil(fixture.callback)
+            XCTAssertNil(fixture.error)
+            _ = try await view.evaluateJavaScript(script + " null;")
             await fulfillment(of: [terminal], timeout: 15)
             XCTAssertNil(fixture.callback)
             XCTAssertEqual((fixture.error as? AppleNativeHandoffError)?.supportCode, code)
@@ -214,7 +229,7 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
             } else { previous?(message) }
         }
         let session = fixture.session(url: bootstrapURL) { terminal.fulfill() }
-        XCTAssertTrue(session.start())
+        try await start(session, fixture: fixture)
         await fulfillment(of: [terminal], timeout: 15)
         XCTAssertTrue(reachedMain)
         XCTAssertNil(fixture.error)
@@ -236,7 +251,7 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
             let terminal = expectation(description: "Malformed callback rejected")
             let fixture = AppleWebKitFixture(script: "window.location.replace(\(jsString(target)));")
             let session = fixture.session(url: bootstrapURL) { terminal.fulfill() }
-            XCTAssertTrue(session.start())
+            try await start(session, fixture: fixture)
             await fulfillment(of: [terminal], timeout: 15)
             XCTAssertNil(fixture.callback)
             XCTAssertNotNil(fixture.error)
@@ -266,7 +281,7 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
             }
             let session = fixture.session(url: bootstrapURL) { terminal.fulfill() }
             defer { session.cancel(); fixture.onMessage = nil }
-            XCTAssertTrue(session.start())
+            try await start(session, fixture: fixture)
             let view = try XCTUnwrap(fixture.webView)
 
             // A cold CI WebContent process has taken over 23 seconds to start.
@@ -299,7 +314,7 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
         let terminal = expectation(description: "Interactive document is rejected")
         let fixture = AppleWebKitFixture(script: "document.body.innerHTML = '<form><input type=password><button>Sign in</button></form>';")
         let session = fixture.session(url: bootstrapURL) { terminal.fulfill() }
-        XCTAssertTrue(session.start())
+        try await start(session, fixture: fixture)
         await fulfillment(of: [terminal], timeout: 15)
         XCTAssertNil(fixture.callback)
         XCTAssertNotNil(fixture.error)
@@ -337,7 +352,7 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
             let terminal = expectation(description: "Actual WebKit action is rejected")
             let fixture = AppleWebKitFixture(script: item.script, enablesPopupFixture: item.enablesPopupFixture)
             let session = fixture.session(url: bootstrapURL) { terminal.fulfill() }
-            XCTAssertTrue(session.start())
+            try await start(session, fixture: fixture)
             await fulfillment(of: [terminal], timeout: 15)
             let view = try XCTUnwrap(fixture.webView)
             XCTAssertNil(fixture.callback)
@@ -352,7 +367,7 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
         let first = AppleWebKitFixture(script: "document.cookie = 'sc_fixture_cookie=attempt-one; Path=/; Secure; SameSite=Lax'; window.webkit.messageHandlers.fixtureReady.postMessage(document.cookie);")
         first.onMessage = { _ in firstReady.fulfill() }
         let firstSession = first.session(url: bootstrapURL) { XCTFail("Cookie fixture has no auth callback") }
-        XCTAssertTrue(firstSession.start())
+        try await start(firstSession, fixture: first)
         await fulfillment(of: [firstReady], timeout: 15)
         let firstView = try XCTUnwrap(first.webView)
         XCTAssertTrue(first.lastMessage?.contains("sc_fixture_cookie=attempt-one") == true)
@@ -373,7 +388,7 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
         let second = AppleWebKitFixture(script: "window.webkit.messageHandlers.fixtureReady.postMessage(document.cookie);")
         second.onMessage = { _ in secondReady.fulfill() }
         let secondSession = second.session(url: bootstrapURL) { XCTFail("Cookie fixture has no auth callback") }
-        XCTAssertTrue(secondSession.start())
+        try await start(secondSession, fixture: second)
         await fulfillment(of: [secondReady], timeout: 15)
         let secondView = try XCTUnwrap(second.webView)
         XCTAssertFalse(secondView.configuration.websiteDataStore.isPersistent)
@@ -392,7 +407,7 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
         let fixture = AppleWebKitFixture(script: "window.webkit.messageHandlers.fixtureReady.postMessage('ready');")
         fixture.onMessage = { _ in ready.fulfill() }
         let session = fixture.session(url: bootstrapURL) {}
-        XCTAssertTrue(session.start())
+        try await start(session, fixture: fixture)
         await fulfillment(of: [ready], timeout: 15)
         let view = try XCTUnwrap(fixture.webView)
         let lateDelegate = try XCTUnwrap(view.navigationDelegate)
@@ -433,6 +448,7 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
         })
         let authentication = Task { try await coordinator.authenticate(url: bootstrapURL, timeout: 90) }
         defer { timer.continuation.finish(); authentication.cancel() }
+        try await waitForDocument(fixture)
         await fulfillment(of: [ready], timeout: 15)
         let view = try XCTUnwrap(fixture.webView)
         // A 250ms real timer raced cold WebKit process startup. Advance the
@@ -505,7 +521,7 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
             XCTAssertNil(fixture.webView?.window, file: file, line: line)
         }
         let session = fixture.session(url: bootstrapURL) { terminal.fulfill() }
-        XCTAssertTrue(session.start(), file: file, line: line)
+        try await start(session, fixture: fixture, file: file, line: line)
         let view = try XCTUnwrap(fixture.webView, file: file, line: line)
         XCTAssertNil(view.superview, file: file, line: line)
         XCTAssertNil(view.window, file: file, line: line)
@@ -523,6 +539,29 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
         await assertCleanedUp(view, file: file, line: line)
         session.cancel()
         XCTAssertEqual(fixture.completionCount, 1, file: file, line: line)
+    }
+
+    private func start(
+        _ session: AppleSessionCompletionSession,
+        fixture: AppleWebKitFixture,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        XCTAssertTrue(session.start(), file: file, line: line)
+        try await waitForDocument(fixture, file: file, line: line)
+    }
+
+    private func waitForDocument(
+        _ fixture: AppleWebKitFixture,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        // Each isolated website data store can start a cold WebContent process.
+        // Require a real JavaScript readiness signal before policy assertions;
+        // a missing signal must fail instead of looking like a rejected route.
+        await fulfillment(of: [fixture.documentReady], timeout: 45)
+        _ = try XCTUnwrap(fixture.documentDidStart ? fixture.webView : nil,
+                          "WebKit fixture failed to start its initial document", file: file, line: line)
     }
 
     private func assertCleanedUp(_ view: WKWebView, file: StaticString = #filePath, line: UInt = #line) async {
@@ -577,6 +616,8 @@ private final class AppleWebKitFixture: NSObject, WKScriptMessageHandler {
     var completionCount = 0
     var callback: URL?
     var error: (any Error)?
+    let documentReady = XCTestExpectation(description: "Initial WebKit fixture document is running")
+    private(set) var documentDidStart = false
     var lastMessage: String?
     var onMessage: (@MainActor (String?) -> Void)?
 
@@ -626,12 +667,18 @@ private final class AppleWebKitFixture: NSObject, WKScriptMessageHandler {
                 XCTFail("The real WebKit policy delegate is missing an Objective-C selector")
                 return
             }
-            let html = "<!doctype html><html><head><meta name='referrer' content='no-referrer'></head><body><script>\(self.script)</script></body></html>"
+            let html = "<!doctype html><html><head><meta name='referrer' content='no-referrer'></head><body><script>window.webkit.messageHandlers.fixtureReady.postMessage('initial-document-ready');\(self.script)</script></body></html>"
             view.loadHTMLString(html, baseURL: request.url)
         })
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.body as? String == "initial-document-ready" {
+            guard !documentDidStart else { return }
+            documentDidStart = true
+            documentReady.fulfill()
+            return
+        }
         lastMessage = message.body as? String
         onMessage?(lastMessage)
     }

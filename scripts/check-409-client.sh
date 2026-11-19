@@ -43,6 +43,7 @@ xcodebuild test -project SpyClash.xcodeproj -scheme SpyClash-Supabase-Staging \
   -only-testing:SpyClashSupabaseStagingTests/SupabaseSessionTests \
   -only-testing:SpyClashSupabaseStagingTests/LegacySessionUpgradeTests \
   -only-testing:SpyClashSupabaseStagingTests/NativeGameCenterSessionTests \
+  -only-testing:SpyClashSupabaseStagingTests/NativeAppleSessionTests \
   -only-testing:SpyClashSupabaseStagingTests/OnboardingSessionRecoveryTests \
   -only-testing:SpyClashSupabaseStagingTests/GameCenterAuthenticationTests \
   -only-testing:SpyClashSupabaseStagingTests/GameCenterAutomaticEntryTests \
