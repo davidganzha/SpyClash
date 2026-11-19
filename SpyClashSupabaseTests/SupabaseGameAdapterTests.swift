@@ -18,7 +18,10 @@ final class SupabaseGameAdapterTests: XCTestCase {
         _ = try await store.command(["action": .string("toggle_ready"), "room_id": .string(roomID)])
         XCTAssertEqual(transport.requests.count, 2)
         for request in transport.requests {
-            XCTAssertEqual(request["client_capabilities"], .array([.string("multi_spy_v1"), .string("fan_mode_v1")]))
+            XCTAssertEqual(request["client_capabilities"], .array([
+                .string("multi_spy_v1"), .string("fan_mode_v1"),
+                .string("fan_mode_v2"), .string("fan_mode_v3")
+            ]))
         }
     }
 
