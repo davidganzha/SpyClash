@@ -12,3 +12,11 @@
 - Keep the version values in `project.yml` and `SpyClash.xcodeproj/project.pbxproj` synchronized. Change `MARKETING_VERSION` only for an intentional release-version change requested by the user or required by the release plan.
 - Commit each completed, verified change as a scoped Git commit and push that commit to the current GitHub branch unless the user explicitly asks not to push.
 - Never mix unrelated pre-existing worktree changes into the checkpoint commit. A GitHub push is not authorization for any production action listed above.
+
+# Apple signing identity selection
+
+- The user explicitly forbids `PotuzhnoSigning` / `potuzhno-signing` and Potuzhno signing profiles. Do not use, unlock, or request passwords or keys for them, including as a fallback.
+- Use an existing, accessible certificate and private key from an allowed keychain, with a provisioning profile matching the target app and signing purpose. The default keychain search list is not an allowlist.
+- Check candidate identities in explicitly allowed keychains before any signing attempt. A visible certificate alone does not prove its private key is accessible; do not fall back to another keychain implicitly.
+- Previously verified SpyClash identities are Apple Development SHA-1 `0812D17AB01C4FE7D5BD4CED2F0B0D79A24DD756` for device builds and Apple Distribution SHA-1 `B5E2C6B39C13237FBB0F3B8DB583951E9F06DC87` for distribution, team `3Z64QKNL54`. Recheck current availability and profile compatibility rather than assuming historical access still works.
+- Do not recreate or revoke certificates, reset or unlock old keychains, or change the user's keychain search list merely because an identity is unavailable. Report the exact access issue after checking existing permitted signing routes.
