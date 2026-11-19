@@ -1,7 +1,7 @@
 import { AppServiceError, requireUUID, type AppContext, type AppActor } from './contracts.ts';
 import { canonical, digest } from './integration-crypto.ts';
 import { canonicalBase44Configuration as configuration, verifyLegacyCredential, boundedLegacyJSON as boundedJSON } from './legacy-provider.ts';
-import {nativeGameCenterAccount,resolveNativeGameCenterAccount} from './native-game-center.ts';
+import {nativeAccount,resolveNativeAccount} from './native-account.ts';
 import {nativeGenerationCapabilities,prepareNativeGeneration,dispatchNativeGeneration} from './native-generation.ts';
 type Config=Record<string,string|undefined>;
 type Input={actor:AppActor,body:Record<string,any>,config:Config};
@@ -43,7 +43,7 @@ export async function prepareLegacyExternal(input:Input,dependencies:{fetch?:typ
   const action=({legacy_status:'status',link_legacy_account:'link',generate_word_pack:'generate'} as Record<string,string>)[input.body.action]||input.body.action;
   if(action==='status')return undefined;
   if(!['link','generate'].includes(action))throw new AppServiceError('invalid_action','Unknown legacy action.');
-  if(dependencies.db&&await resolveNativeGameCenterAccount(dependencies.db,input.actor.id)) {
+  if(dependencies.db&&await resolveNativeAccount(dependencies.db,input.actor.id)) {
     if(action==='link')throw new AppServiceError('game_center_legacy_link_unsupported','This Game Center account cannot replace an existing account.',409);
     return await prepareNativeGeneration(input,{db:dependencies.db,fetch:dependencies.fetch});
   }
@@ -92,7 +92,7 @@ async function reserveGeneration(db:any,actor:AppActor,legacyID:string,requestID
 
 export async function dispatchLegacy(ctx:AppContext,body:Record<string,any>) {
   const action=({legacy_status:'status',link_legacy_account:'link',generate_word_pack:'generate'} as Record<string,string>)[body.action]||body.action;
-  if(await nativeGameCenterAccount(ctx.tx,ctx.actor.id)) {
+  if(await nativeAccount(ctx.tx,ctx.actor.id)) {
     if(action==='status')return nativeGenerationCapabilities(ctx.config);
     if(action==='generate')return await dispatchNativeGeneration(ctx,body);
     throw new AppServiceError('game_center_legacy_link_unsupported','This Game Center account cannot replace an existing account.',409);

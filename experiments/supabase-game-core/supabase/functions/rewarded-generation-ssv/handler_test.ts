@@ -47,6 +47,18 @@ async function fixture(customData = token('legacy'), reward = '1', fields: {user
     handler: (overrides = {}) => createRewardedGenerationSSVGateway({config: {...config, ...overrides}, fetch: fetcher, native})};
 }
 
+Deno.test('exact imported legacy capability routes to native after signature verification without source grant',async()=>{
+  const f=await fixture();let lookups=0;
+  const handler=createRewardedGenerationSSVGateway({config,fetch:f.fetcher,native:f.native,importedLegacy:async value=>{lookups++;assert(value===token('legacy'));return true;}});
+  const response=await handler(new Request(f.url));assert(response.status===200);assert(lookups===1);assert(f.nativeCalls.length===1);assert(f.calls.length===0);
+  assert(new URL(f.nativeCalls[0].url).search===new URL(f.url).search);
+});
+Deno.test('source transfer marker never grants or loops when target alias is missing',async()=>{
+  const f=await fixture();const handler=createRewardedGenerationSSVGateway({config,fetch:f.fetcher,native:f.native,importedLegacy:async()=>false});
+  const response=await handler(new Request(f.url,{headers:{'X-SpyClash-Reward-Transfer':'1'}}));
+  assert(response.status===503);assert(f.nativeCalls.length===0);assert(f.calls.length===0);
+});
+
 Deno.test('legacy SSV verifies first and preserves the entire signed query byte for byte', async () => {
   const f = await fixture();
   const response = await f.handler()(new Request(f.url));

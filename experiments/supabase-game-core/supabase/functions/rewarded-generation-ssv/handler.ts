@@ -17,7 +17,7 @@ const reply = (body: unknown, status = 200) => Response.json(body, {status, head
  * ledger: each backend still verifies the signature and its exact issued token.
  * Namespace is signed, server-issued data, never inferred from a user ID. */
 export function createRewardedGenerationSSVGateway(dependencies: {
-  config: Config; native: Handler; fetch?: typeof fetch;
+  config: Config; native: Handler; fetch?: typeof fetch; importedLegacy?:(customData:string)=>Promise<boolean>;
 }): Handler {
   const fetcher = dependencies.fetch || fetch;
   return async request => {
@@ -41,6 +41,12 @@ export function createRewardedGenerationSSVGateway(dependencies: {
         return reply({code: 'invalid_reward_claim'}, 400);
       }
       if (namespace === 'native') return await dependencies.native(request);
+      if (dependencies.importedLegacy && await dependencies.importedLegacy(event.customData)) return await dependencies.native(request);
+      // This untrusted header grants nothing: signature validation happened
+      // above and the native handler still requires its exact private alias.
+      // It only stops a source-transferred callback looping back to Base44
+      // while the source fence has committed but target import is not ready.
+      if (request.headers.get('X-SpyClash-Reward-Transfer')==='1') return reply({code:'reward_transfer_pending'},503);
 
       const destination = canonicalBase44Configuration(dependencies.config);
       if (destination.origin !== CANONICAL_BASE44_ORIGIN || destination.appID !== CANONICAL_BASE44_APP_ID) {

@@ -2,7 +2,9 @@ import { AppServiceError, requireUUID, type AppActor, type AppContext } from './
 import { verifyLegacyCredential, boundedLegacyJSON, canonicalBase44Configuration, type LegacyConfig } from './legacy-provider.ts';
 import {digest} from './integration-crypto.ts';
 import {signedArchiveErasureRequest,verifiedArchiveErasureProof} from './deletion-archive-proof.ts';
-import {nativeGameCenterAccount} from './native-game-center.ts';
+import {nativeAccount} from './native-account.ts';
+import {prepareNativeAppleDeletion,assertAppleRevocationComplete} from './native-apple-deletion.ts';
+import type {revokeAllAppleGrants} from '../apple-session/revocation.ts';
 
 type Input = {actor: AppActor; body: Record<string, any>; config: LegacyConfig};
 // A separate immutable route avoids publishing unrelated Base44 editor drafts.
@@ -44,15 +46,16 @@ async function reconcileReceipt(db: any, config: LegacyConfig, prior: any, fetch
 
 /** External deletion is opt-in and requires a deployed recovery receipt
  * endpoint. A revoked bearer is never substituted for deletion proof. */
-export async function prepareMainAccountDeletion(input: Input, dependencies: {db: any; fetch?: typeof fetch}) {
+export async function prepareMainAccountDeletion(input: Input, dependencies: {db: any; fetch?: typeof fetch; revokeApple?:typeof revokeAllAppleGrants}) {
   if (input.body.deletion_scope === undefined) return undefined;
   if (input.body.deletion_scope !== 'account') throw new AppServiceError('invalid_deletion_scope', 'Unknown deletion scope.');
   const native = await dependencies.db.begin(async (tx:any) => {
     await tx`select pg_advisory_xact_lock_shared(hashtextextended(${'spyclash-account:'+input.actor.id},0))`;
-    return await nativeGameCenterAccount(tx,input.actor.id);
+    return await nativeAccount(tx,input.actor.id);
   });
   if (native) {
-    const evidence = {actor:input.actor.id,requestID:requireUUID(input.body.request_id,'request_id'),identityKey:native.identity_key};
+    const apple=native.provider==='apple'?await prepareNativeAppleDeletion(input,{...dependencies,revoke:dependencies.revokeApple}):undefined;
+    const evidence = {actor:input.actor.id,requestID:requireUUID(input.body.request_id,'request_id'),identityKey:native.identity_key,intentRequestID:apple?.request_id};
     nativeEvidenceSet.add(evidence);
     return evidence;
   }
@@ -138,11 +141,31 @@ export async function prepareMainAccountDeletion(input: Input, dependencies: {db
 /** No user credential or native session is needed to finish an already
  * requested deletion. The capability can only read its private provider proof. */
 export async function processMainAccountDeletionJobs(db: any, config: LegacyConfig, fetcher: typeof fetch = fetch) {
-  if(config.APP_MAIN_ACCOUNT_DELETION_ENABLED!=='true')return {configured:false,attempted:0,completed:0};
+  let appleAttempted=0,appleCompleted=0;
+  const [appleSchema]=await db`select to_regclass('apple_private.deletions') is not null as present`;
+  if(appleSchema.present) {
+    const appleJobs=await db.begin(async(tx:any)=>await tx`update apple_private.deletions
+      set next_attempt_at=clock_timestamp()+interval '30 seconds',lease_id=gen_random_uuid(),lease_until=clock_timestamp()+interval '90 seconds'
+      where user_id in(select user_id from apple_private.deletions where phase<>'complete' and next_attempt_at<=clock_timestamp()
+        and (lease_until is null or lease_until<clock_timestamp()) order by created_at limit 3 for update skip locked) returning user_id,request_id,lease_id`);
+    appleAttempted=appleJobs.length;
+    for(const job of appleJobs)try {
+      const actor={id:job.user_id,email:job.user_id+'@example.test',contactEmail:'',full_name:'',metadata:{}};
+      const body={service:'profile',action:'delete',deletion_scope:'account',request_id:job.request_id};
+      const evidence=await prepareMainAccountDeletion({actor,body,config},{db,fetch:fetcher});
+      const {executeApp}=await import('./dispatcher.ts');
+      const result=await executeApp(db,actor,body,config,evidence);
+      if(result.status===200)appleCompleted++;
+    }catch{/* Durable Apple intent remains fenced until all grants/source are erased. */}
+    finally{await db`update apple_private.deletions set lease_id=null,lease_until=null where user_id=${job.user_id} and lease_id=${job.lease_id}`;}
+  }
+  if(config.APP_MAIN_ACCOUNT_DELETION_ENABLED!=='true')return {configured:appleAttempted>0,attempted:appleAttempted,completed:appleCompleted};
   const jobs=await db.begin(async(tx:any)=>await tx`update app_private.main_account_deletions
     set lease_id=gen_random_uuid(),lease_until=clock_timestamp()+interval '60 seconds',attempts=attempts+1,next_attempt_at=clock_timestamp()+interval '30 seconds'
     where user_id in (select user_id from app_private.main_account_deletions where phase<>'complete' and next_attempt_at<=clock_timestamp()
-      and (lease_until is null or lease_until<clock_timestamp()) order by next_attempt_at,created_at limit 3 for update skip locked) returning *`);
+      and (lease_until is null or lease_until<clock_timestamp())
+      ${appleSchema.present?tx`and not exists(select 1 from apple_private.accounts a where a.user_id=app_private.main_account_deletions.user_id)`:tx``}
+      order by next_attempt_at,created_at limit 3 for update skip locked) returning *`);
   let completed=0;
   for(const job of jobs) {
     try {
@@ -156,19 +179,30 @@ export async function processMainAccountDeletionJobs(db: any, config: LegacyConf
     } catch { /* Stable intent is retried by the next bounded maintenance pass. */ }
     finally { await db`update app_private.main_account_deletions set lease_id=null,lease_until=null where user_id=${job.user_id} and lease_id=${job.lease_id}`; }
   }
-  return {configured:true,attempted:jobs.length,completed};
+  return {configured:true,attempted:jobs.length+appleAttempted,completed:completed+appleCompleted};
 }
 
 /** Called within the exclusive account transaction; callers cannot forge proof. */
 export async function assertMainDeletionEvidence(ctx: AppContext, body: Record<string, any>) {
-  const native = await nativeGameCenterAccount(ctx.tx,ctx.actor.id);
+  const native = await nativeAccount(ctx.tx,ctx.actor.id);
   if (native) {
     const evidence = ctx.evidence;
     if (body.deletion_scope !== 'account' || !evidence || !nativeEvidenceSet.has(evidence) ||
         evidence.actor !== ctx.actor.id || evidence.requestID !== body.request_id || evidence.identityKey !== native.identity_key) {
-      throw new AppServiceError('native_account_deletion_proof_required','Confirm deletion of this Game Center account.',409);
+      throw new AppServiceError('native_account_deletion_proof_required','Confirm deletion of this account.',409);
     }
-    return {native_account:true,identity_key:native.identity_key};
+    if(native.provider==='apple') {
+      const [apple]=await ctx.tx`select * from apple_private.deletions where user_id=${ctx.actor.id}`;
+      if(!apple||apple.request_id!==evidence.intentRequestID||!['verified','complete'].includes(apple.phase))throw pending();
+      await assertAppleRevocationComplete(ctx.tx,ctx.actor.id);
+      let source;
+      if(native.legacy_user_id) {
+        [source]=await ctx.tx`select * from app_private.main_account_deletions where user_id=${ctx.actor.id}`;
+        if(!source||source.request_id!==apple.request_id||source.legacy_user_id!==native.legacy_user_id||!['legacy_deleted','complete'].includes(source.phase)||source.manual_apple_revocation_required)throw pending();
+      }
+      return {...source,native_account:true,provider:'apple',identity_key:native.identity_key};
+    }
+    return {native_account:true,provider:'game_center',identity_key:native.identity_key};
   }
   const [intent] = await ctx.tx`select * from app_private.main_account_deletions where user_id=${ctx.actor.id}`;
   if (body.deletion_scope === undefined && !intent) return undefined;

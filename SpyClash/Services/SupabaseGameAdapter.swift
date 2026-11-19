@@ -17,7 +17,7 @@ final class SupabaseGameAdapter {
         let generation = session.generation
         if connectedGeneration != generation {
             let shouldRestoreRoom = restoreActiveRoom &&
-                (!session.isNativeGameCenterSession || !OnboardingProgressStore.shouldPresentOnboarding(for: profile))
+                (!session.isNativeSession || !OnboardingProgressStore.shouldPresentOnboarding(for: profile))
             try await store.connect(transport: SupabaseAppGameTransport(auth: session), name: profile.callSign,
                                     restoreActiveRoom: shouldRestoreRoom)
             guard session.generation == generation, session.userID == profile.id else { throw CancellationError() }

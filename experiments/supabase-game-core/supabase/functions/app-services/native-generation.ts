@@ -1,6 +1,6 @@
 import {AppServiceError,requireUUID,type AppActor,type AppContext} from './contracts.ts';
 import {accountGate} from './account-gate.ts';
-import {nativeGameCenterAccount,nativeGameCenterHasMembership} from './native-game-center.ts';
+import {nativeAccount,nativeHasMembership} from './native-account.ts';
 import {canonical,digest} from './integration-crypto.ts';
 import {createOpenAIWordPackProvider,assertNoKnownNamedThemeDrift,WORD_PACK_PROMPT_VERSION,WORD_PACK_CACHE_VERSION} from './word-generation/openai-word-pack-provider.ts';
 import {filterSafeCommunityStrings,requireSafeCommunityText} from './word-generation/content-safety.ts';
@@ -37,7 +37,7 @@ function command(body:Record<string,any>) {
 async function requestHash(body:Record<string,any>){return await digest(canonical({version:WORD_PACK_PROMPT_VERSION,...command(body)}));}
 async function requireNative(tx:any,userID:string) {
   await accountGate(tx,userID);
-  if((await nativeGameCenterAccount(tx,userID))?.state!=='ready')throw new AppServiceError('native_account_required','This feature requires the signed-in Game Center account.',403);
+  if((await nativeAccount(tx,userID))?.state!=='ready')throw new AppServiceError('native_account_required','This feature requires a verified native account.',403);
 }
 /** The reservation is committed before provider work. The same UUID always
  * owns one quota charge and one durable result, including after a lost ACK.
@@ -67,7 +67,7 @@ export async function prepareNativeGeneration(input:Input,dependencies:{db:any,f
       return {unknown:true,metered:Boolean(prior.charge_source&&prior.charge_source!=='legacy'),hasSeedPlan:prior.seed_words!=null};
     }
     const [{today}]=await tx`select (clock_timestamp() at time zone 'UTC')::date::text as today`;
-    const unlimited=await nativeGameCenterHasMembership(tx,input.actor.id);
+    const unlimited=await nativeHasMembership(tx,input.actor.id);
     const [{used}]=await tx`select count(*)::int as used from game_center_private.generation_requests where user_id=${input.actor.id} and usage_date=${today} and charged`;
     const keepsCharge=prior?.charged===true;
     const rewardReservation=rewardsEnabled?await reserveRewardGeneration(tx,input.actor.id,request.request_id,prior,input.config):null;

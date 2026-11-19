@@ -1,8 +1,8 @@
 import { AppServiceError, requireUUID, type AppContext, type AppActor } from './contracts.ts';
 import { digest } from './integration-crypto.ts';
 import { normalizeAppleEntitlement, publicAppleEntitlement, shouldApplyProviderEvent } from './billing-rules/apple-entitlement.ts';
-import {appleVerificationConfigured,verifyApple,verifyStoredAppleEntitlement,nativeGameCenterConfiguration,NATIVE_GAME_CENTER_BILLING} from './native-apple.ts';
-import {nativeGameCenterAccount,resolveNativeGameCenterAccount} from './native-game-center.ts';
+import {appleVerificationConfigured,verifyApple,verifyStoredAppleEntitlement,nativeAccountConfiguration,NATIVE_GAME_CENTER_BILLING,NATIVE_APPLE_BILLING} from './native-apple.ts';
+import {nativeAccount,resolveNativeAccount} from './native-account.ts';
 import {accountGate} from './account-gate.ts';
 import {usesLegacyBilling,legacyBillingConfigured,prepareLegacyBilling,dispatchLegacyBilling} from './legacy-billing.ts';
 import {mergeAppleLoyaltySnapshot} from './billing-rules/apple-loyalty.ts';
@@ -26,8 +26,8 @@ export function membershipCapabilities(config: Config) {
 /** External verification finishes before the transaction. The opaque evidence is
  * not serializable authorization and is never accepted from the HTTP body. */
 export async function prepareMembershipExternal(input: Preparation, dependencies?: { verify?: typeof verifyApple,db?:any,fetch?:typeof fetch }) {
-  if (dependencies?.db && await resolveNativeGameCenterAccount(dependencies.db,input.actor.id))
-    input = {...input,config:nativeGameCenterConfiguration(input.config)};
+  const native=dependencies?.db?await resolveNativeAccount(dependencies.db,input.actor.id):undefined;
+  if(native)input = {...input,config:nativeAccountConfiguration(input.config,native.provider)};
   if (usesLegacyBilling(input.config)) {
     if (!dependencies?.db) throw new AppServiceError('legacy_billing_unconfigured','The existing billing bridge requires durable storage.',503);
     return await prepareLegacyBilling(input,{db:dependencies.db,fetch:dependencies.fetch});
@@ -49,12 +49,12 @@ export async function prepareMembershipExternal(input: Preparation, dependencies
 }
 
 export async function dispatchMembership(ctx: AppContext, body: Record<string,any>) {
-  if (usesLegacyBilling(ctx.config) || ctx.config.APP_BILLING_PROVIDER === NATIVE_GAME_CENTER_BILLING) {
-    const native = await nativeGameCenterAccount(ctx.tx,ctx.actor.id);
+  if (usesLegacyBilling(ctx.config) || [NATIVE_GAME_CENTER_BILLING,NATIVE_APPLE_BILLING].includes(ctx.config.APP_BILLING_PROVIDER||'')) {
+    const native = await nativeAccount(ctx.tx,ctx.actor.id);
     if (native?.state === 'deleted') throw new AppServiceError('account_unavailable','This account has been deleted.',403);
-    if (native) ctx = {...ctx,config:nativeGameCenterConfiguration(ctx.config)};
+    if (native) ctx = {...ctx,config:nativeAccountConfiguration(ctx.config,native.provider)};
     else if (usesLegacyBilling(ctx.config)) return await dispatchLegacyBilling(ctx,body);
-    else throw new AppServiceError('game_center_identity_required','A verified Game Center account is required.',403);
+    else throw new AppServiceError('native_identity_required','A verified native account is required.',403);
   }
   const action = ({check_subscription:'check',prepare_purchase:'prepare'} as Record<string,string>)[body.action] || body.action;
   if (action === 'check') return await checkMembership(ctx);
@@ -82,7 +82,18 @@ async function applyVerifiedMembership(ctx:AppContext,verified:any,checkedAt:num
   const {transaction,renewal,status} = verified;
   const token = requireUUID(transaction.appAccountToken,'app_account_token');
   await ctx.tx`select pg_advisory_xact_lock(hashtextextended(${token+':apple-token'},0))`;
-  const [owner] = await ctx.tx`select user_id,state from app_private.apple_accounts where app_account_token=${token} for update`;
+  let [owner] = await ctx.tx`select user_id,state from app_private.apple_accounts where app_account_token=${token} for update`;
+  const [aliasSchema]=await ctx.tx`select to_regclass('apple_private.billing_token_aliases') is not null as present`;
+  if(aliasSchema.present) {
+    const [alias]=await ctx.tx`select user_id,state from apple_private.billing_token_aliases where app_account_token=${token} for update`;
+    // A conflicting primary or alias fails closed even if either matches actor.
+    if(alias&&owner&&(alias.user_id!==owner.user_id||alias.state!==owner.state))
+      throw new AppServiceError('purchase_owner_mismatch','This purchase has conflicting account ownership.',409);
+    if(!owner&&alias) {
+      const native=await nativeAccount(ctx.tx,ctx.actor.id);
+      if(native?.provider==='apple'&&native.state==='ready')owner=alias;
+    }
+  }
   if (!owner || owner.user_id !== ctx.actor.id || owner.state !== 'active') throw new AppServiceError('purchase_owner_mismatch','This purchase is not bound to the signed-in account.',409);
   const incoming = normalizeAppleEntitlement({transaction,renewal,appleStatus:status,userID:ctx.actor.id,userEmail:ctx.actor.contactEmail,
     eventAtMilliseconds:checkedAt,now:ctx.now});
@@ -106,7 +117,7 @@ export async function checkMembership(ctx: AppContext) {
   const active = entitlements.length + grants.length > 0;
   const providers = [...new Set(entitlements.map((v:any)=>v.provider)),...(grants.length?['admin']:[])];
   const expiry = grants.some((v:any)=>!v.expires_at) ? null : [...entitlements,...grants].map((v:any)=>new Date(v.expires_at).toISOString()).sort().at(-1) || null;
-  const native = ctx.config.APP_BILLING_PROVIDER === NATIVE_GAME_CENTER_BILLING;
+  const native = [NATIVE_GAME_CENTER_BILLING,NATIVE_APPLE_BILLING].includes(ctx.config.APP_BILLING_PROVIDER||'');
   const [usage] = native ? await ctx.tx`select count(*)::integer as total from game_center_private.generation_requests where user_id=${ctx.actor.id} and usage_date=(${ctx.now}::timestamptz at time zone 'UTC')::date and charged` : [];
   const used = native ? Number(usage?.total || 0) : null;
   const rewards = native && rewardedGenerationEnabled(ctx.config,ctx.actor.id) ? await nativeRewardStatus(ctx.tx,ctx.actor.id,ctx.config) : undefined;
@@ -121,23 +132,25 @@ export async function checkMembership(ctx: AppContext) {
  * as a tombstone so a later account cannot claim the same purchase. */
 export async function cleanupBillingPush(ctx: AppContext) {
   await ctx.tx`update app_private.apple_accounts set state='deleted' where user_id=${ctx.actor.id}`;
+  const [aliases]=await ctx.tx`select to_regclass('apple_private.billing_token_aliases') is not null as present`;
+  if(aliases.present)await ctx.tx`update apple_private.billing_token_aliases set state='deleted' where user_id=${ctx.actor.id}`;
   await ctx.tx`update app_private.entitlements set active=false,data=data-'user_email'-'loyalty_transaction_ids'-'loyalty_verified_at'-'loyalty_chains' where user_id=${ctx.actor.id}`;
   await ctx.tx`delete from app_private.membership_grants where user_id=${ctx.actor.id}`;
   await ctx.tx`delete from app_private.push_registrations where user_id=${ctx.actor.id}`;
   await ctx.tx`update app_private.legacy_links set state='deleted' where user_id=${ctx.actor.id}`;
   await ctx.tx`delete from app_private.legacy_operations where user_id=${ctx.actor.id}`;
-  // This bridge stores no provider credentials. Root owns Supabase auth deletion
-  // and must enqueue revocation only if future migration imports such credentials.
+  // Apple lifecycle verifies grant revocation and source erasure before entering
+  // this transaction; retained token aliases are ownership tombstones only.
 }
 
 /** Reconcile an owned subscription before consuming its benefits. Existing
  * Base44 webhooks remain untouched. The canonical Apple API catches renewal,
  * refund and revocation even when no new device transaction arrives. */
 export async function refreshNativeMembership(input:Preparation,dependencies:{db:any,verify?:typeof verifyStoredAppleEntitlement}) {
-  const native = await resolveNativeGameCenterAccount(dependencies.db,input.actor.id);
+  const native = await resolveNativeAccount(dependencies.db,input.actor.id);
   if (!native) return input.config;
   if (native.state !== 'ready') throw new AppServiceError('account_unavailable','This account is unavailable.',403);
-  const config = nativeGameCenterConfiguration(input.config);
+  const config = nativeAccountConfiguration(input.config,native.provider);
   const consumes = input.body.service === 'membership' && ['check','check_subscription','prepare','prepare_purchase'].includes(input.body.action)
     || input.body.service === 'generation_rewards'
     || input.body.service === 'legacy' && ['generate','generate_word_pack'].includes(input.body.action)
@@ -161,7 +174,7 @@ export async function refreshNativeMembership(input:Preparation,dependencies:{db
     }
     await dependencies.db.begin(async(tx:any)=>{
       await accountGate(tx,input.actor.id);
-      const current = await nativeGameCenterAccount(tx,input.actor.id);
+      const current = await nativeAccount(tx,input.actor.id);
       if (current?.state !== 'ready') throw new AppServiceError('account_unavailable','This account is unavailable.',403);
       await applyVerifiedMembership({tx,actor:input.actor,config,now:new Date()},verified,checkedAt);
     });

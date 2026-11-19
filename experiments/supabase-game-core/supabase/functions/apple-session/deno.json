@@ -1,0 +1,6 @@
+{
+  "imports": {"jose": "npm:jose@5.10.0", "postgres": "npm:postgres@3.4.9"},
+  "compilerOptions": {"strict": true},
+  "nodeModulesDir": "auto",
+  "lock": true
+}

@@ -4,6 +4,7 @@ import Security
 
 enum SupabaseNativeCredentialKind: String, Codable, Sendable {
     case gameCenter = "game_center"
+    case apple
 }
 
 /// Credentials belong to a project and app bundle, separate from Base44 and the game lab.
@@ -68,6 +69,8 @@ final class SupabaseAppSession {
     var accessToken: String? { session?.accessToken }
     var userID: String { session?.userID ?? "" }
     var isNativeGameCenterSession: Bool { session?.nativeCredentialKind == .gameCenter }
+    var isNativeAppleSession: Bool { session?.nativeCredentialKind == .apple }
+    var isNativeSession: Bool { session?.nativeCredentialKind != nil }
 
     init(configuration: SupabaseAppConfiguration? = nil, session: URLSession? = nil, storedSession: SupabaseStoredSession? = SupabaseSessionKeychain.read(), saveSession: @escaping (SupabaseStoredSession) throws -> Void = SupabaseSessionKeychain.save, clearSession: @escaping () -> Void = SupabaseSessionKeychain.clear, mutationJournal: SupabaseAppMutationJournal = SupabaseAppMutationJournal(), storedLegacy: SupabaseLegacyCredential? = SupabaseLegacyKeychain.read(), saveLegacy: @escaping (SupabaseLegacyCredential) throws -> Void = SupabaseLegacyKeychain.save, clearLegacy: @escaping () -> Void = SupabaseLegacyKeychain.clear, appStoreRetrySleep: @escaping @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }, sharedGenerationRetrySleep: @escaping @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
         persistSession = saveSession; removeSession = clearSession
@@ -75,7 +78,7 @@ final class SupabaseAppSession {
         persistLegacy = saveLegacy; removeLegacy = clearLegacy
         self.appStoreRetrySleep = appStoreRetrySleep
         self.sharedGenerationRetrySleep = sharedGenerationRetrySleep
-        legacyCredential = storedLegacy?.actorID == storedSession?.userID ? storedLegacy : nil
+        legacyCredential = storedSession?.nativeCredentialKind == nil && storedLegacy?.actorID == storedSession?.userID ? storedLegacy : nil
         configurationResult = Result { try configuration?.validated() ?? SupabaseAppConfiguration.bundled() }
         if let session { http = session }
         else {
@@ -127,6 +130,15 @@ final class SupabaseAppSession {
     /// between durable credentials and publishing the verified account.
     func commitGameCenter(accessToken: String, userID: String) throws {
         guard let candidate = candidates[accessToken], candidate.nativeCredentialKind == .gameCenter,
+              candidate.userID == userID else { throw Self.invalidSession }
+        try commit(accessToken: accessToken)
+    }
+
+    /// A direct Apple exchange cannot accept a legacy or Game Center candidate.
+    /// Ownership checks and Keychain persistence complete without suspending.
+    func commitApple(accessToken: String, userID: String) throws {
+        try Task.checkCancellation()
+        guard let candidate = candidates[accessToken], candidate.nativeCredentialKind == .apple,
               candidate.userID == userID else { throw Self.invalidSession }
         try commit(accessToken: accessToken)
     }
@@ -264,7 +276,7 @@ final class SupabaseAppSession {
         let isAppStoreDelivery = write && service == "membership" && action == "sync_transaction"
         let isWordPackGeneration = write && service == "legacy" && action == "generate"
         let isAccountDeletion = write && service == "profile" && action == "delete" && fields["deletion_scope"]?.string == "account"
-        let isNativeAccountDeletion = isAccountDeletion && isNativeGameCenterSession
+        let deletionCredentialKind = session?.nativeCredentialKind
         let deliveryLease = isAppStoreDelivery ? try await appStoreDeliveryQueue.acquire(timeout: 120) : nil
         defer { if let deliveryLease { appStoreDeliveryQueue.release(deliveryLease) } }
         try Task.checkCancellation()
@@ -305,7 +317,12 @@ final class SupabaseAppSession {
                 // A generic profile purge is not full account deletion. Each
                 // credential type must receive its own server-confirmed marker;
                 // native Game Center never claims to delete a Base44 identity.
-                let confirmation = isNativeAccountDeletion ? "native_account_deleted" : "original_account_deleted"
+                let confirmation: String
+                switch deletionCredentialKind {
+                case .apple: confirmation = "apple_account_deleted"
+                case .gameCenter: confirmation = "native_account_deleted"
+                case nil: confirmation = "original_account_deleted"
+                }
                 guard value["success"].bool, value[confirmation].bool else {
                     throw Base44Error(message: "Account deletion was not confirmed. Please retry.", statusCode: 502,
                                       code: "account_deletion_response_invalid", retryable: true)
@@ -486,12 +503,13 @@ final class SupabaseAppSession {
     }
     private func request(path: String, method: String, body: JSONValue, token: String? = nil) async throws -> JSONValue {
         let configuration = try configuration()
-        guard path.hasPrefix("/auth/v1/") || ["/functions/v1/app-services", "/functions/v1/full-game-core", "/functions/v1/legacy-session", "/functions/v1/game-center-session"].contains(path),
+        guard path.hasPrefix("/auth/v1/") || ["/functions/v1/app-services", "/functions/v1/full-game-core", "/functions/v1/legacy-session", "/functions/v1/game-center-session", "/functions/v1/apple-session"].contains(path),
               let origin = URL(string: configuration.backendURL),
               let url = URL(string: configuration.backendURL + path), url.scheme == origin.scheme, url.host == origin.host, url.port == origin.port else { throw Self.invalidSession }
         var request = URLRequest(url: url)
         request.httpMethod = method
         if path == "/functions/v1/legacy-session" { request.timeoutInterval = 90 }
+        else if path == "/functions/v1/apple-session" { request.timeoutInterval = 60 }
         else if path == "/functions/v1/app-services", body["service"].string == "profile", body["action"].string == "delete", body["deletion_scope"].string == "account" { request.timeoutInterval = 90 }
         else if path == "/functions/v1/app-services", body["service"].string == "legacy", body["action"].string == "generate" { request.timeoutInterval = 75 }
         else { request.timeoutInterval = 20 }
@@ -544,7 +562,36 @@ final class SupabaseAppSession {
         }
     }
 
-    private func nativeCandidate(kind: SupabaseNativeCredentialKind, requireCurrentAttempt: @MainActor () throws -> Void = {}, exchange: () async throws -> JSONValue) async throws -> LoginResponse {
+    /// The owned Apple credential is sent only to our Supabase function. The
+    /// server verifies Apple and resolves any prior account before issuing a
+    /// standard Supabase session; a client email or user ID cannot select it.
+    func exchangeApple(
+        credential: AppleSignInCredential,
+        requestID: UUID,
+        onProfileSync: @MainActor () -> Void = {},
+        requireCurrentAttempt: @MainActor () throws -> Void = {}
+    ) async throws -> LoginResponse {
+        guard try configuration().appleSignInEnabled else {
+            throw Base44Error(message: "Apple sign-in is unavailable.", code: "apple_sign_in_disabled")
+        }
+        var fields: [String: JSONValue] = [
+            "identity_token": .string(credential.identityToken),
+            "authorization_code": .string(credential.authorizationCode),
+            "raw_nonce": .string(credential.rawNonce),
+            "request_id": .string(requestID.uuidString.lowercased())
+        ]
+        if let name = credential.givenName { fields["given_name"] = .string(name) }
+        if let name = credential.familyName { fields["family_name"] = .string(name) }
+        return try await nativeCandidate(kind: .apple, onProfileSync: onProfileSync, requireCurrentAttempt: requireCurrentAttempt) {
+            let value = try await self.request(path: "/functions/v1/apple-session", method: "POST", body: .object(fields))
+            guard value["provider"].string == "apple", value["migration_version"] == .number(1) else {
+                throw Self.invalidSessionResponse
+            }
+            return value
+        }
+    }
+
+    private func nativeCandidate(kind: SupabaseNativeCredentialKind, onProfileSync: @MainActor () -> Void = {}, requireCurrentAttempt: @MainActor () throws -> Void = {}, exchange: () async throws -> JSONValue) async throws -> LoginResponse {
         try Task.checkCancellation(); try requireCurrentAttempt()
         let epoch = generation
         let exchangeID = UUID()
@@ -555,20 +602,39 @@ final class SupabaseAppSession {
             guard generation == epoch, candidateExchangeID == exchangeID else { throw CancellationError() }
             try requireCurrentAttempt()
         }
+        var issuedAccessToken: String?
         do {
             let response = try await exchange()
-            try requireOwnership()
             var candidate = try Self.decodeSession(response)
+            issuedAccessToken = candidate.accessToken
+            try requireOwnership()
             candidate.nativeCredentialKind = kind
             candidates[candidate.accessToken] = candidate
+            onProfileSync()
+            try requireOwnership()
             let user = try await profile(accessToken: candidate.accessToken)
             try requireOwnership()
             return LoginResponse(accessToken: candidate.accessToken, user: user)
         } catch {
-            if candidateExchangeID == exchangeID {
-                candidateExchangeID = nil; candidates.removeAll(); legacyCandidates.removeAll()
+            defer {
+                if candidateExchangeID == exchangeID {
+                    candidateExchangeID = nil; candidates.removeAll(); legacyCandidates.removeAll()
+                }
+                if kind == .apple, let token = issuedAccessToken {
+                    revokeUncommittedAppleCandidate(token)
+                }
             }
+            try requireOwnership()
             throw error
+        }
+    }
+
+    private func revokeUncommittedAppleCandidate(_ token: String) {
+        // Cleanup must neither delay the auth UI nor revoke a replacement
+        // account. A server-issued but rejected candidate was never persisted.
+        Task { @MainActor [weak self] in
+            guard let self, self.session?.accessToken != token, self.candidates[token] == nil else { return }
+            _ = try? await self.request(path: "/auth/v1/logout?scope=local", method: "POST", body: .object([:]), token: token)
         }
     }
 

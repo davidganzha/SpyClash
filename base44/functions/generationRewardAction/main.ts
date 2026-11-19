@@ -9,6 +9,7 @@ import {
   resolveGenerationMembership,
 } from "./membership.ts";
 import { withGenerationWriterLease } from "./generation-write-lifecycle.ts";
+import {forwardTransferredReward} from './reward-transfer-forward.ts';
 import { verifyAdMobCallback } from "./admob-ssv.ts";
 import { isUnityCallback, unityAttemptFields, verifyUnityCallback } from "./unity-ssv.ts";
 import {
@@ -72,12 +73,15 @@ Deno.serve(async (req) => {
       const result = await withGenerationWriterLease({
           lifecycleStore: entities.BillingIdentityLifecycle,
           userID: callback.userID,
-          action: async (guard) =>
-            await grantVerifiedGenerationReward({
+          action: async (guard) => {
+            const current=await rewardAttempt(entities.GenerationReward,callback.userID,attemptID);
+            if((current as any)?.state==='transferred')return await forwardTransferredReward(req,current!,unity);
+            return await grantVerifiedGenerationReward({
               store: entities.GenerationReward,
               guard,
               callback,
-            }),
+            });
+          },
         });
       return unity ? new Response("1", { headers: { "Content-Type": "text/plain", "Cache-Control": "no-store" } }) : Response.json(result);
     }

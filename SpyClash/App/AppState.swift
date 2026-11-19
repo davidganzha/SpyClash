@@ -3594,7 +3594,7 @@ final class AppState: NSObject {
             isGameCenterSigningIn = false
             // RootView uses the account's actual onboarding state. A returning
             // player keeps their progress; a new player opens OnboardingView.
-            startGameCenterPostAuthConnection(user: response.user, generation: client.sessionGeneration)
+            startNativePostAuthConnection(user: response.user, generation: client.sessionGeneration, kind: .gameCenter)
         } catch {
             guard authenticationAttemptID == attemptID,
                   authenticationSessionGeneration == client.sessionGeneration,
@@ -3604,13 +3604,13 @@ final class AppState: NSObject {
         }
     }
 
-    private func startGameCenterPostAuthConnection(user authenticatedUser: SpyUser, generation: UUID) {
+    private func startNativePostAuthConnection(user authenticatedUser: SpyUser, generation: UUID, kind: SupabaseNativeCredentialKind) {
         postAuthActiveRoomRestoreTask?.cancel()
         postAuthActiveRoomRestoreUserID = authenticatedUser.id
         postAuthActiveRoomRestoreTask = Task { @MainActor [weak self] in
             guard let self, self.user?.id == authenticatedUser.id,
                   self.client.sessionGeneration == generation, !Task.isCancelled else { return }
-            do { try await self.client.attachGameCenterSession(user: authenticatedUser, generation: generation) }
+            do { try await self.client.attachNativeSession(user: authenticatedUser, generation: generation, kind: kind) }
             catch { return }
             guard self.user?.id == authenticatedUser.id,
                   self.client.sessionGeneration == generation, !Task.isCancelled,
@@ -3826,6 +3826,32 @@ final class AppState: NSObject {
             }
 
             appleAuthStage = .verifyingIdentity
+#if SPYCLASH_SUPABASE
+            let verifiedSession = try await SupabaseAppSession.shared.exchangeApple(
+                credential: credential,
+                requestID: requestID,
+                onProfileSync: { [weak self] in
+                    guard self?.authenticationAttemptID == attemptID else { return }
+                    self?.appleAuthStage = .synchronizingProfile
+                },
+                requireCurrentAttempt: { try self.requireCurrentAuthentication(attemptID) }
+            )
+            try requireCurrentAuthentication(attemptID)
+            // Accept the verified account synchronously. Realtime connection
+            // starts afterward and cannot hold the identity commit in flight.
+            try client.commitAppleToken(verifiedSession.accessToken, user: verifiedSession.user)
+            try requireCurrentAuthentication(attemptID, checkSession: false)
+            // The full Supabase session is already durable in its own store.
+            // Remove the old Base44 bootstrap token rather than saving a
+            // Supabase JWT in the legacy credential slot.
+            sessionTokenClear()
+            reconcileLanguagePreference(with: verifiedSession.user.language)
+            user = verifiedSession.user
+#if DEBUG
+            isUIPreviewMode = false
+#endif
+            startNativePostAuthConnection(user: verifiedSession.user, generation: client.sessionGeneration, kind: .apple)
+#else
             let nativeSession = try await client.appleNativeAccessToken(for: credential, onPhaseChange: { [weak self] phase in
                 guard self?.authenticationAttemptID == attemptID else { return }
                 switch phase {
@@ -3841,6 +3867,7 @@ final class AppState: NSObject {
             try requireCurrentAuthentication(attemptID)
             appleAuthStage = .synchronizingProfile
             try await acceptAppleNativeSession(nativeSession, attemptID: attemptID)
+#endif
 
             // The animation runs while identity/profile verification is in flight.
             // Once ready, finish the mark promptly instead of enforcing a four-second minimum.
@@ -4236,7 +4263,16 @@ final class AppState: NSObject {
         try requireCurrentAuthentication(attemptID, checkSession: false)
 
         appleAuthStage = nil
+#if SPYCLASH_SUPABASE
+        // Apple identity and profile are already committed. Restore an active
+        // room in the background instead of holding the login cover on its
+        // realtime/network connection.
+        if !SupabaseAppSession.shared.isNativeAppleSession {
+            await waitForPostAuthActiveRoomRestoreIfNeeded()
+        }
+#else
         await waitForPostAuthActiveRoomRestoreIfNeeded()
+#endif
         try requireCurrentAuthentication(attemptID, checkSession: false)
         await prepareLatestPendingShellRouteForReveal()
         try requireCurrentAuthentication(attemptID, checkSession: false)

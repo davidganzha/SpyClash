@@ -1,10 +1,11 @@
 import {AppServiceError,requireUUID,type AppActor,type AppContext} from './contracts.ts';
 import {accountGate} from './account-gate.ts';
-import {nativeGameCenterAccount,resolveNativeGameCenterAccount} from './native-game-center.ts';
+import {nativeAccount,resolveNativeAccount} from './native-account.ts';
 import {verifyLegacyCredential,boundedLegacyJSON} from './legacy-provider.ts';
 import {lockGenerationQuota,nativeRewardStatus,rewardedAdUnit,enrollRewardGeneration,type RewardConfig} from './generation-reward-ledger.ts';
 import {verifyAdMobCallback,AdMobVerificationError} from './admob-ssv.ts';
 import {isUnityCallback,unityAttemptFields,verifyUnityCallback,UnityVerificationError} from './unity-ssv.ts';
+import {importedRewardOwner} from './imported-reward-alias.ts';
 const evidenceSet=new WeakSet<object>();
 const actions=new Set(['status','prepare','claim_status']);
 const randomToken=()=>Array.from(crypto.getRandomValues(new Uint8Array(32)),v=>v.toString(16).padStart(2,'0')).join('');
@@ -18,7 +19,7 @@ function validate(body:Record<string,any>){
  * before any external action, then checked again before accepting its result. */
 export async function prepareGenerationRewards(input:{actor:AppActor,body:Record<string,any>,config:RewardConfig},deps:{db:any,fetch?:typeof fetch}){
   validate(input.body);
-  if(await resolveNativeGameCenterAccount(deps.db,input.actor.id))return undefined;
+  if(await resolveNativeAccount(deps.db,input.actor.id))return undefined;
   const verified=await verifyLegacyCredential(input.config,input.body.base44_access_token,deps.fetch||fetch);
   const {identity,credential,...destination}=verified;
   await deps.db.begin(async(tx:any)=>{
@@ -43,7 +44,7 @@ export async function prepareGenerationRewards(input:{actor:AppActor,body:Record
 }
 export async function dispatchGenerationRewards(ctx:AppContext,body:Record<string,any>){
   validate(body);
-  const native=await nativeGameCenterAccount(ctx.tx,ctx.actor.id);
+  const native=await nativeAccount(ctx.tx,ctx.actor.id);
   if(!native){
     const evidence=ctx.evidence;
     if(!evidence||!evidenceSet.has(evidence)||evidence.actor!==ctx.actor.id||evidence.action!==body.action||evidence.requestID!==body.request_id
@@ -84,13 +85,14 @@ export function createGenerationRewardSSVHandler(db:any,fetcher:typeof fetch=fet
       const unity=isUnityCallback(request.url);
       const event=unity?{...verifyUnityCallback(request.url,config),userID:'',timestamp:Date.now()}:await verifyAdMobCallback(request.url,fetcher);
       const attemptID=requireUUID(event.customData.split('.')[0],'attempt_id');
-      if(unity&&event.customData.split('.')[1]!=='native')throw new AppServiceError('invalid_reward_claim','Invalid reward destination.',400);
+      const transferred=event.customData.split('.')[1]==='legacy';
+      if(unity&&!transferred&&event.customData.split('.')[1]!=='native')throw new AppServiceError('invalid_reward_claim','Invalid reward destination.',400);
       await db.begin(async(tx:any)=>{
-        const [owner]=unity?await tx`select user_id from game_center_private.generation_reward_attempts where custom_data=${event.customData}`:[{user_id:event.userID}];
+        const owner=transferred?await importedRewardOwner(tx,event,unity):(unity?(await tx`select user_id from game_center_private.generation_reward_attempts where custom_data=${event.customData}`)[0]:{user_id:event.userID});
         if(!owner)throw new AppServiceError('invalid_reward_claim','Unknown reward attempt.',400);
         const userID=requireUUID(owner.user_id,'user_id');
         await accountGate(tx,userID);
-        if((await nativeGameCenterAccount(tx,userID))?.state!=='ready')throw new AppServiceError('account_unavailable','This account is unavailable.',403);
+        if((await nativeAccount(tx,userID))?.state!=='ready')throw new AppServiceError('account_unavailable','This account is unavailable.',403);
         await lockGenerationQuota(tx,userID);
         const [attempt]=await tx`select * from game_center_private.generation_reward_attempts where user_id=${userID} and attempt_id=${attemptID} for update`;
         const unit=attempt?.ad_unit_id;

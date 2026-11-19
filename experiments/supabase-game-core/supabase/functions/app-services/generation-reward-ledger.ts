@@ -1,6 +1,6 @@
 import {AppServiceError} from './contracts.ts';
 import {unityRewardUnit} from './unity-ssv.ts';
-import {nativeGameCenterHasMembership} from './native-game-center.ts';
+import {nativeHasMembership} from './native-account.ts';
 
 export type RewardConfig=Record<string,string|undefined>;
 export const REWARDED_AI_DAILY_LIMIT=3;
@@ -41,7 +41,7 @@ export async function lockGenerationQuota(tx:any,userID:string){
   await tx`select pg_advisory_xact_lock(hashtextextended(${userID+':native-ai-quota'},0))`;
 }
 export async function nativeRewardStatus(tx:any,userID:string,config:RewardConfig){
-  const unlimited=await nativeGameCenterHasMembership(tx,userID);
+  const unlimited=await nativeHasMembership(tx,userID);
   const [{today,resets_at}]=await tx`select (clock_timestamp() at time zone 'UTC')::date::text as today,
     (((clock_timestamp() at time zone 'UTC')::date+1)::timestamp at time zone 'UTC') as resets_at`;
   const enabled=await rewardedGenerationEnabledForUser(tx,userID,config);

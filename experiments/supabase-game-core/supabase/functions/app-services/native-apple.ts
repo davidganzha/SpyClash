@@ -9,6 +9,7 @@ export const MAIN_APPLE_BUNDLE = 'com.spyclash.ios';
 export const MAIN_APPLE_APP_ID = 6793534085;
 export const TEST_APPLE_BUNDLE = 'com.spyclash.ios.supabasetest';
 export const NATIVE_GAME_CENTER_BILLING = 'native-game-center';
+export const NATIVE_APPLE_BILLING = 'native-apple';
 type Config = Record<string,string|undefined>;
 type Target = {bundle:string,environment:'Sandbox'|'Production',appAppleID?:number};
 
@@ -17,10 +18,14 @@ type Target = {bundle:string,environment:'Sandbox'|'Production',appAppleID?:numb
 export function nativeGameCenterConfiguration(config:Config):Config {
   return {...config,APP_BILLING_PROVIDER:NATIVE_GAME_CENTER_BILLING,SPYCLASH_LIMITLESS_ENABLED:'true'};
 }
+export function nativeAccountConfiguration(config:Config,provider:string):Config {
+  return {...config,APP_BILLING_PROVIDER:provider==='apple'?NATIVE_APPLE_BILLING:NATIVE_GAME_CENTER_BILLING,SPYCLASH_LIMITLESS_ENABLED:'true'};
+}
 export function appleVerificationTargets(config:Config):Target[] {
   if (config.APP_IAP_ENABLED !== 'true') return [];
-  if (config.APP_BILLING_PROVIDER === NATIVE_GAME_CENTER_BILLING) {
-    if (config.APP_NATIVE_GAME_CENTER_IAP_ENABLED !== 'true' || config.APP_IAP_BUNDLE_ID !== MAIN_APPLE_BUNDLE
+  if ([NATIVE_GAME_CENTER_BILLING,NATIVE_APPLE_BILLING].includes(config.APP_BILLING_PROVIDER||'')) {
+    const enabled=config.APP_BILLING_PROVIDER===NATIVE_APPLE_BILLING?config.APP_NATIVE_APPLE_IAP_ENABLED:config.APP_NATIVE_GAME_CENTER_IAP_ENABLED;
+    if (enabled !== 'true' || config.APP_IAP_BUNDLE_ID !== MAIN_APPLE_BUNDLE
         || config.APP_IAP_APPLE_ID !== String(MAIN_APPLE_APP_ID)) return [];
     if (config.APP_IAP_ENVIRONMENT === 'SandboxAndProduction') return [
       {bundle:MAIN_APPLE_BUNDLE,environment:'Production',appAppleID:MAIN_APPLE_APP_ID},

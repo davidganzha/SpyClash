@@ -236,10 +236,14 @@ final class Base44Client {
         try SupabaseAppSession.shared.commitGameCenter(accessToken: token, userID: user.id)
     }
 
-    func attachGameCenterSession(user: SpyUser, generation: UUID) async throws {
+    func commitAppleToken(_ token: String, user: SpyUser) throws {
+        try SupabaseAppSession.shared.commitApple(accessToken: token, userID: user.id)
+    }
+
+    func attachNativeSession(user: SpyUser, generation: UUID, kind: SupabaseNativeCredentialKind) async throws {
         let session = SupabaseAppSession.shared
         guard session.generation == generation, session.userID == user.id,
-              session.isNativeGameCenterSession else { throw CancellationError() }
+              session.session?.nativeCredentialKind == kind else { throw CancellationError() }
         try await supabaseAdapter.connectSession(profile: user, restoreActiveRoom: false)
         guard session.generation == generation, session.userID == user.id else { throw CancellationError() }
     }
@@ -250,7 +254,7 @@ final class Base44Client {
         let includeLegacyCredential = service == "membership"
             && ["check", "prepare", "sync_transaction"].contains(action)
             && configuration.permitsLegacyBilling
-            && !SupabaseAppSession.shared.isNativeGameCenterSession
+            && !SupabaseAppSession.shared.isNativeSession
         return try await SupabaseAppSession.shared.service(service, action: action, fields: value.object ?? [:], write: write, includeLegacyCredential: includeLegacyCredential)
     }
 #endif
@@ -1324,7 +1328,7 @@ final class Base44Client {
         let session = SupabaseAppSession.shared
         return try await session.service("generation_rewards", action: action,
                                          fields: fields, write: write,
-                                         includeLegacyCredential: !session.isNativeGameCenterSession)
+                                         includeLegacyCredential: !session.isNativeSession)
 #elseif SPYCLASH_SUPABASE_TEST
         throw Base44Error(message: "Rewarded generation is unavailable for synthetic accounts.", code: "rewarded_generation_unavailable")
 #else
@@ -1560,15 +1564,15 @@ final class Base44Client {
 
     func deleteAccount() async throws -> AccountDeletionResult {
 #if SPYCLASH_SUPABASE
-        let nativeGameCenter = SupabaseAppSession.shared.isNativeGameCenterSession
-        if SupabaseAppRuntime.isMainHybrid && !SupabaseAppRuntime.deletesOriginalAccount && !nativeGameCenter {
+        let nativeAccount = SupabaseAppSession.shared.isNativeSession
+        if SupabaseAppRuntime.isMainHybrid && !SupabaseAppRuntime.deletesOriginalAccount && !nativeAccount {
             throw Base44Error(message: "Full account deletion is not enabled for this candidate yet.", code: "account_deletion_unconfigured")
         }
-        let deletesAccount = nativeGameCenter || SupabaseAppRuntime.deletesOriginalAccount
+        let deletesAccount = nativeAccount || SupabaseAppRuntime.deletesOriginalAccount
         let stagingResult: AccountDeletionResult = try await SupabaseAppSession.shared.service(
             "profile", action: "delete",
             fields: deletesAccount ? ["deletion_scope": .string("account")] : [:],
-            write: true, includeLegacyCredential: SupabaseAppRuntime.deletesOriginalAccount && !nativeGameCenter
+            write: true, includeLegacyCredential: SupabaseAppRuntime.deletesOriginalAccount && !nativeAccount
         )
         guard stagingResult.success else { throw Base44Error(message: "Account deletion was not confirmed.") }
         return stagingResult

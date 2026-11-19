@@ -4,7 +4,7 @@ import { assertFanCapablePlayer } from './rules/fan-mode-policy.ts';
 import { readLeaderboard } from './leaderboard-service.ts';
 import { validateSharedWordPackContent } from './word-pack-content-safety.ts';
 import { accountGate } from '../app-services/account-gate.ts';
-import { nativeGameCenterAccount,nativeGameCenterHasMembership } from '../app-services/native-game-center.ts';
+import { nativeAccount,nativeHasMembership } from '../app-services/native-account.ts';
 
 export class GameServiceError extends Error {
   constructor(code, message, status = 400, retryable = false) {
@@ -190,8 +190,8 @@ async function readGame(db, actor, body) {
   }
   if (body.action === 'get_history') {
     const limit = Math.max(1, Math.min(200, Number.isInteger(body.limit) ? body.limit : 200));
-    const native = await nativeGameCenterAccount(db,actor.id);
-    const freeNative = native && !await nativeGameCenterHasMembership(db,actor.id);
+    const native = await nativeAccount(db,actor.id);
+    const freeNative = native && !await nativeHasMembership(db,actor.id);
     let cursor = null;
     if (body.cursor) {
       try {

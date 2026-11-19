@@ -191,6 +191,11 @@ verify_jwt = false
 [functions.game-center-session]
 verify_jwt = false
 
+# Apple supplies its signed identity token before a Supabase session exists.
+# The handler verifies Apple's signature, nonce, authorization code and owner.
+[functions.apple-session]
+verify_jwt = false
+
 # Only this signed Google webhook is public. app-services retains its JWT gate.
 [functions.rewarded-generation-ssv]
 verify_jwt = false

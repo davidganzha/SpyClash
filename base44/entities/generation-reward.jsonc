@@ -10,11 +10,15 @@
     "issued_at": { "type": "string", "format": "date-time" },
     "state": {
       "type": "string",
-      "enum": ["pending", "earned", "reserved", "spent"]
+      "enum": ["pending", "earned", "reserved", "spent", "transferred"]
     },
     "transaction_id": { "type": "string", "maxLength": 256 },
     "earned_at": { "type": "string", "format": "date-time" },
-    "generation_request_id": { "type": "string", "maxLength": 128 }
+    "generation_request_id": { "type": "string", "maxLength": 128 },
+    "transfer_state": { "type": "string", "enum": ["pending", "earned", "spent"] },
+    "transfer_user_id": { "type": "string", "format": "uuid" },
+    "transfer_id": { "type": "string", "format": "uuid" },
+    "transferred_at": { "type": "string", "format": "date-time" }
   },
   "required": [
     "user_id",

@@ -129,7 +129,7 @@ export async function eraseAccountArchives(ctx:AppContext,intent?:Row) {
     and source_origin='https://spyclash.com' and source_app_id='69a0e57fa939f578082f8091'`;
   const legacyIDs=new Set([...links,...reservations].map((r:Row)=>r.legacy_user_id));
   if(!legacyIDs.size)return; // Native Game Center has no legacy source account.
-  if(legacyIDs.size!==1 || !intent || intent.native_account || intent.legacy_user_id!==[...legacyIDs][0])throw retry('archive_identity_proof_required');
+  if(legacyIDs.size!==1 || !intent || (intent.native_account && intent.provider!=='apple') || intent.legacy_user_id!==[...legacyIDs][0])throw retry('archive_identity_proof_required');
   if(!['legacy_deleted','complete'].includes(intent.phase))throw retry('archive_identity_proof_required');
   if(intent.phase==='complete')return; // This transaction previously committed the archive purge.
   const legacyID=String(intent.legacy_user_id);

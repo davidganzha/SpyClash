@@ -34,6 +34,7 @@ import {deleteHistoricalOwnedContent,historicalRoomSubject} from "./historical-c
 import {verifyArchiveErasureRequest,archiveErasureCapabilities} from "./deletion-archive-proof.ts";
 import {appleCredentialIdentityKey} from "./apple-sign-in-credential.ts";
 import { prepareDeletionReceipt, markDeletionReceiptReady, completeDeletionReceipt, deletionReceiptStatus, deletionSubjectHash, recordDeletionArchiveProof, DeletionReceiptError } from "./deletion-receipt.ts";
+import {resolveAppleSourceErasureUser} from "./apple-source-erasure.ts";
 
 type Entity = Record<string, any>;
 type BillingRedactionSnapshot = {
@@ -529,7 +530,8 @@ Deno.serve(async (req) => {
     if (!body || typeof body !== "object" || Array.isArray(body)) return Response.json({error:"invalid_json"},{status:400});
     const base44 = createClientFromRequest(canonicalBase44Request(req));
     const receiptStore = base44.asServiceRole.entities.AccountDeletionReceipt;
-    if (body.action === "deletion_capabilities") return Response.json(await archiveErasureCapabilities(),{headers:{"Cache-Control":"no-store"}});
+    if (body.action === "deletion_capabilities") return Response.json({...await archiveErasureCapabilities(),
+      apple_source_erasure_protocol:"spyclash-apple-source-erasure-v1"},{headers:{"Cache-Control":"no-store"}});
     if (body.action === "deletion_archive_probe") {
       // Read-only deployment verification. The independent server HMAC binds
       // the exact immutable subject/aliases; no receipt or deletion is created.
@@ -548,8 +550,20 @@ Deno.serve(async (req) => {
       }
       return Response.json(status,{headers:{"Cache-Control":"no-store"}});
     }
-    if (body.action !== undefined) return Response.json({error:"invalid_action"},{status:400});
-    const user = await base44.auth.me();
+    if (body.action !== undefined && body.action !== "apple_source_erasure") return Response.json({error:"invalid_action"},{status:400});
+    const sourceErasure = body.action === "apple_source_erasure"
+      ? await resolveAppleSourceErasureUser(body,{receipts:receiptStore,users:base44.asServiceRole.entities.User,
+        credentials:base44.asServiceRole.entities.AppleSignInCredential}) : undefined;
+    if(sourceErasure?.receipt?.complete) {
+      const proof=await verifyArchiveErasureRequest(body,sourceErasure.receipt.subject_hash,
+        {users:base44.asServiceRole.entities.User,completedProof:sourceErasure.receipt.erasure_proof});
+      if(!proof)throw new DeletionReceiptError('deletion_archive_request_invalid',403);
+      await recordDeletionArchiveProof(receiptStore,body,proof);
+      return Response.json({success:true,manual_apple_revocation_required:sourceErasure.receipt.manual_apple_revocation_required===true,
+        deletion_receipt:await deletionReceiptStatus(receiptStore,base44.asServiceRole.entities.User,body)},
+        {headers:{"Cache-Control":"no-store"}});
+    }
+    const user = sourceErasure ? sourceErasure.user : await base44.auth.me();
 
     if (!user) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });

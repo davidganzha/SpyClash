@@ -1,0 +1,21 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:jose@5.10.0": "5.10.0",
+    "npm:postgres@3.4.9": "3.4.9"
+  },
+  "npm": {
+    "jose@5.10.0": {
+      "integrity": "sha512-s+3Al/p9g32Iq+oqXxkW//7jk2Vig6FF1CFqzVXoTUXt2qz89YWbL+OwS17NFYEvxC35n0FKeGO2LGYSxeM2Gg=="
+    },
+    "postgres@3.4.9": {
+      "integrity": "sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw=="
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "npm:jose@5.10.0",
+      "npm:postgres@3.4.9"
+    ]
+  }
+}

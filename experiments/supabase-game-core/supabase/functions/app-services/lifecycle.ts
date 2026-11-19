@@ -54,11 +54,17 @@ export async function deleteAccount(ctx: AppContext, body: any) {
   if (mainDeletion?.native_account) {
     await eraseGenerationRewardAccountData(tx, actor.id);
     await tx`delete from game_center_private.generation_requests where user_id=${actor.id}`;
-    await tx`update game_center_private.accounts set state='deleted',lease_id=null,lease_until=null,updated_at=${now}
+    if(mainDeletion.provider==='apple') {
+      await tx`delete from apple_private.migration_snapshots where user_id=${actor.id}`;
+      await tx`update apple_private.accounts set state='deleted',lease_id=null,lease_until=null,updated_at=${now}
+        where user_id=${actor.id} and identity_key=${mainDeletion.identity_key}`;
+      await tx`update apple_private.deletions set phase='complete',updated_at=${now} where user_id=${actor.id}`;
+      if(mainDeletion.legacy_user_id)await tx`update app_private.main_account_deletions set phase='complete',erasure_proof='{}',updated_at=${now} where user_id=${actor.id}`;
+    } else await tx`update game_center_private.accounts set state='deleted',lease_id=null,lease_until=null,updated_at=${now}
       where user_id=${actor.id} and identity_key=${mainDeletion.identity_key}`;
   } else if (mainDeletion) await tx`update app_private.main_account_deletions set phase='complete',erasure_proof='{}',updated_at=${now} where user_id=${actor.id}`;
   return { success: true, deleted: true, auth_cleanup_pending: true,
-    ...(mainDeletion?.native_account ? {native_account_deleted:true}
+    ...(mainDeletion?.provider==='apple'?{apple_account_deleted:true}:mainDeletion?.native_account ? {native_account_deleted:true}
       : mainDeletion ? {original_account_deleted:true,manual_apple_revocation_required:mainDeletion.manual_apple_revocation_required} : {}) };
 }
 

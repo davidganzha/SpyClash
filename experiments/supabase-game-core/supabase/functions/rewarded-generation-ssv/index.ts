@@ -2,6 +2,7 @@ import postgres from 'postgres';
 import { assertIsolatedSupabase } from '../app-services/legacy-provider.ts';
 import { createGenerationRewardSSVHandler } from '../app-services/generation-rewards.ts';
 import { createRewardedGenerationSSVGateway } from './handler.ts';
+import {hasImportedRewardAlias} from '../app-services/imported-reward-alias.ts';
 
 const config = Deno.env.toObject();
 const origin = assertIsolatedSupabase(config);
@@ -21,4 +22,4 @@ if (!local) {
 const db = postgres(connection.href, {prepare: false, max: 1, idle_timeout: 15, connect_timeout: 8, ...(local ? {} : {ssl: 'require'})});
 // The native handler rechecks the provider signature before its locked transaction.
 // Keeping that contract also protects its existing authenticated route.
-Deno.serve(createRewardedGenerationSSVGateway({config, native: createGenerationRewardSSVHandler(db,fetch,config)}));
+Deno.serve(createRewardedGenerationSSVGateway({config, native: createGenerationRewardSSVHandler(db,fetch,config),importedLegacy:customData=>hasImportedRewardAlias(db,customData)}));

@@ -1,6 +1,6 @@
 import {AppServiceError} from './contracts.ts';
 import {accountGate} from './account-gate.ts';
-import {nativeGameCenterAccount} from './native-game-center.ts';
+import {nativeAccount} from './native-account.ts';
 import {RELAY_BASE44_URL,RELAY_PROMPT_VERSION,RelayProtocolError,readRelayRequest,relayHeaders,relayCanonical,relayDigest,relaySecretConfigured,validateRelayTicket,validateRelayResult,type RelayTicket,type RelayInput} from './native-ai-relay-protocol.ts';
 import {lockGenerationQuota,releaseRewardGeneration} from './generation-reward-ledger.ts';
 type Config=Record<string,string|undefined>;
@@ -17,7 +17,7 @@ const stale=()=>new AppServiceError('relay_lease_expired','This generation attem
 export function nativeRelayConfigured(config:Config){return config.APP_NATIVE_GAME_CENTER_AI_ENABLED==='true'&&config.APP_NATIVE_GAME_CENTER_AI_PROVIDER==='base44-managed'&&relaySecretConfigured(config.SPYCLASH_NATIVE_AI_RELAY_SECRET);}
 async function account(tx:any,id:string){
   const profile=await accountGate(tx,id);
-  if(!profile||(await nativeGameCenterAccount(tx,id))?.state!=='ready')throw new AppServiceError('account_unavailable','This account is unavailable.',403);
+  if(!profile||(await nativeAccount(tx,id))?.state!=='ready')throw new AppServiceError('account_unavailable','This account is unavailable.',403);
 }
 // Lock ordering is account -> generation request -> provider call everywhere.
 async function activeRequest(tx:any,ticket:RelayTicket){
