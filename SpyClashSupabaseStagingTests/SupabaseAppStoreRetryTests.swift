@@ -141,12 +141,13 @@ private final class HybridStoreKitRetryFixture {
     let journal: SupabaseAppMutationJournal
     let auth: SupabaseAppSession
     let http: URLSession
-    var requests: [JSONValue] = []
-    var authorization: [String?] = []
-    private let replies: [Reply]
+    var requests: [JSONValue] { responses.requests }
+    var authorization: [String?] { responses.authorization }
+    private let responses: StoreKitRetryResponses
 
     init(responses: [Reply], sleep: @escaping @MainActor (Duration) async throws -> Void = { _ in }) {
-        replies = responses
+        let responseStore = StoreKitRetryResponses(replies: responses)
+        self.responses = responseStore
         directory = FileManager.default.temporaryDirectory.appendingPathComponent("HybridStoreKitRetry-\(UUID())")
         journal = SupabaseAppMutationJournal(directory: directory)
         let configuration = URLSessionConfiguration.ephemeral
@@ -156,24 +157,13 @@ private final class HybridStoreKitRetryFixture {
             storedSession: .init(accessToken: "fixture-supabase", refreshToken: "fixture-refresh", userID: actor, expiresAt: Date().addingTimeInterval(3600)),
             saveSession: { _ in }, clearSession: {}, mutationJournal: journal,
             storedLegacy: .init(actorID: actor, legacyUserID: "fixture-legacy-user", accessToken: "fixture-base44-credential"), saveLegacy: { _ in }, clearLegacy: {}, appStoreRetrySleep: sleep)
-        HybridStoreKitURLProtocol.handler = { [weak self] request in
-            Task { @MainActor in self?.respond(to: request) }
+        HybridStoreKitURLProtocol.handler = { request, body in
+            try responseStore.reply(to: request, body: body)
         }
     }
 
     func deliver(_ jws: String) async throws -> AppStoreEntitlementSyncResponse {
         try await auth.service("membership", action: "sync_transaction", fields: ["signed_transaction":.string(jws)], write: true, includeLegacyCredential: true)
-    }
-
-    private func respond(to request: HybridStoreKitURLProtocol) {
-        do {
-            XCTAssertEqual(request.request.url?.path, "/functions/v1/app-services")
-            let json = try JSONDecoder().decode(JSONValue.self, from: request.bodyData())
-            let reply = replies[min(requests.count, replies.count - 1)]
-            requests.append(json)
-            authorization.append(request.request.value(forHTTPHeaderField: "Authorization"))
-            request.respond(status: reply.status, body: reply.body)
-        } catch { request.client?.urlProtocol(request, didFailWithError: error) }
     }
 
     func close() {
@@ -183,13 +173,47 @@ private final class HybridStoreKitRetryFixture {
     }
 }
 
+// URLProtocol callbacks stay on their loading thread. Only the recorded
+// requests and reply selection are shared with the main-actor assertions.
+private final class StoreKitRetryResponses: @unchecked Sendable {
+    private let lock = NSLock()
+    private let replies: [HybridStoreKitRetryFixture.Reply]
+    private var recordedRequests: [JSONValue] = []
+    private var recordedAuthorization: [String?] = []
+
+    init(replies: [HybridStoreKitRetryFixture.Reply]) { self.replies = replies }
+
+    var requests: [JSONValue] { lock.withLock { recordedRequests } }
+    var authorization: [String?] { lock.withLock { recordedAuthorization } }
+
+    func reply(to request: URLRequest, body: Data) throws -> HybridStoreKitRetryFixture.Reply {
+        XCTAssertEqual(request.url?.path, "/functions/v1/app-services")
+        let json = try JSONDecoder().decode(JSONValue.self, from: body)
+        return lock.withLock {
+            let reply = replies[min(recordedRequests.count, replies.count - 1)]
+            recordedRequests.append(json)
+            recordedAuthorization.append(request.value(forHTTPHeaderField: "Authorization"))
+            return reply
+        }
+    }
+}
+
 private final class HybridStoreKitURLProtocol: URLProtocol, @unchecked Sendable {
-    nonisolated(unsafe) static var handler: (@Sendable (HybridStoreKitURLProtocol) -> Void)?
+    typealias Handler = @Sendable (URLRequest, Data) throws -> HybridStoreKitRetryFixture.Reply
+    private static let handlerLock = NSLock()
+    nonisolated(unsafe) private static var storedHandler: Handler?
+    static var handler: Handler? {
+        get { handlerLock.withLock { storedHandler } }
+        set { handlerLock.withLock { storedHandler = newValue } }
+    }
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         guard let handler = Self.handler else { client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet)); return }
-        handler(self)
+        do {
+            let reply = try handler(request, bodyData())
+            respond(status: reply.status, body: reply.body)
+        } catch { client?.urlProtocol(self, didFailWithError: error) }
     }
     override func stopLoading() {}
     func bodyData() throws -> Data {
