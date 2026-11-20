@@ -23,3 +23,5 @@ run_deno test --no-lock --deny-net --deny-env --no-prompt \
 run_deno test --no-lock --deny-net --deny-env --no-prompt \
   --config experiments/supabase-game-core/supabase/functions/apple-session/deno.json \
   experiments/supabase-game-core/tests/apple-session/security_test.ts
+run_deno test --no-lock --no-config --deny-net --deny-env --no-prompt \
+  scripts/verify-apple-coverage.test.mjs
