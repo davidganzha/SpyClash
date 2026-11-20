@@ -482,6 +482,51 @@ final class MembershipTests: XCTestCase {
         XCTAssertEqual(restore.activeCount, 0)
     }
 
+    func testRestoreFindsOwnedApplePurchaseAfterRejectingAnotherProfilesReceipt() async throws {
+        var history = AppStoreTransactionReconciliation()
+        let bindingFailure = StoreKitOperationFailure.capture(
+            Base44Error(message: "owner mismatch", statusCode: 409, code: "purchase_owner_mismatch"),
+            stage: .serverDelivery, origin: .restore, source: .unfinished
+        )
+        try await history.submit(signedPayload: "other-profile", originalID: 1, isCurrent: true) {
+            throw bindingFailure
+        }
+        XCTAssertEqual(try history.verifiedActiveCount(reportBindingConflict: false), 0)
+        XCTAssertThrowsError(try history.verifiedActiveCount(reportBindingConflict: true)) {
+            XCTAssertEqual($0 as? StoreKitOperationFailure, bindingFailure)
+        }
+        try await history.submit(signedPayload: "other-profile", originalID: 1, isCurrent: true) {
+            XCTFail("The rejected signed receipt must not be sent again in the same scan")
+            throw bindingFailure
+        }
+        try await history.submit(signedPayload: "owned-weekly", originalID: 2, isCurrent: true) {
+            AppStoreEntitlementSyncResponse(success: true, serverStatusVerified: true,
+                entitlement: AppStoreEntitlement(productID: StoreKitManager.legacyWeeklyProductID,
+                    status: "active", expiresAt: Date().addingTimeInterval(600)))
+        }
+        XCTAssertEqual(try history.verifiedActiveCount(reportBindingConflict: true), 1)
+    }
+
+    func testExpiredForeignReceiptDoesNotBlockNewPurchaseButVerificationFailureStillPropagates() async throws {
+        var history = AppStoreTransactionReconciliation()
+        let bindingFailure = StoreKitOperationFailure.capture(
+            Base44Error(message: "owner mismatch", statusCode: 409, code: "purchase_owner_mismatch"),
+            stage: .serverDelivery, origin: .restore, source: .latest
+        )
+        try await history.submit(signedPayload: "foreign-expired", originalID: 1, isCurrent: false) {
+            throw bindingFailure
+        }
+        XCTAssertEqual(try history.verifiedActiveCount(reportBindingConflict: true), 0)
+        do {
+            try await history.submit(signedPayload: "service-offline", originalID: 2, isCurrent: true) {
+                throw URLError(.notConnectedToInternet)
+            }
+            XCTFail("An unverified purchase cannot be treated as an empty history")
+        } catch let error as URLError {
+            XCTAssertEqual(error.code, .notConnectedToInternet)
+        }
+    }
+
     func testLateActivationFailureCannotReplaceSuccessfulRestore() async throws {
         let membershipClient = MembershipTestClient()
         membershipClient.result = .success(snapshot())

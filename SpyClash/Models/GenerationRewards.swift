@@ -97,6 +97,7 @@ struct GenerationRewardClaim: Decodable {
 
 enum GenerationRewardNotice: Equatable {
     case unavailable, incomplete, confirming, unconfirmed, earned, limitReached
+    case unavailableWithCode(String)
 }
 
 struct GenerationRewardCopy {
@@ -130,6 +131,7 @@ struct GenerationRewardCopy {
     func notice(_ notice: GenerationRewardNotice) -> String {
         switch notice {
         case .unavailable: text("An ad isn't available right now. You can keep playing with saved words.", "Сейчас реклама недоступна. Можно продолжить игру с готовыми словами.", "Ahora no hay anuncios disponibles. Puedes seguir jugando con palabras guardadas.", "Зараз реклама недоступна. Можна продовжити гру з готовими словами.")
+        case .unavailableWithCode(let code): self.notice(.unavailable) + "\n" + text("Support code", "Код для поддержки", "Código para soporte", "Код для підтримки") + ": " + code
         case .incomplete: text("The ad wasn't completed. No generation was added or spent.", "Просмотр не завершён. Генерации не начислены и не списаны.", "El anuncio no se completó. No se añadió ni gastó ninguna generación.", "Перегляд не завершено. Генерації не нараховані й не списані.")
         case .confirming: text("Waiting for ad confirmation. Your bonus will be added automatically if the confirmation arrives.", "Ждём подтверждение просмотра. Если оно придёт, бонус добавится автоматически.", "Esperando la confirmación del anuncio. Si llega, el bono se añadirá automáticamente.", "Чекаємо на підтвердження перегляду. Якщо воно надійде, бонус додасться автоматично.")
         case .unconfirmed: text("We couldn't confirm the ad view. No bonus was added.", "Подтверждение просмотра не получено. Бонус не начислен.", "No pudimos confirmar la visualización del anuncio. No se añadió ningún bono.", "Не вдалося підтвердити перегляд. Бонус не нараховано.")

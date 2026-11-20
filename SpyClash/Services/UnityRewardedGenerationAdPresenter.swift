@@ -9,10 +9,28 @@ enum UnityRewardedGenerationAdError: LocalizedError {
     case alreadyPresenting
     case presentationUnavailable
     case incompatibleInitialization
-    case initializationFailed(String)
-    case loadFailed(String)
-    case presentationFailed(String)
+    case initializationFailed(Int?)
+    case loadFailed(Int?)
+    case presentationFailed(Int?)
     case timedOut
+
+    var supportCode: String {
+        switch self {
+        case .unavailable: "AD-UNITY-CONFIG"
+        case .alreadyPresenting: "AD-UNITY-BUSY"
+        case .presentationUnavailable: "AD-UNITY-WINDOW"
+        case .incompatibleInitialization: "AD-UNITY-INIT-CONFLICT"
+        case .initializationFailed(let code): "AD-UNITY-INIT-\(code.map(String.init) ?? "UNKNOWN")"
+        case .loadFailed(let code): "AD-UNITY-LOAD-\(code.map(String.init) ?? "UNKNOWN")"
+        case .presentationFailed(let code): "AD-UNITY-SHOW-\(code.map(String.init) ?? "UNKNOWN")"
+        case .timedOut: "AD-UNITY-PREPARE-TIMEOUT"
+        }
+    }
+
+    var allowsLoadRetry: Bool {
+        guard case .loadFailed(let code) = self, let code else { return false }
+        return [2, 52100, 52105].contains(code)
+    }
 
     var errorDescription: String? {
         switch self {
@@ -20,9 +38,9 @@ enum UnityRewardedGenerationAdError: LocalizedError {
         case .alreadyPresenting: "Another advertising or privacy screen is already open."
         case .presentationUnavailable: "Return to the generation screen and try again."
         case .incompatibleInitialization: "Unity Ads was initialized with a different configuration. Relaunch the app."
-        case .initializationFailed(let message): "Unity Ads initialization failed: \(message)"
-        case .loadFailed(let message): "Unity Ads could not load the ad: \(message)"
-        case .presentationFailed(let message): "Unity Ads could not show the ad: \(message)"
+        case .initializationFailed: "Unity Ads initialization failed."
+        case .loadFailed: "Unity Ads could not load the ad."
+        case .presentationFailed: "Unity Ads could not show the ad."
         case .timedOut: "Unity Ads did not respond in time. Please try again."
         }
     }
@@ -51,6 +69,7 @@ final class UnityRewardedGenerationAdPresenter: NSObject {
     @ObservationIgnored private var cachedAt: Date?
     @ObservationIgnored private var lastPreparationFailure: Date?
     @ObservationIgnored private var preparationTimeoutTask: Task<Void, Never>?
+    @ObservationIgnored private var loadRetryTask: Task<Void, Never>?
     @ObservationIgnored private var presentationTask: Task<Void, Never>?
     @ObservationIgnored private var navigationTask: Task<Void, Never>?
     @ObservationIgnored private var backgroundObserver: (any NSObjectProtocol)?
@@ -181,14 +200,14 @@ final class UnityRewardedGenerationAdPresenter: NSObject {
             .with(testMode: configuration.usesTestAds)
             .build()
         UnityAds.initialize(sdkConfiguration) { [weak self] error in
-            let failure = error.map { "\($0.code): \($0.message)" }
+            let failure = error.map { UnityRewardedGenerationAdError.initializationFailed(Int(String(describing: $0.code))) }
             Task { @MainActor in
                 guard let self else { return }
                 self.initializationIsPending = false
                 self.initializedForRewards = failure == nil
                 guard let current = self.preparationID else { return }
                 if let failure {
-                    self.preparationFailed(UnityRewardedGenerationAdError.initializationFailed(failure))
+                    self.preparationFailed(failure)
                 } else {
                     self.loadRewardedAd(current)
                 }
@@ -196,19 +215,23 @@ final class UnityRewardedGenerationAdPresenter: NSObject {
         }
     }
 
-    private func loadRewardedAd(_ id: UUID) {
+    private func loadRewardedAd(_ id: UUID, canRetry: Bool = true) {
         guard preparationID == id, loadingID == nil else { return }
         loadingID = id
         setStatus(.loading)
         let config = UADSLoadConfigurationBuilder(placementId: configuration.adUnitID).build()
         UADSRewardedAd.load(config) { [weak self] ad, error in
-            let failure = error.map { "\($0.code): \($0.message)" }
+            let failure = error.map { UnityRewardedGenerationAdError.loadFailed(Int(String(describing: $0.code))) }
             let transfer = UnityGenerationLoadedAdTransfer(ad)
             Task { @MainActor in
                 guard let self, self.preparationID == id, self.loadingID == id else { return }
                 self.loadingID = nil
                 if let failure {
-                    self.preparationFailed(UnityRewardedGenerationAdError.loadFailed(failure))
+                    if canRetry, failure.allowsLoadRetry, self.operation != nil {
+                        self.retryLoad(id, after: failure)
+                    } else {
+                        self.preparationFailed(failure)
+                    }
                 } else if let ad = transfer.ad {
                     self.preparationID = nil
                     self.preparationTimeoutTask?.cancel()
@@ -227,9 +250,23 @@ final class UnityRewardedGenerationAdPresenter: NSObject {
                     self.setStatus(.ready)
                     if let current = self.operation { self.schedulePresentation(ad, operationID: current.id) }
                 } else {
-                    self.preparationFailed(UnityRewardedGenerationAdError.loadFailed("No ad was returned."))
+                    self.preparationFailed(UnityRewardedGenerationAdError.loadFailed(nil))
                 }
             }
+        }
+    }
+
+    private func retryLoad(_ id: UUID, after failure: UnityRewardedGenerationAdError) {
+        Self.logger.notice("Retrying ad load code=\(failure.supportCode, privacy: .public)")
+        loadRetryTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            guard let self, self.preparationID == id else { return }
+            self.loadRetryTask = nil
+            guard self.operation != nil, UIApplication.shared.applicationState == .active else {
+                self.preparationFailed(failure)
+                return
+            }
+            self.loadRewardedAd(id, canRetry: false)
         }
     }
 
@@ -238,10 +275,14 @@ final class UnityRewardedGenerationAdPresenter: NSObject {
         loadingID = nil
         preparationTimeoutTask?.cancel()
         preparationTimeoutTask = nil
+        loadRetryTask?.cancel()
+        loadRetryTask = nil
         lastPreparationFailure = Date()
         setStatus(.failed(error.localizedDescription))
         if let current = operation, current.phase != .presenting {
             finish(current.id, result: .failure(error))
+        } else {
+            Self.logFailure(error)
         }
     }
 
@@ -316,9 +357,16 @@ final class UnityRewardedGenerationAdPresenter: NSObject {
         switch result {
         case .success(let completed): setStatus(completed ? .completed : .skipped)
         case .failure(is CancellationError): setStatus(.cancelled)
-        case .failure(let error): setStatus(.failed(error.localizedDescription))
+        case .failure(let error):
+            Self.logFailure(error)
+            setStatus(.failed(error.localizedDescription))
         }
         current.continuation.resume(with: result)
+    }
+
+    private static func logFailure(_ error: Error) {
+        guard let failure = error as? UnityRewardedGenerationAdError else { return }
+        logger.error("Ad attempt failed code=\(failure.supportCode, privacy: .public)")
     }
 
     private func setStatus(_ value: Status) {
@@ -421,10 +469,10 @@ extension UnityRewardedGenerationAdPresenter: UADSRewardedShowDelegate {
 
     nonisolated func showDidFail(_ unityAd: UADSRewardedAd, error: UnityAdsError) {
         let adID = ObjectIdentifier(unityAd)
-        let message = "\(error.code): \(error.message)"
+        let code = Int(String(describing: error.code))
         Task { @MainActor [weak self] in
             guard let self, let current = self.presentingOperation(for: adID) else { return }
-            self.finish(current.id, result: .failure(UnityRewardedGenerationAdError.presentationFailed(message)))
+            self.finish(current.id, result: .failure(UnityRewardedGenerationAdError.presentationFailed(code)))
         }
     }
 

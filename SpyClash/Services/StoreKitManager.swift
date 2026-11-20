@@ -158,6 +158,7 @@ final class AppStoreTransactionDeliveryStore {
 struct AppStoreTransactionReconciliation {
     private var deliveredPayloads = Set<String>()
     private var activeOriginalIDs = Set<UInt64>()
+    private var bindingConflict: StoreKitOperationFailure?
     var activeCount: Int { activeOriginalIDs.count }
 
     func contains(_ signedPayload: String) -> Bool { deliveredPayloads.contains(signedPayload) }
@@ -166,6 +167,27 @@ struct AppStoreTransactionReconciliation {
         deliveredPayloads.insert(signedPayload)
         if grantsAccess { activeOriginalIDs.insert(originalID) }
         else { activeOriginalIDs.remove(originalID) }
+    }
+
+    @MainActor mutating func submit(
+        signedPayload: String, originalID: UInt64, isCurrent: Bool,
+        deliver: () async throws -> AppStoreEntitlementSyncResponse
+    ) async throws {
+        guard !contains(signedPayload) else { return }
+        do {
+            let response = try await deliver()
+            record(signedPayload: signedPayload, originalID: originalID, grantsAccess: response.entitlement.grantsAccess)
+        } catch let failure as StoreKitOperationFailure where failure.reason == "ACCOUNT_BINDING" {
+            // StoreKit history is shared by all SpyClash profiles on this App Store account.
+            // The verifier rejected this receipt. Continue looking for an owned receipt.
+            deliveredPayloads.insert(signedPayload)
+            if isCurrent, bindingConflict == nil { bindingConflict = failure }
+        }
+    }
+
+    func verifiedActiveCount(reportBindingConflict: Bool) throws -> Int {
+        if reportBindingConflict, activeCount == 0, let bindingConflict { throw bindingConflict }
+        return activeCount
     }
 }
 
@@ -298,6 +320,21 @@ final class StoreKitManager {
             guard let product else { throw AppStorePurchasePreflightError.productUnavailable }
             stage = .purchaseEligibility
             guard canMakePayments else { throw AppStorePurchasePreflightError.paymentsRestricted }
+            // Apple can return an existing subscription after purchase(). Check current
+            // receipts first, so an active subscription on another profile never opens checkout.
+            stage = .reconciliation
+            var currentPurchases = AppStoreTransactionReconciliation()
+            for await result in Transaction.currentEntitlements {
+                try await reconcile(result, into: &currentPurchases, generation: expected, origin: .purchase, source: .current)
+            }
+            try requireScope(expected)
+            if try currentPurchases.verifiedActiveCount(reportBindingConflict: true) > 0 {
+                stage = .membershipRefresh
+                guard await membership.refresh(force: true), membership.hasAccess else { throw MembershipError.unavailable }
+                try requireScope(expected)
+                state = .restored
+                return
+            }
             stage = .purchasePreparation
             let context = try await client.prepareAppStorePurchase(productID: product.id)
             try requireScope(expected)
@@ -345,7 +382,7 @@ final class StoreKitManager {
             // StoreKit keeps transaction history available without forcing an
             // account prompt. synchronize() accepts only signed transactions
             // acknowledged by the server's current subscription-status check.
-            var count = try await synchronize(expected, origin: .restore)
+            var count = try await synchronize(expected, origin: .restore, reportBindingConflict: false)
             try requireScope(expected)
             if count == 0 {
                 // Ask Apple for missing purchases only from this explicit user
@@ -393,7 +430,9 @@ final class StoreKitManager {
         }
     }
 
-    private func synchronize(_ expected: Int, origin: StoreKitOperationOrigin = .activation) async throws -> Int {
+    private func synchronize(
+        _ expected: Int, origin: StoreKitOperationOrigin = .activation, reportBindingConflict: Bool = true
+    ) async throws -> Int {
         if let reconcileTransactions {
             try requireScope(expected)
             do {
@@ -407,30 +446,36 @@ final class StoreKitManager {
         }
         var reconciliation = AppStoreTransactionReconciliation()
         for await result in Transaction.unfinished {
-            try requireScope(expected)
-            guard StoreKitSubscriptionProduct.supports(result.unsafePayloadValue.productID),
-                  !reconciliation.contains(result.jwsRepresentation) else { continue }
-            let response = try await persist(result, generation: expected, origin: origin, source: .unfinished)
-            reconciliation.record(signedPayload: result.jwsRepresentation, originalID: result.unsafePayloadValue.originalID, grantsAccess: response.entitlement.grantsAccess)
+            try await reconcile(result, into: &reconciliation, generation: expected, origin: origin, source: .unfinished)
         }
         for await result in Transaction.currentEntitlements {
-            try requireScope(expected)
-            guard StoreKitSubscriptionProduct.supports(result.unsafePayloadValue.productID),
-                  !reconciliation.contains(result.jwsRepresentation) else { continue }
-            let response = try await persist(result, generation: expected, origin: origin, source: .current)
-            reconciliation.record(signedPayload: result.jwsRepresentation, originalID: result.unsafePayloadValue.originalID, grantsAccess: response.entitlement.grantsAccess)
+            try await reconcile(result, into: &reconciliation, generation: expected, origin: origin, source: .current)
         }
         // Refunded/expired purchases disappear from currentEntitlements but their
         // latest signed transaction must still reach the canonical server verifier.
         for product in StoreKitSubscriptionProduct.allCases {
             try requireScope(expected)
-            if let latest = await Transaction.latest(for: product.rawValue),
-               !reconciliation.contains(latest.jwsRepresentation) {
-                let response = try await persist(latest, generation: expected, origin: origin, source: .latest)
-                reconciliation.record(signedPayload: latest.jwsRepresentation, originalID: latest.unsafePayloadValue.originalID, grantsAccess: response.entitlement.grantsAccess)
+            if let latest = await Transaction.latest(for: product.rawValue) {
+                try await reconcile(latest, into: &reconciliation, generation: expected, origin: origin, source: .latest)
             }
         }
-        return reconciliation.activeCount
+        return try reconciliation.verifiedActiveCount(reportBindingConflict: reportBindingConflict)
+    }
+
+    private func reconcile(
+        _ result: VerificationResult<Transaction>, into history: inout AppStoreTransactionReconciliation,
+        generation expected: Int, origin: StoreKitOperationOrigin, source: StoreKitTransactionSource
+    ) async throws {
+        try requireScope(expected)
+        let transaction = result.unsafePayloadValue
+        guard StoreKitSubscriptionProduct.supports(transaction.productID) else { return }
+        // Only the server-verified delivery grants access. Local freshness is
+        // used solely to decide whether a rejected ownership conflict is actionable.
+        let isCurrent = source == .current || (transaction.revocationDate == nil && !transaction.isUpgraded
+            && transaction.expirationDate.map { $0 > Date() } == true)
+        try await history.submit(signedPayload: result.jwsRepresentation, originalID: transaction.originalID, isCurrent: isCurrent) {
+            try await self.persist(result, generation: expected, origin: origin, source: source)
+        }
     }
 
     private func persist(

@@ -230,7 +230,11 @@ final class GenerationRewardStore {
                 if !Task.isCancelled { await recoverPending() }
             } else {
                 setPending(nil)
-                if !(error is CancellationError) { notice = .unavailable }
+                if let failure = error as? UnityRewardedGenerationAdError {
+                    notice = .unavailableWithCode(failure.supportCode)
+                } else if !(error is CancellationError) {
+                    notice = .unavailable
+                }
                 if !Task.isCancelled { _ = await refresh() }
             }
         }
