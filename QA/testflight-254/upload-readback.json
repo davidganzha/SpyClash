@@ -1,0 +1,115 @@
+{
+  "checked_at": "2026-11-20T22:23:37.783765+00:00",
+  "app_id": "6793534085",
+  "bundle_id": "com.spyclash.ios",
+  "version": "1.0.4",
+  "build": "254",
+  "source_commit": "2a06e9cc409d984cca31dc565e53ee381081735e",
+  "ci": "https://github.com/davidganzha/SpyClash/actions/runs/44815132885",
+  "delivery_id": "ee95e3ea-5fc0-4d7b-a121-8eccc488ce65",
+  "ipa_bytes": 19634999,
+  "ipa_sha256": "ef0e69546e6cb34cdcbd80e679cb398156bebb713eced382feb57acbe8ff9d87",
+  "upload_exit_code": 0,
+  "apple_validation_exit_code": 0,
+  "processing_state": "VALID",
+  "build_audience_type": "APP_STORE_ELIGIBLE",
+  "internal_beta_state": "IN_BETA_TESTING",
+  "external_beta_state": "READY_FOR_BETA_SUBMISSION",
+  "internal_group": {
+    "id": "47a13858-b43b-44a1-bf3e-285722cec320",
+    "name": "LIMITLESS Internal QA",
+    "testers_count": 2,
+    "membership_unchanged": true
+  },
+  "russian_test_notes_verified": true,
+  "test_notes_sha256": "7c55036f96702d11fe4faf56472453b92a21f8e8eac220406a17275948a2a74c",
+  "signed_release_gate": "passed",
+  "strict_signatures": "passed",
+  "signed_bundles": [
+    {
+      "bundle": "com.spyclash.ios",
+      "profile_name": "iOS Team Store Provisioning Profile: com.spyclash.ios",
+      "profile_uuid": "5f446133-b44d-432d-b748-4d090d1ca38c",
+      "distribution_certificate_sha1": "5B10F9DA0BA68FF878BDB8FEC48184416F1FF887",
+      "entitlements": {
+        "application-identifier": "3Z64QKNL54.com.spyclash.ios",
+        "aps-environment": "production",
+        "beta-reports-active": true,
+        "com.apple.developer.applesignin": [
+          "Default"
+        ],
+        "com.apple.developer.game-center": true,
+        "com.apple.developer.team-identifier": "3Z64QKNL54",
+        "get-task-allow": false,
+        "keychain-access-groups": [
+          "3Z64QKNL54.com.spyclash.ios"
+        ]
+      },
+      "uuid": [
+        [
+          "338CDBD0-D5E2-3E77-8C71-073106ECC910",
+          "arm64"
+        ]
+      ],
+      "archive_and_dsym_match": true
+    },
+    {
+      "bundle": "com.spyclash.ios.widgets",
+      "profile_name": "iOS Team Store Provisioning Profile: com.spyclash.ios.widgets",
+      "profile_uuid": "a1505cfa-bd48-41aa-91a5-5d65c1290ac8",
+      "distribution_certificate_sha1": "5B10F9DA0BA68FF878BDB8FEC48184416F1FF887",
+      "entitlements": {
+        "application-identifier": "3Z64QKNL54.com.spyclash.ios.widgets",
+        "beta-reports-active": true,
+        "com.apple.developer.team-identifier": "3Z64QKNL54",
+        "get-task-allow": false,
+        "keychain-access-groups": [
+          "3Z64QKNL54.com.spyclash.ios.widgets"
+        ]
+      },
+      "uuid": [
+        [
+          "BC127BF2-9EBB-3854-9116-0759A09BD43C",
+          "arm64"
+        ]
+      ],
+      "archive_and_dsym_match": true
+    }
+  ],
+  "signed_frameworks": [
+    {
+      "bundle": "com.google.GoogleMobileAds",
+      "distribution_certificate_sha1": "5B10F9DA0BA68FF878BDB8FEC48184416F1FF887",
+      "designated_requirement": "passed"
+    },
+    {
+      "bundle": "com.unity3d.ads.UnityAds",
+      "distribution_certificate_sha1": "5B10F9DA0BA68FF878BDB8FEC48184416F1FF887",
+      "designated_requirement": "passed"
+    },
+    {
+      "bundle": "com.google.UserMessagingPlatform",
+      "distribution_certificate_sha1": "5B10F9DA0BA68FF878BDB8FEC48184416F1FF887",
+      "designated_requirement": "passed"
+    }
+  ],
+  "apple_warning": {
+    "code": 90725,
+    "blocking_now": false,
+    "detail": "iOS 27 SDK required starting April 2027; this validated candidate uses iOS 26.5 SDK."
+  },
+  "app_store_draft_attached_build": "238",
+  "app_review_submitted": false,
+  "public_release": false,
+  "backend_changed": false,
+  "physical_acceptance": {
+    "device": "Ganzha",
+    "baseline_development_build": "247",
+    "testflight_254_install": "pending",
+    "apple_login": "pending",
+    "session_restoration": "pending",
+    "monthly_purchase": "pending",
+    "purchase_restoration": "pending",
+    "legacy_weekly_restoration": "pending"
+  }
+}
