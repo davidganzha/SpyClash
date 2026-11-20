@@ -1,20 +1,44 @@
-# Apple registration — prepared coverage activation, 20 November 2026
+# Apple registration — coverage activation, 20 November 2026
 
-Status: prepared and locally verified; production registration remains disabled.
+Status: activated with explicit approval on 20 November 2026 at 11:44 UTC.
+Preparation checkpoint: 251. Activation/readback checkpoint: 252.
 
 The production `apple-session` v2 runtime matches every file of the previously
-reviewed package. The current login path supports new accounts, but both
-`APPLE_NEW_ACCOUNTS_ENABLED` and `APPLE_MIGRATION_COVERAGE_VERIFIED` still hash
-to `false`. They must not be enabled on the strength of the two-account pilot.
+reviewed package. The supported new-account path is now enabled: both
+`APPLE_NEW_ACCOUNTS_ENABLED` and `APPLE_MIGRATION_COVERAGE_VERIFIED` hash to
+`true`. Activation followed completion of historical ownership coverage.
+The secret update advanced the runtime to v3 with all 16 source files unchanged.
+
+## Production verification
+
+- The actual administrator verifier confirmed all 22 encrypted source bindings
+  at 11:42 UTC. It was then removed; all other functions and schemas were
+  confirmed unchanged.
+- Refreshed full source-credential and historical-rights reads matched the
+  reviewed baseline. The actual receipt produced executable guarded SQL.
+- The serializable transaction completed the 22 historical Apple mappings and
+  snapshots, added the 20 missing legacy links and made the reservations ready.
+- Readback confirmed all 24 Apple accounts ready, the same 24 Auth owners and
+  profile hashes, unchanged 12 Game Center records, three purchase aliases and
+  two reward aliases. No managed Auth users or profiles were rewritten.
+- Both registration flags were saved together and verified against the SHA-256
+  digest of `true`; the other 41 visible custom-secret digests were preserved.
+- A read-only hosted GET returned the handler's expected HTTP 405 after the
+  update, confirming the configured runtime boots. No Auth/provider writes were
+  performed by that smoke check.
+
+No new Apple ID has yet completed registration on a physical iPhone. This
+document proves server activation and local integration checks, not that
+separate acceptance step. No App Store or TestFlight operation was performed.
 
 ## Historical coverage
 
 A complete read of 30 source credential records and 84 source users found two
 bound Apple owners already migrated, plus 22 pending credential records whose
 historical keyed email identifiers match distinct existing verified source
-users. All 22 already have their original reserved Supabase Auth UUIDs, matching
-private mailboxes, active profiles and completed data imports. Two have active
-legacy links; 20 reservations remain `reserved`. None has a conflicting native
+users. All 22 already had their original reserved Supabase Auth UUIDs, matching
+private mailboxes, active profiles and completed data imports. At preflight, two
+had active legacy links and 20 reservations were `reserved`. None had a conflicting native
 provider, deletion fence or extra source billing/reward/quota records.
 
 Pending source credentials alone are insufficient to activate those identities.
@@ -31,7 +55,7 @@ account ownership is inferred for those unfinished attempts. Their historical
 credential retention/revocation is a separate account-deletion release check;
 this operation does not claim to complete real Apple revocation testing.
 
-## Exact proposed operation
+## Approved operation
 
 1. Base44 app `69a0e57fa939f578082f8091`: deploy and invoke the fixed temporary
    administrator verifier, verify the deployed source hash, then remove it and
@@ -73,6 +97,11 @@ Production actions require the exact fresh approval described in `AGENTS.md`.
   UUID/profile readiness, and idempotent replay.
 - The verifier, both local integration scripts and Python compiler passed their
   type/syntax checks. The full offline authentication regression also passed.
+- The preparation commit `2032df35` passed all three GitHub CI jobs: backend
+  conflicts/authentication, public release configuration and client conflicts.
+  Evidence: https://github.com/davidganzha/SpyClash/actions/runs/44727846003.
+- Activation checkpoint 252 changes only this record and synchronized build
+  numbers. The release-bundle fixture gate passed 81 checks after that update.
 
 These tests do not represent a real new Apple account signing in on an iPhone.
 That remains a distinct acceptance check after activation. The previously
