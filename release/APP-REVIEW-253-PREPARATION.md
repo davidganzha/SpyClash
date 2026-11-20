@@ -1,5 +1,10 @@
 # SpyClash App Review preparation — 20 November 2026
 
+Execution update: the approved metadata changes and the subsequently approved
+actual paywall screenshot were saved. Apple also required two new age answers,
+which received separate approval. See [checkpoint 254](APP-REVIEW-254-METADATA.md).
+The following records the preparation before those writes.
+
 Status: two metadata corrections prepared, not applied. No upload, App Store
 write, review submission, public release or production deletion was performed.
 

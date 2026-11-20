@@ -1,0 +1,11 @@
+{
+  "data": {
+    "type": "ageRatingDeclarations",
+    "id": "08a99022-5f91-48eb-bde3-bd658f2c860e",
+    "attributes": {
+      "advertising": true,
+      "sharedLocation": true,
+      "datingAndRelationships": false
+    }
+  }
+}

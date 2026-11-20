@@ -1,0 +1,56 @@
+{
+  "app_id": "6793534085",
+  "version": "1.0.4",
+  "review_notes_saved": true,
+  "review_notes_sha256": "f928bc875e6dc2d484ce96265e474fd78e0bbbaf80264f2e0c16892336861c08",
+  "monthly_review_screenshot": {
+    "id": "76d1610b-7509-441b-800c-631781bb9a1f",
+    "subscription": "6825982027",
+    "state": "COMPLETE",
+    "bytes": 605584,
+    "width": 1125,
+    "height": 2436,
+    "sha256": "5ddcdf5a4bbf71d67290ce510b2f17e384350d1a7e887e2287f735b9f904ed5d",
+    "md5": "1e94eca9ada07cbb8fa22aed9c68fe11",
+    "original_device_build": 247,
+    "image_edited": false
+  },
+  "age_rating_saved": true,
+  "age_rating_pending_reason": null,
+  "app_review_submitted": false,
+  "public_release_performed": false,
+  "verified_at": "2026-11-20T20:49:41.389501+00:00",
+  "age_rating_answers": {
+    "advertising": true,
+    "sharedLocation": true,
+    "datingAndRelationships": false
+  },
+  "answers_semantically_preserved": true,
+  "raw_age_attribute_changes": {
+    "contests": {
+      "before": "FREQUENT_OR_INTENSE",
+      "after": "FREQUENT"
+    },
+    "advertising": {
+      "before": false,
+      "after": true
+    },
+    "sharedLocation": {
+      "before": null,
+      "after": true
+    },
+    "datingAndRelationships": {
+      "before": null,
+      "after": false
+    }
+  },
+  "enum_normalization_evidence": "The inherited contests choice was already selected as FREQUENT in the editor before Save; its selection was never changed. Apple now returns FREQUENT instead of FREQUENT_OR_INTENSE.",
+  "displayed_general_age_rating": "13+",
+  "review_detail_preserved_after_age_update": true,
+  "monthly_state": "READY_TO_SUBMIT",
+  "version_state": "PREPARE_FOR_SUBMISSION",
+  "release_type": "MANUAL",
+  "attached_build": "238",
+  "current_phone_build": 247,
+  "source_checkpoint": 254
+}
