@@ -1,0 +1,38 @@
+{
+  "checked_at": "2026-11-20T20:22:32.414036+00:00",
+  "read_only": true,
+  "app_id": "6793534085",
+  "version": "1.0.4",
+  "version_state": "PREPARE_FOR_SUBMISSION",
+  "release_type": "MANUAL",
+  "attached_build": "238",
+  "latest_uploaded_build": "242",
+  "source_checkpoint": 252,
+  "ci": {
+    "commit": "e9bc467c019f4c437b1828ec3471eaa325961053",
+    "conclusion": "success",
+    "jobs": 3,
+    "url": "https://github.com/davidganzha/SpyClash/actions/runs/44730978903"
+  },
+  "monthly": {
+    "id": "6825982027",
+    "state": "MISSING_METADATA",
+    "review_note_present": true,
+    "localizations": [
+      "en-US",
+      "es-ES",
+      "ru",
+      "uk"
+    ],
+    "actual_review_screenshot_present": false,
+    "promotion_image_used_as_review_screenshot_evidence": false
+  },
+  "proposed_asc_operations": 2,
+  "production_mutations": false,
+  "device_mirroring": "blocked by iCloud synchronization",
+  "paired_devices": "not connected",
+  "login_keychain_identity_kind": "Apple Development only",
+  "distribution_signing_route": "not yet established for the new candidate",
+  "review_note_characters": 1317,
+  "private_payload_sha256": "f54cdbb6e1d0ffc038c00a1ab9fab3192f30fd880326f7d82279b3b4f1d04a48"
+}

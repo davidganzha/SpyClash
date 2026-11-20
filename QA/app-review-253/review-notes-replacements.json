@@ -1,0 +1,23 @@
+{
+  "status": "prepared; not saved to App Store Connect",
+  "app_id": "6793534085",
+  "version": "1.0.4",
+  "version_id": "a29db5e9-0922-42cf-b084-e5bf5c51b348",
+  "operation": "PATCH /v1/appStoreReviewDetails/808627a0-5949-4c3f-9038-c45ed18fe1ee",
+  "attributes_to_change": [
+    "notes"
+  ],
+  "replacements": [
+    {
+      "before": "SpyClash 1.0.3 (200) adds optional Game Center account sign-in. On a fresh launch without a saved account, the app offers Game Center authentication. A successful Game Center sign-in creates or restores a SpyClash account. Players can choose standard sign-in and registration instead. Existing email, Sign in with Apple and Google sign-in remain available.",
+      "after": "SpyClash 1.0.4 supports Sign in with Apple, Google sign-in, standard email/password sign-in, and optional Game Center sign-in. Choose a method on the sign-in screen. Sign in with Apple uses the native Apple confirmation sheet and returns to the app."
+    },
+    {
+      "before": "The optional weekly LIMITLESS subscription remains available from the lightning tab or Profile > LIMITLESS. The subscription screen includes Restore Purchases and links to Terms and Privacy. The base game remains free.",
+      "after": "New LIMITLESS checkout uses the optional monthly auto-renewable subscription, available from the lightning tab or Profile > LIMITLESS. Existing weekly subscriptions remain supported and can be restored. The subscription screen shows StoreKit's localized price and monthly period and includes Restore Purchases and links to Terms and Privacy. The base game remains free."
+    }
+  ],
+  "unchanged": "All other notes, demo-account credentials, contacts and App Review fields.",
+  "guard": "Fresh-read the exact editable version and review detail; require each before fragment exactly once. Stop on any drift.",
+  "full_inherited_notes_excluded": true
+}
