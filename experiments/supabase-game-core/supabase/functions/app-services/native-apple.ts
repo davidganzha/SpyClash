@@ -69,7 +69,17 @@ async function canonical(transaction:any,target:Target,tools:Awaited<ReturnType<
   const verified = await readCanonicalAppleSubscriptionStatus({transaction,expectedBundleID:target.bundle,expectedProductIDs:APPLE_SUBSCRIPTION_PRODUCTS,
     expectedEnvironment:target.environment,expectedAppAppleID:target.appAppleID || 0,
     getStatuses:id=>tools.client.getAllSubscriptionStatuses(id),
-    verifyTransaction:jws=>tools.verifier.verifyAndDecodeTransaction(jws),verifyRenewal:jws=>tools.verifier.verifyAndDecodeRenewalInfo(jws)});
+    verifyTransaction:jws=>tools.verifier.verifyAndDecodeTransaction(jws),verifyRenewal:jws=>tools.verifier.verifyAndDecodeRenewalInfo(jws)})
+    .catch((error:unknown)=>{
+      const details = error && typeof error==='object' ? error as {httpStatusCode?:unknown,apiError?:unknown,status?:unknown} : {};
+      console.warn('apple_subscription_status_failed', {
+        environment:target.environment,
+        httpStatus:typeof details.httpStatusCode==='number' ? details.httpStatusCode : undefined,
+        apiError:typeof details.apiError==='number' ? details.apiError : undefined,
+        status:typeof details.status==='number' ? details.status : undefined,
+      });
+      throw error;
+    });
   let loyalty: AppleLoyaltySnapshot | undefined;
   let historyTimeout: ReturnType<typeof setTimeout> | undefined;
   try {

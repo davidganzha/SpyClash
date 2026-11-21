@@ -94,6 +94,10 @@ struct StoreKitOperationFailure: Error, Equatable, Sendable {
         }
         if let server = error as? Base44Error {
             if server.code == "purchase_owner_mismatch" { return "ACCOUNT_BINDING" }
+            if server.statusCode == 503, server.retryable,
+               ["apple_verification_failed", "apple_verification_unavailable", "apple_status_unavailable"].contains(server.code) {
+                return "APPLE_VERIFICATION_UNAVAILABLE"
+            }
             let status = server.statusCode.map { String($0) } ?? "UNKNOWN"
             // Never include arbitrary server messages or machine-code strings.
             let bindingBusy = server.code == "apple_account_binding_busy" ? "/BINDING_BUSY" : ""

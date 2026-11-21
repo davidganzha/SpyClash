@@ -2,7 +2,8 @@
 import Foundation
 
 /// App-service writes retain their exact request ID and payload across transport failures.
-/// Each action has one unresolved intent per account. Credential-link bodies are never persisted here.
+/// Each action has one unresolved intent per account, except native StoreKit
+/// delivery, where a failed receipt cannot block other signed receipts.
 @MainActor
 final class SupabaseAppMutationJournal {
     private struct Entry: Codable {
@@ -17,13 +18,17 @@ final class SupabaseAppMutationJournal {
             .appendingPathComponent("SupabaseAppMutations/bbkfsgnordtdiblgdzkg", isDirectory: true)
     }
 
-    func prepare(actorID: String, body: [String: JSONValue]) throws -> [String: JSONValue] {
+    func prepare(actorID: String, body: [String: JSONValue], independentStoreKitDelivery: Bool = false) throws -> [String: JSONValue] {
         guard UUID(uuidString: actorID) != nil,
               let service = body["service"]?.string, let action = body["action"]?.string,
               !Self.containsCredential(.object(body)) else { throw Self.invalidIntent }
         var source = body; source.removeValue(forKey: "request_id")
         var entries = try load(actorID)
-        if let prior = entries.first(where: { $0.source["service"].string == service && $0.source["action"].string == action }) {
+        let matchesReceipt = independentStoreKitDelivery && service == "membership" && action == "sync_transaction"
+        if let prior = entries.first(where: {
+            $0.source["service"].string == service && $0.source["action"].string == action
+                && (!matchesReceipt || $0.source == .object(source))
+        }) {
             guard prior.actorID == actorID, prior.source == .object(source),
                   let saved = prior.body.object else { throw Self.recoveryRequired }
             // Reopened views can suggest a new UUID. The unresolved logical

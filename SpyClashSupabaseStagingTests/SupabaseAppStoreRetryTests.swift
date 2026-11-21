@@ -126,6 +126,29 @@ final class SupabaseAppStoreRetryTests: XCTestCase {
         XCTAssertEqual(fixture.requests.map { $0["signed_transaction"].string }, ["fixture-JWS-A", "fixture-JWS-A", "fixture-JWS-B"])
         XCTAssertNil(try fixture.journal.pendingAppStoreTransaction(actorID: fixture.actor))
     }
+
+    func testNativeRestoreCanDeliverCurrentReceiptWhileOlderReceiptStillReturns503() async throws {
+        let unavailable = HybridStoreKitRetryFixture.Reply(status: 503, body: #"{"code":"apple_verification_failed","retryable":true}"#)
+        for kind in [SupabaseNativeCredentialKind.apple, .gameCenter] {
+            let fixture = HybridStoreKitRetryFixture(responses: [unavailable, .success, unavailable], nativeKind: kind)
+            defer { fixture.close() }
+            let saved = try fixture.journal.prepare(actorID: fixture.actor, body: [
+                "service": .string("membership"), "action": .string("sync_transaction"), "signed_transaction": .string("older-receipt")
+            ])
+            do { _ = try await fixture.deliver("older-receipt"); XCTFail("The failed receipt was acknowledged") }
+            catch let error as Base44Error { XCTAssertEqual(error.statusCode, 503) }
+            let current = try await fixture.deliver("current-receipt")
+            XCTAssertTrue(current.serverStatusVerified)
+            do { _ = try await fixture.deliver("older-receipt"); XCTFail("The current receipt acknowledged a different receipt") }
+            catch let error as Base44Error { XCTAssertEqual(error.statusCode, 503) }
+            XCTAssertEqual(fixture.requests.map { $0["signed_transaction"].string }, ["older-receipt", "current-receipt", "older-receipt"])
+            XCTAssertEqual(fixture.requests[0]["request_id"].string, saved["request_id"]?.string)
+            XCTAssertEqual(fixture.requests[2]["request_id"].string, saved["request_id"]?.string)
+            XCTAssertNotEqual(fixture.requests[1]["request_id"], fixture.requests[0]["request_id"])
+            XCTAssertTrue(fixture.requests.allSatisfy { $0["base44_access_token"].string == nil })
+            XCTAssertEqual(try fixture.journal.pendingAppStoreTransaction(actorID: fixture.actor)?["request_id"], saved["request_id"])
+        }
+    }
 }
 
 @MainActor
@@ -144,8 +167,10 @@ private final class HybridStoreKitRetryFixture {
     var requests: [JSONValue] { responses.requests }
     var authorization: [String?] { responses.authorization }
     private let responses: StoreKitRetryResponses
+    private let nativeKind: SupabaseNativeCredentialKind?
 
-    init(responses: [Reply], sleep: @escaping @MainActor (Duration) async throws -> Void = { _ in }) {
+    init(responses: [Reply], nativeKind: SupabaseNativeCredentialKind? = nil, sleep: @escaping @MainActor (Duration) async throws -> Void = { _ in }) {
+        self.nativeKind = nativeKind
         let responseStore = StoreKitRetryResponses(replies: responses)
         self.responses = responseStore
         directory = FileManager.default.temporaryDirectory.appendingPathComponent("HybridStoreKitRetry-\(UUID())")
@@ -154,7 +179,8 @@ private final class HybridStoreKitRetryFixture {
         configuration.protocolClasses = [HybridStoreKitURLProtocol.self]
         http = URLSession(configuration: configuration)
         auth = SupabaseAppSession(configuration: .init(backendURL: "https://bbkfsgnordtdiblgdzkg.supabase.co", publishableKey: "sb_publishable_fixture", permitsLegacyBilling: true), session: http,
-            storedSession: .init(accessToken: "fixture-supabase", refreshToken: "fixture-refresh", userID: actor, expiresAt: Date().addingTimeInterval(3600)),
+            storedSession: .init(accessToken: "fixture-supabase", refreshToken: "fixture-refresh", userID: actor,
+                                 expiresAt: Date().addingTimeInterval(3600), nativeCredentialKind: nativeKind),
             saveSession: { _ in }, clearSession: {}, mutationJournal: journal,
             storedLegacy: .init(actorID: actor, legacyUserID: "fixture-legacy-user", accessToken: "fixture-base44-credential"), saveLegacy: { _ in }, clearLegacy: {}, appStoreRetrySleep: sleep)
         HybridStoreKitURLProtocol.handler = { request, body in
@@ -163,7 +189,7 @@ private final class HybridStoreKitRetryFixture {
     }
 
     func deliver(_ jws: String) async throws -> AppStoreEntitlementSyncResponse {
-        try await auth.service("membership", action: "sync_transaction", fields: ["signed_transaction":.string(jws)], write: true, includeLegacyCredential: true)
+        try await auth.service("membership", action: "sync_transaction", fields: ["signed_transaction":.string(jws)], write: true, includeLegacyCredential: nativeKind == nil)
     }
 
     func close() {

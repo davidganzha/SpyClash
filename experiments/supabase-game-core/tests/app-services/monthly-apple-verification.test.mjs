@@ -10,21 +10,31 @@ const config=nativeGameCenterConfiguration({APP_IAP_ENABLED:'true',APP_NATIVE_GA
 
 // These tests start at the verified SDK boundary. The real certificate/JWS/OCSP
 // regression suite separately checks that no unsigned payload reaches it.
-function fixture({submittedProduct=MONTHLY_PRODUCT,currentProduct=submittedProduct,submittedPatch={},currentPatch={},renewalPatch={},responsePatch={}}={}) {
+function fixture({submittedProduct=MONTHLY_PRODUCT,currentProduct=submittedProduct,submittedPatch={},currentPatch={},renewalPatch={},responsePatch={},originalLookupFailure}={}) {
   const original='2000000000000001',token='11111111-1111-4111-8111-111111111111';
   const submitted={productId:submittedProduct,bundleId:'com.spyclash.ios',environment:'Sandbox',
     transactionId:'2000000000000002',originalTransactionId:original,appAccountToken:token,...submittedPatch};
   const current={...submitted,transactionId:'2000000000000003',productId:currentProduct,
     expiresDate:Date.now()+3600000,...currentPatch};
   const renewal={originalTransactionId:original,productId:currentProduct,environment:'Sandbox',appAccountToken:token,...renewalPatch};
-  let statusReads=0;
+  const statusIDs=[];
   const tools=async()=>({invalidEnvironment:4,retryableFailure:2,
     verifier:{verifyAndDecodeTransaction:async jws=>jws==='submitted'?submitted:current,verifyAndDecodeRenewalInfo:async()=>renewal},
-    client:{getAllSubscriptionStatuses:async()=>{statusReads++;return {bundleId:'com.spyclash.ios',environment:'Sandbox',
+    client:{getAllSubscriptionStatuses:async id=>{statusIDs.push(id);if(id===original && originalLookupFailure)throw originalLookupFailure;return {bundleId:'com.spyclash.ios',environment:'Sandbox',
       data:[{lastTransactions:[{originalTransactionId:original,status:1,signedTransactionInfo:'current',signedRenewalInfo:'renewal'}]}],...responsePatch};}},
     getHistory:async()=>{throw new Error('Optional history fixture unavailable');}});
-  return {run:()=>verifyApple('submitted',config,{tools}),statusReads:()=>statusReads,submitted,current};
+  return {run:()=>verifyApple('submitted',config,{tools}),statusReads:()=>statusIDs.length,statusIDs,submitted,current};
 }
+
+test('older signed renewal resolves by the original ID and falls back only when Apple cannot find it',async()=>{
+  const normal=fixture();await normal.run();
+  assert.deepEqual(normal.statusIDs,[normal.submitted.originalTransactionId]);
+  const missing=fixture({originalLookupFailure:{httpStatusCode:404}});await missing.run();
+  assert.deepEqual(missing.statusIDs,[missing.submitted.originalTransactionId,missing.submitted.transactionId]);
+  const unavailable=fixture({originalLookupFailure:{httpStatusCode:503}});
+  await assert.rejects(unavailable.run(),error=>error.httpStatusCode===503);
+  assert.deepEqual(unavailable.statusIDs,[unavailable.submitted.originalTransactionId]);
+});
 
 test('verified weekly/monthly renewals and same-chain crossgrades restore with both new-purchase gates disabled',async()=>{
   for(const submittedProduct of [WEEKLY_PRODUCT,MONTHLY_PRODUCT]) for(const currentProduct of [WEEKLY_PRODUCT,MONTHLY_PRODUCT]) {

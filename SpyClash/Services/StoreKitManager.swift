@@ -159,6 +159,7 @@ struct AppStoreTransactionReconciliation {
     private var deliveredPayloads = Set<String>()
     private var activeOriginalIDs = Set<UInt64>()
     private var bindingConflict: StoreKitOperationFailure?
+    private var deferredVerification: StoreKitOperationFailure?
     var activeCount: Int { activeOriginalIDs.count }
 
     func contains(_ signedPayload: String) -> Bool { deliveredPayloads.contains(signedPayload) }
@@ -182,10 +183,16 @@ struct AppStoreTransactionReconciliation {
             // The verifier rejected this receipt. Continue looking for an owned receipt.
             deliveredPayloads.insert(signedPayload)
             if isCurrent, bindingConflict == nil { bindingConflict = failure }
+        } catch let failure as StoreKitOperationFailure where failure.reason == "APPLE_VERIFICATION_UNAVAILABLE" {
+            // Another independently verified subscription can still restore access. Keep
+            // this transaction unfinished and show the error if no active receipt succeeds.
+            deliveredPayloads.insert(signedPayload)
+            if deferredVerification == nil { deferredVerification = failure }
         }
     }
 
     func verifiedActiveCount(reportBindingConflict: Bool) throws -> Int {
+        if activeCount == 0, let deferredVerification { throw deferredVerification }
         if reportBindingConflict, activeCount == 0, let bindingConflict { throw bindingConflict }
         return activeCount
     }
@@ -445,11 +452,11 @@ final class StoreKitManager {
             }
         }
         var reconciliation = AppStoreTransactionReconciliation()
-        for await result in Transaction.unfinished {
-            try await reconcile(result, into: &reconciliation, generation: expected, origin: origin, source: .unfinished)
-        }
         for await result in Transaction.currentEntitlements {
             try await reconcile(result, into: &reconciliation, generation: expected, origin: origin, source: .current)
+        }
+        for await result in Transaction.unfinished {
+            try await reconcile(result, into: &reconciliation, generation: expected, origin: origin, source: .unfinished)
         }
         // Refunded/expired purchases disappear from currentEntitlements but their
         // latest signed transaction must still reach the canonical server verifier.

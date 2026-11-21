@@ -38,7 +38,18 @@ export async function readCanonicalAppleSubscriptionStatus(input: {
       422,
     );
   }
-  const response = await input.getStatuses(input.transaction.transactionId);
+  // Restores may submit an old renewal. The signed original ID is a stable
+  // lookup for its chain, even if Apple no longer resolves that renewal ID.
+  const originalID = input.transaction.originalTransactionId;
+  let response: StatusResponse;
+  try {
+    response = await input.getStatuses(originalID);
+  } catch (error) {
+    const httpStatus = error && typeof error === 'object' && 'httpStatusCode' in error
+      ? error.httpStatusCode : undefined;
+    if (httpStatus !== 404 || originalID === input.transaction.transactionId) throw error;
+    response = await input.getStatuses(input.transaction.transactionId);
+  }
   if (
     response.bundleId !== input.expectedBundleID ||
     response.environment !== input.expectedEnvironment ||

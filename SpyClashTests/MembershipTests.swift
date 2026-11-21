@@ -527,6 +527,24 @@ final class MembershipTests: XCTestCase {
         }
     }
 
+    func testRestoreRequiresOwnedActiveReceiptAfterAnAppleVerificationOutage() async throws {
+        var history = AppStoreTransactionReconciliation()
+        let unavailable = StoreKitOperationFailure.capture(
+            Base44Error(message: "unavailable", statusCode: 503, code: "apple_verification_failed", retryable: true),
+            stage: .serverDelivery, origin: .restore, source: .unfinished
+        )
+        try await history.submit(signedPayload: "pending", originalID: 1, isCurrent: true) { throw unavailable }
+        XCTAssertThrowsError(try history.verifiedActiveCount(reportBindingConflict: false)) {
+            XCTAssertEqual($0 as? StoreKitOperationFailure, unavailable)
+        }
+        try await history.submit(signedPayload: "owned-monthly", originalID: 2, isCurrent: true) {
+            AppStoreEntitlementSyncResponse(success: true, serverStatusVerified: true,
+                entitlement: AppStoreEntitlement(productID: StoreKitManager.limitlessProductID,
+                    status: "active", expiresAt: Date().addingTimeInterval(600)))
+        }
+        XCTAssertEqual(try history.verifiedActiveCount(reportBindingConflict: true), 1)
+    }
+
     func testLateActivationFailureCannotReplaceSuccessfulRestore() async throws {
         let membershipClient = MembershipTestClient()
         membershipClient.result = .success(snapshot())

@@ -274,6 +274,7 @@ final class SupabaseAppSession {
         body["service"] = .string(service); body["action"] = .string(action)
         let epoch = generation
         let isAppStoreDelivery = write && service == "membership" && action == "sync_transaction"
+        let usesNativeStoreKitHistory = isAppStoreDelivery && session?.nativeCredentialKind != nil
         let isWordPackGeneration = write && service == "legacy" && action == "generate"
         let isAccountDeletion = write && service == "profile" && action == "delete" && fields["deletion_scope"]?.string == "account"
         let deletionCredentialKind = session?.nativeCredentialKind
@@ -291,7 +292,7 @@ final class SupabaseAppSession {
             (service == "membership" && ["check", "prepare", "sync_transaction"].contains(action)) ||
             (service == "profile" && action == "delete" && fields["deletion_scope"]?.string == "account")
         guard !includeLegacyCredential || permitsLegacyCredential else { throw Self.invalidSession }
-        if isAppStoreDelivery, let previous = try mutationJournal.pendingAppStoreTransaction(actorID: actorID) {
+        if isAppStoreDelivery, !usesNativeStoreKitHistory, let previous = try mutationJournal.pendingAppStoreTransaction(actorID: actorID) {
             var previousSource = previous; previousSource.removeValue(forKey: "request_id")
             var currentSource = body; currentSource.removeValue(forKey: "request_id")
             if previousSource != currentSource {
@@ -299,7 +300,9 @@ final class SupabaseAppSession {
                                                      legacyToken: legacyToken, epoch: epoch, permitsRevalidation: token == nil)
             }
         }
-        if write { body = try mutationJournal.prepare(actorID: actorID, body: body) }
+        if write {
+            body = try mutationJournal.prepare(actorID: actorID, body: body, independentStoreKitDelivery: usesNativeStoreKitHistory)
+        }
         do {
             var wireBody = body
             if let legacyToken { wireBody["base44_access_token"] = .string(legacyToken) }
