@@ -1156,10 +1156,10 @@ final class MembershipTests: XCTestCase {
             AppStorePurchaseResultError.noActiveSubscription, stage: .accessCheck, origin: .purchase
         )
         let localized: [(AppLanguage, String, String, String)] = [
-            (.en, "could not be linked to the current SpyClash account", "does not provide active subscription access", "Try Restore"),
-            (.ru, "с текущим аккаунтом SpyClash", "активной подписки по ней нет", "Повтори восстановление"),
-            (.es, "a la cuenta actual de SpyClash", "no da acceso a una suscripción activa", "Intenta restaurar"),
-            (.uk, "з поточним акаунтом SpyClash", "активної підписки за нею немає", "Повтори відновлення")
+            (.en, "use another account for App Store purchases", "does not provide active subscription access", "Try Restore"),
+            (.ru, "другой аккаунт для покупок в App Store", "активной подписки по ней нет", "Повтори восстановление"),
+            (.es, "otra cuenta para las compras del App Store", "no da acceso a una suscripción activa", "Intenta restaurar"),
+            (.uk, "іншим обліковим записом для купівель в App Store", "активної підписки за нею немає", "Повтори відновлення")
         ]
         for (language, bindingText, inactiveText, restoreAdvice) in localized {
             let copy = LimitlessCopy(language: language)
@@ -1173,7 +1173,12 @@ final class MembershipTests: XCTestCase {
             XCTAssertFalse(inactiveMessage.contains(restoreAdvice))
             XCTAssertFalse(bindingMessage.contains("private-account-token"))
         }
-        XCTAssertTrue(LimitlessCopy(language: .en).operationFailed(binding).contains("contact support"))
+        let restore = StoreKitOperationFailure.capture(
+            Base44Error(message: "private-account-token", statusCode: 409, code: "purchase_owner_mismatch"),
+            stage: .serverDelivery, origin: .restore
+        )
+        XCTAssertTrue(LimitlessCopy(language: .en).operationFailed(restore).contains("profile used for the original purchase"))
+        XCTAssertFalse(LimitlessCopy(language: .en).operationFailed(restore).contains("use another account for App Store purchases"))
         XCTAssertTrue(LimitlessCopy(language: .en).operationFailed(inactive).contains("Apple verified this purchase"))
     }
 

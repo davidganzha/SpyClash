@@ -70,10 +70,12 @@ private final class SystemGameCenterPlayer: GameCenterPlayerClient {
 final class GameCenterAuthentication: GameCenterAuthenticating {
     private let player: any GameCenterPlayerClient
     private let bundleID: String
-    private let timeout: Duration
+    private let initializationTimeout: Duration
+    private let proofTimeout: Duration
     private let presenter: @MainActor (UIViewController) -> Bool
     private var continuation: CheckedContinuation<GameCenterIdentityProof, Error>?
     private var attemptID: UUID?
+    private var ownsAuthenticationHandler = false
     private var isFetchingProof = false
     private var timeoutTask: Task<Void, Never>?
     private weak var presentedController: UIViewController?
@@ -81,12 +83,14 @@ final class GameCenterAuthentication: GameCenterAuthenticating {
     init(
         player: (any GameCenterPlayerClient)? = nil,
         bundleID: String = Bundle.main.bundleIdentifier ?? "",
-        timeout: Duration = .seconds(90),
+        initializationTimeout: Duration = .seconds(90),
+        proofTimeout: Duration = .seconds(15),
         presenter: @escaping @MainActor (UIViewController) -> Bool = GameCenterAuthentication.present
     ) {
         self.player = player ?? SystemGameCenterPlayer()
         self.bundleID = bundleID
-        self.timeout = timeout
+        self.initializationTimeout = initializationTimeout
+        self.proofTimeout = proofTimeout
         self.presenter = presenter
     }
 
@@ -98,11 +102,13 @@ final class GameCenterAuthentication: GameCenterAuthenticating {
             return try await withCheckedThrowingContinuation { continuation in
                 self.continuation = continuation
                 attemptID = attempt
-                isFetchingProof = false
-                timeoutTask = Task { @MainActor [weak self, timeout] in
-                    do { try await Task.sleep(for: timeout) } catch { return }
-                    self?.finish(.failure(GameCenterAuthenticationError.timedOut), attempt: attempt)
+                if player.isAuthenticated {
+                    // SpyClash logout leaves the system Game Center session signed in.
+                    received(controller: nil, error: nil, attempt: attempt)
+                    return
                 }
+                startTimeout(initializationTimeout, attempt: attempt)
+                ownsAuthenticationHandler = true
                 player.initialize { [weak self] controller, error in
                     self?.received(controller: controller, error: error, attempt: attempt)
                 }
@@ -148,6 +154,7 @@ final class GameCenterAuthentication: GameCenterAuthenticating {
             finish(.failure(GameCenterAuthenticationError.invalidProof), attempt: attempt)
             return
         }
+        startTimeout(proofTimeout, attempt: attempt)
         player.fetchIdentity { [weak self] url, signature, salt, timestamp, error in
             guard let self, self.attemptID == attempt, self.continuation != nil else { return }
             guard error == nil, self.player.isAuthenticated, self.player.teamPlayerID == playerID,
@@ -164,6 +171,14 @@ final class GameCenterAuthentication: GameCenterAuthenticating {
         }
     }
 
+    private func startTimeout(_ duration: Duration, attempt: UUID) {
+        timeoutTask?.cancel()
+        timeoutTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: duration) } catch { return }
+            self?.finish(.failure(GameCenterAuthenticationError.timedOut), attempt: attempt)
+        }
+    }
+
     private func finish(_ result: Result<GameCenterIdentityProof, Error>, attempt: UUID) {
         guard attemptID == attempt, let continuation else { return }
         self.continuation = nil
@@ -171,7 +186,10 @@ final class GameCenterAuthentication: GameCenterAuthenticating {
         isFetchingProof = false
         timeoutTask?.cancel()
         timeoutTask = nil
-        player.stop()
+        if ownsAuthenticationHandler {
+            ownsAuthenticationHandler = false
+            player.stop()
+        }
         if let controller = presentedController, controller.presentingViewController != nil {
             controller.dismiss(animated: false)
         }

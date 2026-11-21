@@ -11,6 +11,15 @@ struct PricingView: View {
     private var access: MembershipStore { appState.membership }
     private var store: StoreKitManager { appState.storeKit }
     private var copy: LimitlessCopy { LimitlessCopy(language: appState.language) }
+    private var purchaseProfile: String? {
+#if SPYCLASH_SUPABASE
+        let session = SupabaseAppSession.shared
+        guard access.scope.isAuthenticated, !access.isPreview, access.scope.userID == session.userID else { return nil }
+        if session.isNativeAppleSession { return copy.applePurchaseProfile }
+        if session.isNativeGameCenterSession { return copy.gameCenterPurchaseProfile }
+#endif
+        return nil
+    }
 
     var body: some View {
         PageChrome(
@@ -72,6 +81,14 @@ struct PricingView: View {
 
     private var purchaseControls: some View {
         VStack(spacing: 10) {
+            if let purchaseProfile {
+                Text(purchaseProfile)
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(SpyTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("limitless.purchase-profile")
+            }
             Button {
                 let action = primaryAction
                 let scope = access.scope
@@ -515,6 +532,8 @@ struct LimitlessCopy {
     }
     var remaining: String { text("AI generations remaining today", "Осталось генераций ИИ сегодня", "Generaciones de IA restantes hoy", "Залишилось генерацій ШІ сьогодні") }
     var month: String { text("month", "месяц", "mes", "місяць") }
+    var applePurchaseProfile: String { text("SpyClash profile · Sign in with Apple", "Профиль SpyClash · Вход через Apple", "Perfil de SpyClash · Iniciar sesión con Apple", "Профіль SpyClash · Вхід через Apple") }
+    var gameCenterPurchaseProfile: String { text("SpyClash profile · Game Center", "Профиль SpyClash · Game Center", "Perfil de SpyClash · Game Center", "Профіль SpyClash · Game Center") }
     var subscribe: String { text("Subscribe with Apple", "Оформить через Apple", "Suscribirse con Apple", "Оформити через Apple") }
     var restore: String { text("Restore purchases", "Восстановить покупки", "Restaurar compras", "Відновити покупки") }
     var restoring: String { text("Restoring purchases…", "Восстанавливаем покупки…", "Restaurando compras…", "Відновлюємо покупки…") }
@@ -537,12 +556,21 @@ struct LimitlessCopy {
         let purchaseResultMessage: String?
         switch failure.reason {
         case "ACCOUNT_BINDING":
-            purchaseResultMessage = text(
-                "This Apple purchase could not be linked to the current SpyClash account. Sign in to the SpyClash account used for this purchase, or contact support with the code below.",
-                "Не удалось связать эту покупку Apple с текущим аккаунтом SpyClash. Войди в аккаунт SpyClash, с которым оформлялась покупка, или обратись в поддержку с кодом ниже.",
-                "No se pudo vincular esta compra de Apple a la cuenta actual de SpyClash. Inicia sesión en la cuenta de SpyClash que usaste para esta compra o contacta con soporte con el código de abajo.",
-                "Не вдалося пов’язати цю купівлю Apple з поточним акаунтом SpyClash. Увійди в акаунт SpyClash, з яким оформлювалася купівля, або звернися до підтримки з кодом нижче."
-            )
+            if failure.origin == .purchase {
+                purchaseResultMessage = text(
+                    "This App Store purchase is unavailable for the current SpyClash profile. To start a separate LIMITLESS subscription here, use another account for App Store purchases. You can stay signed in to this SpyClash profile.",
+                    "Эта покупка App Store недоступна для текущего профиля SpyClash. Чтобы оформить здесь отдельный LIMITLESS, используй другой аккаунт для покупок в App Store. Вход в этот профиль SpyClash можно сохранить.",
+                    "Esta compra del App Store no está disponible para este perfil de SpyClash. Para suscribirte a LIMITLESS por separado, usa otra cuenta para las compras del App Store. Puedes seguir en este perfil de SpyClash.",
+                    "Ця купівля App Store недоступна для поточного профілю SpyClash. Щоб оформити тут окремий LIMITLESS, скористайся іншим обліковим записом для купівель в App Store. Можна залишатися в цьому профілі SpyClash."
+                )
+            } else {
+                purchaseResultMessage = text(
+                    "This App Store purchase is unavailable for the current SpyClash profile. To restore it, open the SpyClash profile used for the original purchase. If you already have that profile open, contact support with the code below.",
+                    "Эта покупка App Store недоступна для текущего профиля SpyClash. Для восстановления открой профиль SpyClash, с которого оформлялась покупка. Если он уже открыт, обратись в поддержку с кодом ниже.",
+                    "Esta compra del App Store no está disponible para este perfil de SpyClash. Para restaurarla, abre el perfil de SpyClash con el que la compraste. Si ya está abierto, contacta con soporte con el código de abajo.",
+                    "Ця купівля App Store недоступна для поточного профілю SpyClash. Щоб відновити її, відкрий профіль SpyClash, з якого її оформлено. Якщо він уже відкритий, звернися до підтримки з кодом нижче."
+                )
+            }
         case "NO_ACTIVE_SUBSCRIPTION":
             purchaseResultMessage = text(
                 "Apple verified this purchase, but it does not provide active subscription access. Check the subscription status in your Apple account.",

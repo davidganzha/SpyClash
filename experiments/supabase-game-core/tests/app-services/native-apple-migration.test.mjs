@@ -5,7 +5,7 @@ import {homedir} from 'node:os';
 import postgres from 'postgres';
 import {nativeAccount} from '../../supabase/functions/app-services/native-account.ts';
 import {accountGate,sessionGate} from '../../supabase/functions/app-services/account-gate.ts';
-import {dispatchMembership,prepareMembershipExternal,cleanupBillingPush,WEEKLY_PRODUCT} from '../../supabase/functions/app-services/membership.ts';
+import {dispatchMembership,prepareMembershipExternal,cleanupBillingPush,WEEKLY_PRODUCT,MONTHLY_PRODUCT} from '../../supabase/functions/app-services/membership.ts';
 import {nativeAccountConfiguration,appleVerificationTargets} from '../../supabase/functions/app-services/native-apple.ts';
 import {prepareNativeAppleDeletion,assertAppleRevocationComplete} from '../../supabase/functions/app-services/native-apple-deletion.ts';
 import {prepareMainAccountDeletion} from '../../supabase/functions/app-services/main-account-deletion.ts';
@@ -79,6 +79,37 @@ test('both historical tokens restore to same UUID and cannot be claimed by anoth
  const foreign=await prepareMembershipExternal({actor:b,body,config},{db,verify});await assert.rejects(call(b,body,foreign),e=>e.code==='purchase_owner_mismatch');}
  assert.equal((await db`select count(*)::int total from app_private.entitlements where user_id=${a.id}`)[0].total,2);
  await db.begin(tx=>cleanupBillingPush({tx,actor:a,now:new Date(),config}));assert.equal((await db`select count(*)::int total from apple_private.billing_token_aliases where user_id=${a.id} and state='deleted'`)[0].total,2);
+});
+test('Apple and Game Center can independently buy and restore the same monthly product',async()=>{
+ const apple=await fixture(),gameCenter=await fixture({provider:'game_center',legacy:false});
+ const checkoutConfig={...config,SPYCLASH_LIMITLESS_APPLE_MONTHLY_PURCHASE_ENABLED:'true'};
+ const dispatch=(actor,body,evidence)=>db.begin(async tx=>{
+  await accountGate(tx,actor.id);
+  return dispatchMembership({tx,actor,config:checkoutConfig,now:new Date(),evidence},body);
+ });
+ const prepare={action:'prepare',requested_product_id:MONTHLY_PRODUCT};
+ const applePurchase=await dispatch(apple,prepare),gameCenterPurchase=await dispatch(gameCenter,prepare);
+ assert.notEqual(applePurchase.app_account_token,gameCenterPurchase.app_account_token);
+ const synchronize=async(actor,accountToken,originalID)=>{
+  const body={action:'sync_transaction',signed_transaction:`fixture-monthly-transaction-${originalID}`};
+  const verify=async()=>({transaction:{productId:MONTHLY_PRODUCT,bundleId:'com.spyclash.ios',environment:'Sandbox',
+   originalTransactionId:originalID,transactionId:originalID,appAccountToken:accountToken,expiresDate:Date.now()+3600000,signedDate:Date.now()},status:1});
+  const evidence=await prepareMembershipExternal({actor,body,config:checkoutConfig},{db,verify});
+  return dispatch(actor,body,evidence);
+ };
+ const appleChain=BigInt('0x'+apple.id.replaceAll('-','')).toString();
+ const gameCenterChain=BigInt('0x'+gameCenter.id.replaceAll('-','')).toString();
+ const appleToken=applePurchase.app_account_token,gameCenterToken=gameCenterPurchase.app_account_token;
+ await synchronize(gameCenter,gameCenterToken,gameCenterChain);
+ await assert.rejects(synchronize(apple,gameCenterToken,gameCenterChain),e=>e.code==='purchase_owner_mismatch');
+ assert.equal((await dispatch(apple,{action:'check'})).active,false);
+ for (let delivery=0;delivery<2;delivery++) {
+  assert.equal((await synchronize(apple,appleToken,appleChain)).entitlement.product_id,MONTHLY_PRODUCT);
+  assert.equal((await synchronize(gameCenter,gameCenterToken,gameCenterChain)).entitlement.product_id,MONTHLY_PRODUCT);
+ }
+ await assert.rejects(synchronize(gameCenter,appleToken,appleChain),e=>e.code==='purchase_owner_mismatch');
+ assert.equal((await dispatch(apple,{action:'check'})).active,true);
+ assert.equal((await dispatch(gameCenter,{action:'check'})).active,true);
 });
 test('replay nonce and authorization-code hashes are globally unique and exchanging blocks final deletion',async()=>{
  const a=await fixture(),b=await fixture();const nonce='c'.repeat(64),code='d'.repeat(64);

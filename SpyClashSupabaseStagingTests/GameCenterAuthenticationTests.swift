@@ -4,6 +4,30 @@ import UIKit
 
 @MainActor
 final class GameCenterAuthenticationTests: XCTestCase {
+    func testRepeatSignInFetchesFreshProofWithoutReinitializingGameCenter() async throws {
+        let player = TestGameCenterPlayer()
+        let authentication = makeAuthentication(player)
+        let firstAttempt = Task { try await authentication.authenticate() }
+        await waitForInitialization(player)
+        player.emitAuthenticated()
+        player.completeProof(timestamp: 123)
+        let first = try await firstAttempt.value
+
+        let repeatAttempt = Task { try await authentication.authenticate() }
+        for _ in 0..<100 {
+            if player.proofRequests.count == 2 { break }
+            await Task.yield()
+        }
+        XCTAssertEqual(player.proofRequests.count, 2)
+        player.completeProof(timestamp: 456)
+        let second = try await repeatAttempt.value
+
+        XCTAssertEqual(first.teamPlayerID, second.teamPlayerID)
+        XCTAssertEqual(second.timestamp, 456)
+        XCTAssertEqual(player.handlers.count, 1)
+        XCTAssertEqual(player.stops, 1)
+    }
+
     func testDuplicateAuthenticationCallbacksFetchOneProofAndCompleteOnce() async throws {
         let player = TestGameCenterPlayer()
         let authentication = makeAuthentication(player)
@@ -36,6 +60,7 @@ final class GameCenterAuthenticationTests: XCTestCase {
         do { _ = try await oldTask.value; XCTFail("Cancellation must finish the old attempt") }
         catch { XCTAssertTrue(error is CancellationError) }
 
+        player.isAuthenticated = false
         let nextTask = Task { try await authentication.authenticate() }
         await waitForInitialization(player, count: 2)
         oldCallback(nil, nil)
@@ -62,7 +87,6 @@ final class GameCenterAuthenticationTests: XCTestCase {
 
     func testUnconfiguredPlayerFallsBackWithoutRequestingProof() async {
         let player = TestGameCenterPlayer()
-        player.isAuthenticated = false
         let authentication = makeAuthentication(player)
         let task = Task { try await authentication.authenticate() }
         await waitForInitialization(player)
@@ -96,10 +120,21 @@ final class GameCenterAuthenticationTests: XCTestCase {
 
     func testStalledGameKitIsBounded() async {
         let player = TestGameCenterPlayer()
-        let authentication = GameCenterAuthentication(player: player, bundleID: "com.spyclash.ios", timeout: .milliseconds(1), presenter: { _ in true })
+        let authentication = GameCenterAuthentication(player: player, bundleID: "com.spyclash.ios", initializationTimeout: .milliseconds(1), presenter: { _ in true })
         do { _ = try await authentication.authenticate(); XCTFail("A stalled callback must time out") }
         catch { XCTAssertEqual(error as? GameCenterAuthenticationError, .timedOut) }
         XCTAssertEqual(player.stops, 1)
+    }
+
+    func testAlreadyAuthenticatedPlayerWithStalledProofTimesOut() async {
+        let player = TestGameCenterPlayer()
+        player.isAuthenticated = true
+        let authentication = GameCenterAuthentication(player: player, bundleID: "com.spyclash.ios", proofTimeout: .milliseconds(1))
+        do { _ = try await authentication.authenticate(); XCTFail("A stalled proof must time out") }
+        catch { XCTAssertEqual(error as? GameCenterAuthenticationError, .timedOut) }
+        XCTAssertEqual(player.proofRequests.count, 1)
+        XCTAssertTrue(player.handlers.isEmpty)
+        XCTAssertEqual(player.stops, 0)
     }
 
     func testTaskCancellationRemovesPlayerHandler() async {
@@ -123,7 +158,7 @@ final class GameCenterAuthenticationTests: XCTestCase {
     }
 
     private func makeAuthentication(_ player: TestGameCenterPlayer, presenter: @escaping @MainActor (UIViewController) -> Bool = { _ in true }) -> GameCenterAuthentication {
-        GameCenterAuthentication(player: player, bundleID: "com.spyclash.ios", timeout: .seconds(3), presenter: presenter)
+        GameCenterAuthentication(player: player, bundleID: "com.spyclash.ios", initializationTimeout: .seconds(3), proofTimeout: .seconds(3), presenter: presenter)
     }
 
     private func waitForInitialization(_ player: TestGameCenterPlayer, count: Int = 1) async {
@@ -137,7 +172,7 @@ final class GameCenterAuthenticationTests: XCTestCase {
 
 @MainActor
 private final class TestGameCenterPlayer: GameCenterPlayerClient {
-    var isAuthenticated = true
+    var isAuthenticated = false
     var teamPlayerID = "team-player-one"
     var displayName = "Operative"
     var handlers: [@MainActor (UIViewController?, Error?) -> Void] = []
@@ -147,7 +182,10 @@ private final class TestGameCenterPlayer: GameCenterPlayerClient {
     func initialize(handler: @escaping @MainActor (UIViewController?, Error?) -> Void) { handlers.append(handler) }
     func fetchIdentity(handler: @escaping @MainActor (URL?, Data?, Data?, UInt64, Error?) -> Void) { proofRequests.append(handler) }
     func stop() { stops += 1 }
-    func emitAuthenticated() { handlers.last?(nil, nil) }
+    func emitAuthenticated() {
+        isAuthenticated = true
+        handlers.last?(nil, nil)
+    }
     func completeProof(timestamp: UInt64 = 123) {
         proofRequests.last?(URL(string: "https://static.gc.apple.com/public-key/test.cer"), Data([1]), Data([2]), timestamp, nil)
     }
